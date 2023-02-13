@@ -1,0 +1,11 @@
+[Unit]
+Description=Map scanner
+After=network-online.target redis.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/map-scanner
+
+[Install]
+WantedBy=multi-user.target

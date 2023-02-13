@@ -1,0 +1,11 @@
+[Unit]
+Description=Map data broker and http server
+After=network-online.target redis.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/map-broker
+
+[Install]
+WantedBy=multi-user.target

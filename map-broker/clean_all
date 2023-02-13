@@ -1,0 +1,27 @@
+#!/bin/bash
+
+read -r -d '' LUA_SCRIPT <<'EOM'
+for _,k in ipairs(redis.call('keys', ARGV[1])) do 
+    redis.call('del', k) 
+end
+EOM
+
+if [ "$1" != "-y" ]
+then
+  echo Safeguard exit. Use -y switch
+  exit
+fi
+
+RED_CMD="redis-cli -s /var/run/redis/redis.sock"
+
+sudo systemctl stop map-scanner
+sudo systemctl stop map-broker
+
+/etc/mapper/devlist -y
+
+for KEY in "ip_last_result.*" "ip_proc_error.*" "ip_queues.*" "dev_last_seen.*" "ip_oids.*"\
+            "ip_graphs.*" "status_alert.*" "log.*" "dev_ip.*" "ip_dev_id.*" "ip_data.*"\
+            "ip_keys.*"
+do
+  $RED_CMD EVAL "$LUA_SCRIPT" 0 "$KEY"
+done

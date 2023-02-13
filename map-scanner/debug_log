@@ -1,0 +1,21 @@
+#!/bin/sh
+
+RED_CMD="redis-cli -s /var/run/redis/redis.sock"
+
+if [ -z "$1" ]
+then
+  echo "USAGE: $0 IP ..."
+  exit 1
+fi
+
+for IP in "$@"
+do
+  $RED_CMD SET "ip_debug.$IP" "*"
+done
+
+$RED_CMD --raw SUBSCRIBE debug
+
+for IP in "$@"
+do
+  $RED_CMD DEL "ip_debug.$IP"
+done

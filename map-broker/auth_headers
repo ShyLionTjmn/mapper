@@ -1,0 +1,4 @@
+x-idp-sub: testsub
+x-idp-name: testuser
+x-idp-username: testusername
+x-idp-groups: "/netapp_mapper_appadmin"

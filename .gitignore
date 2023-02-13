@@ -1,0 +1,6 @@
+**/local*
+**/old*
+map-broker/map-broker
+map-scanner/map-scanner
+map-alerter/map-alerter
+map-grapher/map-grapher

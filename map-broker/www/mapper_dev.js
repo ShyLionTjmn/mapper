@@ -1,0 +1,3994 @@
+'use strict';
+
+var fixed_div;
+var user_self_sub = "none";
+var user_self_id;
+
+var g_show_tooltips = true;
+var data = {};
+var map_data = { "loc": {}, "tps": {}, "colors": {}, "options": {} };
+var temp_data = { "devs": {}, "p2p_links": {} };
+
+var site;
+var proj;
+var file_key = "";
+var file_saved = 0;
+var shared;
+var enable_save = true;
+var g_unsaved = false;
+
+var workspace;
+
+var allow_select = false;
+var dev_selected = [];
+
+
+var sel_border_width=5;
+var sel_border_spacing=1;
+
+var sel_border_line_color="dotted red";
+
+var sel_border_offset=(-1-sel_border_width-sel_border_spacing)+"px";
+
+var movementLock = false;
+
+var def_int_size = 16;
+var int_size; //set in data_loaded()
+var int_half; // int_size / 2
+var grid; //set in data_loaded()
+var tp_grid; //set in data_loaded()
+var tp_btn_size; //set in data_loaded()
+var tp_grid_offset; //set in data_loaded()
+
+var def_dev_name_size = (def_int_size - 1) +"px";
+var dev_name_size; //set in data_loaded()
+
+var windows = {};
+var windows_z = 100000;
+var g_win_stack_xy = 40;
+
+var connections = {};
+
+var dev_border="1px gray dotted";
+var group_border="1px gray dashed";
+
+var devices_arranged = {};
+var connections_rearranged = {};
+
+var min_line_length=10; //for new turnpoint button
+
+var tp_show = false;
+
+var userinfo = {};
+
+function shift_stack_xy() {
+  g_win_stack_xy += 20;
+  if(g_win_stack_xy > 400) {
+    g_win_stack_xy=40;
+  };
+};
+
+function hash_length(obj) {
+    let size = 0, key;
+    for (key in obj) {
+        if (obj.hasOwnProperty(key)) size++;
+    }
+    return size;
+};
+
+function time() {
+  return Math.floor( new Date().getTime() / 1000 );
+};
+
+function time_diff(seconds) {
+  if(seconds < 2*60) {
+    return seconds+" secs";
+  } else if(seconds < 2*60*60) {
+    return Math.floor( seconds/60 )+" mins";
+  } else if(seconds < 2*60*60*24) {
+    return Math.floor( seconds/(60*60) )+" hours";
+  } else {
+    return Math.floor( seconds/(60*60*24) )+" days";
+  };
+};
+
+function lz(a) {
+  return ('0'+a).slice(-2);
+};
+
+function DateTime(date) {
+  return lz(date.getDate())+"."+lz(date.getMonth()+1)+"."+date.getFullYear()+" "+lz(date.getHours())+":"+lz(date.getMinutes());
+};
+
+function debugLog(text) {
+  if(!DEBUG) return;
+
+  $("#debug_win").text( $("#debug_win").text() + "\n" + text);
+  $("#debug_win").scrollTop($("#debug_win").prop("scrollHeight"));
+};
+
+function save_local(key, value) {
+  localStorage.setItem(key+"_"+user_self_sub, JSON.stringify(value));
+};
+
+function del_local(key) {
+  if(typeof(key) === 'string') {
+    localStorage.removeItem(key+"_"+user_self_sub);
+  } else if(key instanceof RegExp) {
+    let keys=[];
+    for(let i=0; i < localStorage.length; i++) {
+      if(localStorage.key(i).match(key)) {
+        keys.push(localStorage.key(i));
+      };
+    };
+    for(let i in keys) {
+      localStorage.removeItem(keys[i]);
+    };
+  };
+};
+
+function get_local(key, on_error=undefined) {
+  let js=localStorage.getItem(key+"_"+user_self_sub);
+  if(js == undefined || js == "null") return on_error;
+  try {
+    return JSON.parse(localStorage.getItem(key+"_"+user_self_sub));
+  } catch(e) {
+    return on_error;
+  };
+};
+
+function ip_link_id(dev1, if1, dev2, if2) {
+  let dc = String(dev1).localeCompare(dev2);
+  if(dc < 0) {
+    return "ip_"+String(dev1)+"@"+String(if1)+"#"+String(dev2)+"@"+String(if2);
+  } else if(dc > 0) {
+    return "ip_"+String(dev2)+"@"+String(if2)+"#"+String(dev1)+"@"+String(if1);
+  } else {
+    error_at(); // should not ip link to itself!
+    let ic = String(if1).localeCompare(if2);
+    if(ic < 0) {
+      return "ip_"+String(dev1)+"@"+String(if1)+"#"+String(dev2)+"@"+String(if2);
+    } else {
+      return "ip_"+String(dev2)+"@"+String(if2)+"#"+String(dev1)+"@"+String(if1);
+    };
+  };
+};
+
+function sort_by_string_key(arr, obj, key, asc=true) {
+  if(asc) {
+    arr.sort(function(a, b) {
+      return String(obj[a][key]).toLowerCase().localeCompare( String(obj[b][key]).toLowerCase() );
+    });
+  } else {
+    arr.sort(function(b, a) {
+      return String(obj[a][key]).toLowerCase().localeCompare( String(obj[b][key]).toLowerCase() );
+    });
+  };
+};
+
+function sort_by_number_key(arr, obj, key, asc=true) {
+  if(asc) {
+    arr.sort(function(a, b) {
+      return num_compare(String(obj[a][key]).toLowerCase(), String(obj[b][key]).toLowerCase());
+    });
+  } else {
+    arr.sort(function(b, a) {
+      return num_compare(String(obj[a][key]).toLowerCase(), String(obj[b][key]).toLowerCase());
+    });
+  };
+};
+
+function num_compare(a, b) {
+  let aa=a.split(/(\d+)/);
+  let ba=b.split(/(\d+)/);
+
+  while(aa.length > 0 && ba.length > 0) {
+    let av=aa.shift();
+    let bv=ba.shift();
+    if(isNaN(av) && !isNaN(bv)) {
+      return 1;
+    } else if(isNaN(bv) && !isNaN(av)) {
+      return -1;
+    } else if(isNaN(av) && isNaN(bv)) {
+      let cres=av.localeCompare(bv);
+      if(cres != 0) return cres;
+    } else {
+      if(Number(av) > Number(bv)) {
+        return 1;
+      } else if(Number(av) < Number(bv)) {
+        return -1;
+      };
+    };
+  };
+
+  if(aa.length == ba.length) {
+    return 0;
+  } else if(aa.length > ba.length) {
+    return 1;
+  } else {
+    return -1;
+  };
+};
+
+function wdhm(time) {
+  time=Math.floor(time);
+  let w=Math.floor(time / (7*24*60*60));
+  time = time - w*(7*24*60*60);
+
+  let d=Math.floor(time / (24*60*60));
+  time = time - d*(24*60*60);
+
+  let h=Math.floor(time / (60*60));
+  time = time - h*(60*60);
+
+  let m=Math.floor(time / 60);
+  let s=time - m*60;
+
+  let ret="";
+  if(w > 0) {
+    ret = String(w)+" н. ";
+  };
+  if(d > 0 || w > 0) {
+    ret += String(d)+" д. ";
+  };
+  if(h > 0 || d > 0 || w > 0) {
+    ret += String(h)+" ч. ";
+  };
+  if(m > 0 || h > 0 || d > 0 || w > 0) {
+    ret += String(m)+" м. ";
+  };
+
+  ret += String(s)+" с.";
+
+  return ret;
+};
+
+const v4len2mask=[
+  0, //0.0.0.0
+  2147483648, //128.0.0.0
+  3221225472, //192.0.0.0
+  3758096384, //224.0.0.0
+  4026531840, //240.0.0.0
+  4160749568, //248.0.0.0
+  4227858432, //252.0.0.0
+  4261412864, //254.0.0.0
+  4278190080, //255.0.0.0
+  4286578688, //255.128.0.0
+  4290772992, //255.192.0.0
+  4292870144, //255.224.0.0
+  4293918720, //255.240.0.0
+  4294443008, //255.248.0.0
+  4294705152, //255.252.0.0
+  4294836224, //255.254.0.0
+  4294901760, //255.255.0.0
+  4294934528, //255.255.128.0
+  4294950912, //255.255.192.0
+  4294959104, //255.255.224.0
+  4294963200, //255.255.240.0
+  4294965248, //255.255.248.0
+  4294966272, //255.255.252.0
+  4294966784, //255.255.254.0
+  4294967040, //255.255.255.0
+  4294967168, //255.255.255.128
+  4294967232, //255.255.255.192
+  4294967264, //255.255.255.224
+  4294967280, //255.255.255.240
+  4294967288, //255.255.255.248
+  4294967292, //255.255.255.252
+  4294967294, //255.255.255.254
+  4294967295 //255.255.255.255
+];
+const v4len2maskN=[
+  0n, //0.0.0.0
+  2147483648n, //128.0.0.0
+  3221225472n, //192.0.0.0
+  3758096384n, //224.0.0.0
+  4026531840n, //240.0.0.0
+  4160749568n, //248.0.0.0
+  4227858432n, //252.0.0.0
+  4261412864n, //254.0.0.0
+  4278190080n, //255.0.0.0
+  4286578688n, //255.128.0.0
+  4290772992n, //255.192.0.0
+  4292870144n, //255.224.0.0
+  4293918720n, //255.240.0.0
+  4294443008n, //255.248.0.0
+  4294705152n, //255.252.0.0
+  4294836224n, //255.254.0.0
+  4294901760n, //255.255.0.0
+  4294934528n, //255.255.128.0
+  4294950912n, //255.255.192.0
+  4294959104n, //255.255.224.0
+  4294963200n, //255.255.240.0
+  4294965248n, //255.255.248.0
+  4294966272n, //255.255.252.0
+  4294966784n, //255.255.254.0
+  4294967040n, //255.255.255.0
+  4294967168n, //255.255.255.128
+  4294967232n, //255.255.255.192
+  4294967264n, //255.255.255.224
+  4294967280n, //255.255.255.240
+  4294967288n, //255.255.255.248
+  4294967292n, //255.255.255.252
+  4294967294n, //255.255.255.254
+  4294967295n //255.255.255.255
+];
+function cidr_valid(cidr) {
+  let m=String(cidr).match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/);
+  if(m === null) return false;
+  if(m[1] > 255 || m[2] > 255 || m[3] > 255 || m[4] > 255 || m[5] > 32) return false;
+
+  let ip=v4oct2long(m[1], m[2], m[3], m[4]);
+  let net = (ip & v4len2mask[ Number(m[5]) ]) >>> 0;
+  if(ip != net) return false;
+
+  return true;
+};
+
+function v4oct2long(i3, i2, i1, i0) {
+  let ret = Number(i3) * 16777216;
+  ret += Number(i2) * 65536;
+  ret += Number(i1) * 256;
+  ret += Number(i0);
+  return ret >>> 0;
+};
+
+function v4ip2long(ip) {
+  let m=String(ip).match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if(m == null || m.length != 5 || Number(m[1]) > 255 || Number(m[2]) > 255 ||
+     Number(m[3]) > 255 || Number(m[4]) > 255
+  ) {
+    return false;
+  } else {
+    return(v4oct2long(m[1], m[2], m[3], m[4]));
+  };
+};
+function v4long2ip(net) {
+  let o=ip4octets(net);
+  return o[0]+"."+o[1]+"."+o[2]+"."+o[3];
+};
+
+function ip4octets(net) {
+  net = Number(net);
+  let ret=[];
+  ret[0] = Math.floor( net / 16777216);
+  ret[1] = Math.floor( (net & 0xFFFFFF) / 65536);
+  ret[2] = Math.floor( (net & 0xFFFF) / 256);
+  ret[3] = net & 0xFF;
+  return ret;
+};
+
+function ip4net(ip, masklen) {
+  return Number(BigInt(ip) & v4len2maskN[masklen]);
+};
+
+function net_mask_wc(net, masklen) {
+  return v4long2ip(net)+"/"+masklen+" ("+v4long2ip(v4len2mask[masklen])+" "+v4long2ip((~v4len2mask[masklen]) >>> 0) + ")";
+};
+
+function ellipsed(text, chars) {
+  let ret = String(text);
+  if(ret.length > (chars-3)) {
+    ret = ret.substring(0, chars-3);
+    ret += "...";
+  };
+  return ret;
+};
+
+function createWindow(win_id, title, options) {
+
+  let elm=document.getElementById(win_id);
+
+  let position = {"my": "center", "at": "center", "of": $(window)};
+  if(elm) {
+    position = $(elm).dialog("option", "position");
+    $(elm).dialog("close");
+  };
+
+  let content = $(DIV).addClass("content");
+
+  let dlg = $(DIV, {id: win_id}).addClass("dialog_start")
+   .title(title)
+   .append( content )
+   .appendTo( $("BODY") )
+  ;
+
+  let buttons = [];
+
+  let dialog_options = {
+    modal: false,
+    maxHeight:1000,
+    maxWidth:1800,
+    width: "auto",
+    height: "auto",
+    buttons: buttons,
+    position: position,
+    close: function() {
+      $(this).dialog("destroy");
+      $(this).remove();
+    }
+  };
+
+  if(options !== undefined) {
+    for(let opt in options) {
+      dialog_options[opt] = options[opt];
+    };
+  };
+
+  dlg.dialog(dialog_options);
+  let widget = dlg.dialog("widget");
+  widget.find(".ui-dialog-titlebar-close").css({"font-size": "6pt", "font-weight": "normal"});
+  widget.find(".ui-button-icon.ui-icon.ui-icon-closethick").removeClass("ui-icon-closethick").addClass("ui-icon-close");
+  widget.find(".ui-dialog-title").css({"font-size": "10", "font-weight": "normal"});
+  widget.find(".ui-dialog-titlebar").css({"padding": "0.1em 0.3em"});
+  widget.find(".ui-dialog-content").css({"padding": "0.2em 0.3em"});
+
+  widget.find(":focus").blur();
+
+  dlg.on("recenter", function() {
+    $(this).dialog("option", "position", $(this).dialog("option", "position"));
+  });
+  
+  return dlg;
+};
+
+function save_windows() {
+};
+
+
+function dev_select_border(dev_elm, selected, color="#FF4444") {
+  if(dev_elm === undefined || dev_elm.length == 0) return;
+  dev_elm.find(".select_border").toggle(selected).css("border-color", color);
+};  
+
+function virtLinksWin() {
+};
+
+function dev_list_stop(e, ui) {
+  if(e.pageX > $(e.target).width()) {
+    let id=ui.item.data('id');
+    ui.item.remove();
+    //let X=ui.position.left-workspace.offset().left;
+    //let Y=ui.position.top-workspace.offset().top;
+
+    let X=ui.position.left-workspace.offset().left + workspace.scrollLeft();
+    let Y=ui.position.top-workspace.offset().top + workspace.scrollTop();
+
+    X=Math.floor(X/grid)*grid;
+    Y=Math.floor(Y/grid)*grid;
+
+    map_data["loc"][id]={"x": X, "y": Y};
+    add_device(id);
+    save_map("loc", id);
+
+    resort_dev_list();
+
+    build_connections();
+    device_drag(id, X,Y);
+
+    for(let link_id in connections) {
+      if(connections[link_id]["from_dev"] == id || connections[link_id]["to_dev"] == id) draw_connection(link_id);
+    };
+  };
+};
+
+function get_tag_path(tag_data, tag_id, counter) {
+  if(counter > 100) { error_at(); return; };
+
+  if(String(tag_data["id"]) === String(tag_id)) {
+    return [{"id": tag_data["id"], "text": tag_data["text"],
+             "descr": tag_data["data"]["descr"], "flags": tag_data["data"]["flags"]
+    }];
+  };
+
+  for(let i in tag_data["children"]) {
+    let rec_res = get_tag_path(tag_data["children"][i], tag_id, counter + 1);
+    if(rec_res !== null) {
+      let ret = rec_res.slice();
+      ret.unshift({"id": tag_data["id"], "text": tag_data["text"],
+                                      "descr": tag_data["data"]["descr"],
+                                      "flags": tag_data["data"]["flags"]
+      });
+      return ret;
+    };
+  };
+  return null;
+};
+
+function get_tag(tag_data, tag_id) {
+  let ret = $(LABEL).addClass("tag")
+   .css({"white-space": "pre", "z-index": windows_z - 1})
+  ;
+  let text_words = [];
+  let title_words = [];
+  let path = get_tag_path(tag_data, tag_id, 0);
+  if(path === null) {
+    text_words.push("NULL");
+    title_words.push("Тег не найден!");
+  } else {
+    for(let i in path) {
+      if((path[i]["flags"] & F_DISPLAY) > 0 || String(path[i]["id"]) === String(tag_id)) {
+        title_words.push(path[i]["text"]);
+      }; 
+      if((path[i]["flags"] & F_IN_LABEL) > 0 || String(path[i]["id"]) === String(tag_id)) {
+        text_words.push(path[i]["text"]);
+      }; 
+    };
+  };
+  ret.data("title_words", title_words).text(text_words.join(":"));
+  ret.tooltip({
+    classes: { "ui-tooltip": "ui-corner-all ui-widget-shadow wsp tooltip" },
+    items: "LABEL",
+    content: function() {
+      let ret = $(DIV);
+      let words = $(this).data("title_words");
+      for(let i in words) { ret.append( $(LABEL).addClass("tag").text(words[i]) ); };
+      return ret;
+    }
+  });
+  return ret;
+};
+
+$( document ).ready(function() {
+ 
+  //BEGIN begin
+  window.onerror=function(errorMsg, url, lineNumber) {
+    alert("Error occured: " + errorMsg + ", at line: " + lineNumber);//or any message
+    return false;
+  };
+
+/*
+  $(window).on('beforeunload', function() {
+    if(g_autosave_changes > 0) {
+      return "На странице есть несохраненные поля. Подтвердите уход.";
+    } else {
+      return undefined;
+    };
+  });
+*/
+
+  $(document).click(function() { $("UL.popupmenu").remove(); });
+  $(document).keyup(function(e) {
+    if (e.key === "Escape") { // escape key maps to keycode `27`
+      $("UL.popupmenu").remove();
+      $(".tooltip").remove();
+    };
+  });
+
+  $("BODY").append (
+    $(DIV).css({"position": "fixed", "right": "0.5em", "top": "0.5em", "min-width": "2em",
+                "border": "1px solid black", "background-color": "lightgrey"
+    }).prop("id", "indicator").text("Запуск интерфейса...")
+  );
+
+  $(document).ajaxComplete(function() {
+    $("#indicator").text("Запрос завершен").css("background-color", "lightgreen");
+  });
+
+  $(document).ajaxStart(function() {
+    $("#indicator").text("Запрос ...").css("background-color", "yellow");
+  });
+
+  $("BODY")
+   .append( $(SPAN)
+     .css({"position": "fixed", "top": "0.5em", "left": "0.5em", "background-color": "white",
+           "z-index": windows_z - 1
+     })
+     .append( $(SPAN)
+       .css({"border": "1px black solid", "padding": "0.4em 0.2em"})
+       .append( $(SPAN, {"id": "site"})
+       )
+       .append( $(SPAN, {"id": "proj"})
+       )
+       .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-globe"])
+         .css({"margin-left": "0.5em"})
+         .title("Выбрать локацию и проект")
+         .click(selectLocation)
+       )
+     )
+     .append( $(SPAN, {"id": "filename"})
+       .css({"border": "1px black solid", "padding": "0.4em 0.2em", "margin-left": "1em"})
+     )
+   )
+   .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-menu"])
+     .css({"position": "fixed", "top": "3.5em", "left": "0.5em"})
+     .click(function(e) {
+       e.stopPropagation();
+       $("#menu").toggle();
+       let show_menu = $("#menu").is(":visible");
+       save_local("show_menu", show_menu);
+     })
+   )
+   .append( $(LABEL, { id: "dev_list_btn" })
+     .addClass("ns")
+     .css({"position": "fixed", "top": "4.8em", "left": "0.5em",
+           "border": "1px black solid", "background-color": "wheat",
+           "padding-left": "0.2em", "padding-right": "0.2em"
+     })
+     .text("Загрузка")
+     .click(function(e) { e.stopPropagation(); $("#dev_list").toggle(); })
+   )
+   .append( $(LABEL, { id: "dev_list" })
+     .addClass("ns")
+     .css({"position": "fixed", "top": "6.5em", "left": "0.5em", "bottom": "1em", "overflow-y": "scroll",
+           "border": "1px black solid", "background-color": "wheat", "min-width": "100px"
+     })
+     .sortable({
+       scroll: false,
+       zIndex: 99999,
+       helper: "clone",
+       appendTo: $("BODY"),
+       stop: dev_list_stop
+     })
+     .hide()
+   )
+  ;
+
+  $(DIV, {"id": "menu"})
+   .hide()
+   .css({"position": "fixed", "top": "3.5em", "left": "3em"})
+   .append( $(LABEL, {"id": "TP_btn"}).addClass(["button", "ui-icon", "ui-icon-vcs-branch"])
+     //.css({"position": "absolute", "top": "0px", "left": "0px"})
+     .title("Показать повортные точки")
+     .click(function(e) {
+       e.stopPropagation();
+       tp_show = !tp_show;
+       $(".new_tp").toggle(tp_show);
+       $(".tp").toggle(tp_show);
+       $("#delAllTPsBtn").toggle(tp_show);
+       if(site == "l3") {
+         for(let lid in connections) {
+           draw_connection(lid);
+         };
+       };
+     })
+   )
+   .append( $(LABEL, {"id": "delAllTPsBtn"}).addClass(["button", "ui-icon", "ui-icon-trash"])
+     .hide()
+     //.css({"position": "absolute", "top": "2em", "left": "0px"})
+     .title("Удалить все повортные точки")
+     .click(function(e) {
+       e.stopPropagation();
+     })
+   )
+   //.append( $(SPAN, {"id": "devSelBtn"})
+     //.css({"position": "absolute", "top": "0px", "left": "2em", "white-space": "pre"})
+     .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-select", "devSelBtn"])
+       .title("Разрешить выбор устройств")
+       .click(function(e) {
+         e.stopPropagation();
+         allow_select = !allow_select;
+         save_local("allow_select", allow_select);
+         if(!allow_select) {
+           dev_select_border($(".device"), false);
+           dev_selected=[];
+         };
+         $("#allow_select").trigger("recalc");
+       })
+     )
+     .append( $(LABEL, {"id": "allow_select"}).addClass(["ui-icon", "ui-icon-lock", "devSelBtn"])
+       .title("Выбор запрещен")
+       .on("recalc", function() {
+         if(allow_select) {
+           $(this).removeClass("ui-icon-lock").addClass("ui-icon-unlocked")
+            .title("Выбор разрешен")
+            .css({"color": "darkgreen"})
+           ;
+         } else {
+           $(this).removeClass("ui-icon-unlocked").addClass("ui-icon-lock")
+            .title("Выбор запрещен")
+            .css({"color": "darkred"})
+           ;
+         };
+       })
+     )
+   //)
+   .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-archive"])
+     //.css({"position": "absolute", "top": "0px", "left": "6em"})
+     .title("Файловые операции")
+     .click(function(e) {
+       e.stopPropagation();
+       showFileWindow();
+     })
+   )
+   .appendTo( $("BODY") )
+  ;
+
+  $("#menu").find("LABEL.button").css({"margin-left": "0.5em"});
+
+  workspace = $(DIV)
+   .css({"position": "absolute", "top": "0px", "left": "0px", "width": "100%", "height": "100%",
+         "overflow": "auto", "z-index": "-10000001"
+   })
+   .click(function(e) {
+     e.stopPropagation();
+     dev_select_border($(".device"), false);
+     dev_selected = [];
+     if($("#virtLinksWin").length > 0) {
+       virtLinksWin();
+     };
+     $("#btnSetColor").prop("disabled", true);
+     $("#btnGetColor").prop("disabled", true);
+   })
+   .appendTo( $("BODY") )
+  ;
+
+
+  if(DEBUG) {
+    $("BODY")
+     .append( $(DIV).prop("id", "debug_win")
+       .addClass("wsp")
+       .css({"position": "fixed", "bottom": "1em", "right": "1em", "width": "35em",
+             "top": "15em", "overflow": "auto", "border": "1px black solid", "background-color": "white",
+             "z-index": 100000}
+       )
+       .toggle(false)
+     )
+     .append( $(LABEL)
+       .prop("id", "debug_clear_btn")
+       .css({"position": "fixed", "bottom": "0em", "right": "3em",
+             "z-index": 100001}
+       )
+       .append( $(LABEL)
+         .addClass(["ui-icon", "ui-icon-delete", "button"])
+         .click(function(e) {
+           e.stopPropagation();
+           $("#debug_win").contents().filter(function(){
+              return (this.nodeType == 3);
+           }).remove();
+         })
+       )
+       .toggle(false)
+     )
+     .append( $(LABEL)
+       .css({"position": "fixed", "bottom": "0em", "right": "1em",
+             "z-index": 100001}
+       )
+       .append( $(LABEL)
+         .addClass(["ui-icon", "ui-icon-arrowthick-2-n-s", "button"])
+         .click(function(e) {
+           e.stopPropagation();
+           $("#debug_win,#debug_clear_btn").toggle();
+         })
+       )
+     )
+    ;
+  };
+
+  let query;
+
+  shared = getUrlParameter("shared");
+  if(shared === false) {
+    shared = undefined;
+
+    site = getUrlParameter("site", "l3");
+    proj = getUrlParameter("proj", "all");
+    file_key = getUrlParameter("file_key", "");
+    query = {"action": "get_front", "site": site, "proj": proj, "file_key": file_key};
+  } else {
+    query = {"action": "get_front", "shared": shared};
+  };
+
+  run_query(query, function(res) {
+
+    userinfo = res["ok"]["userinfo"];
+
+    user_self_sub = userinfo["sub"];
+    user_self_id = userinfo["id"];
+
+    data["sites"] = res["ok"]["sites"];
+    data["projects"] = res["ok"]["projects"];
+
+    if(shared !== undefined) {
+      site = res["ok"]["site"];
+      proj = res["ok"]["proj"];
+      enable_save = false;
+      movementLock = true;
+      $("#dev_list").sortable("disable");
+
+      file_key = "I n v @ l ! d";
+
+      $("#menu").find("#delAllTPsBtn,.devSelBtn").remove();
+
+      let dlg = createWindow("shared", "Общий доступ");
+
+      dlg.find(".content")
+       .text("Вы загрузили карту, созданую другим пользователем.\nДля внесения изменений сохранитие себе копию в меню файловых операций.")
+       .css({"white-space": "pre"})
+       .trigger("recenter")
+      ;
+
+      $("#filename").text("Чужая карта").css({"color": "gray"});
+    } else {
+      allow_select = get_local("allow_select", allow_select);
+      $("#allow_select").trigger("recalc");
+
+      if(file_key == "") {
+        $("#filename").text("Основная карта");
+      } else {
+        $("#filename").text(res["ok"]["files_list"][file_key]["name"]);
+      };
+      $("#filename").css({"color": "black"});
+    };
+
+    let site_tag = get_tag({"id": "root", "children": data["sites"], "data": {}}, site);
+    document.title = "MAP: " + site_tag.text();
+    $("#site").empty().append(site_tag);
+    $("#proj").empty();
+    let proj_tags_list = String(proj).split(",");
+    for(let i in proj_tags_list) {
+      let proj_tag = get_tag({"id": "root", "children": data["projects"], "data": {}}, proj_tags_list[i]);
+      $("#proj").append(proj_tag);
+    };
+
+    let show_menu = get_local("show_menu", false);
+    $("#menu").toggle(show_menu)
+
+    data_loaded(res["ok"]);
+
+    //createWindow("test", "Test window", undefined);
+  });
+});
+
+function data_loaded(new_data) {
+  map_data = new_data["map"]; //{loc, tps, colors, options}
+
+  data["devs"] = new_data["devs"];
+  data["l2_links"] = new_data["l2_links"];
+  data["l3_links"] = new_data["l3_links"];
+
+  data["files_list"] = new_data["files_list"];
+
+  temp_data["devs"] = {};
+  temp_data["p2p_links"] = {};
+
+  workspace.empty();
+  $("#dev_list").empty();
+
+  if(map_data["options"] !== undefined &&
+     map_data["options"]["cell_size"] !== undefined
+  ) {
+    int_size = Number(map_data["options"]["cell_size"]);
+  } else {
+    int_size = def_int_size;
+  };
+  grid = int_size;
+  int_half = Math.floor(int_size/2);
+
+  tp_grid=int_size;
+  tp_btn_size= Math.floor(int_size/3)*2;
+  tp_grid_offset=Math.floor(int_size/2);
+
+  if(map_data["options"] !== undefined &&
+     map_data["options"]["name_size"] !== undefined
+  ) {
+    dev_name_size = map_data["options"]["name_size"];
+  } else {
+    dev_name_size = def_dev_name_size;
+  };
+
+  for(let dev_id in data["devs"]) {
+    if(map_data["loc"][dev_id] === undefined) {
+      device_to_list(dev_id);
+    } else {
+      add_device(dev_id);
+    };
+  };
+
+  resort_dev_list();
+
+  connections = {};
+
+  build_connections();
+
+
+  for(let dev_id in data["devs"]) {
+    if(temp_data["devs"][dev_id] != undefined && temp_data["devs"][dev_id]["_draw"] == 1) {
+      arrange_interfaces_dev2tp(dev_id, false);
+      arrange_interfaces_dev2dev(dev_id, false, false);
+    };
+  };
+
+  for(let link_id in connections) {
+    draw_connection(link_id);
+  };
+};
+
+function resort_dev_list() {
+  let count=$("#dev_list div").length;
+  $("#dev_list_btn").text(count);
+  if(count > 0) {
+    $("#dev_list_btn").show();
+  } else {
+    $("#dev_list_btn").hide();
+    $("#dev_list").hide();
+  };
+
+  $("#dev_list div").detach().sort(function(a,b) {
+    return $(a).data('shortname').localeCompare($(b).data('shortname'));
+  }).appendTo("#dev_list");
+};
+
+
+function device_in(dev) {
+  let dev_id=dev["id"];
+
+  if($(".ui-draggable-dragging").length > 0) return;
+
+  let dev_elm = $(document.getElementById(dev_id));
+
+  let info_pos = {"top": "1em", "left": "3em", "right": "1em", "height": "auto"};
+
+  let dev_top = undefined;
+
+  if(dev_elm.length > 0) {
+    dev_top = dev_elm.position().top;
+  };
+
+  let dev_text="ID:&nbsp;"+dev_id+"&nbsp;&nbsp;";
+  dev_text += "IP:&nbsp;"+dev["data_ip"];
+  dev_text += "&nbsp;&nbsp;Type:&nbsp;";
+  dev_text += dev["model_short"];
+  dev_text += "<BR>";
+
+  dev_text += "Uptime:&nbsp;"+dev["sysUpTimeStr"];
+
+  if(dev["last_seen"] != undefined) {
+    let last_seen=new Date(dev["last_seen"]*1000)
+    let diff=time()-dev["last_seen"];
+    dev_text += "&nbsp;Last seen:&nbsp;"+DateTime(last_seen)+"&nbsp;("+time_diff(diff)+" ago)";
+  };
+
+  dev_text += "<BR>";
+
+  dev_text += "Location:&nbsp;"+dev["sysLocation"];
+
+  let dev_info=$(DIV)
+   .addClass("ns")
+   .addClass("inpopup")
+   .css("position", "fixed")
+   .css("overflow", "auto")
+   .css("border", "1px black solid")
+   .css("z-index", windows_z-1)
+   .css("background-color", "#FFFFAA")
+   .css("font-size", dev_name_size)
+   .css("white-space", "nowrap")
+   .css("padding-left", "3px")
+   .css(info_pos)
+   .html(dev_text)
+   .appendTo($("BODY"))
+  ;
+
+  if(dev_top !== undefined) {
+    let info_bottom = dev_info.position().top + dev_info.height();
+    if(info_bottom >= dev_top) {
+      info_pos = {"bottom": "1em", "left": "3em", "right": "1em", "height": "auto", "top": "unset"};
+      dev_info.css(info_pos);
+    };
+
+    let dev_x = dev_elm.position().left + workspace.scrollLeft();
+    let dev_y = dev_elm.position().top + workspace.scrollTop();
+    let dev_w = dev_elm.width();
+    let dev_h = dev_elm.height();
+
+    for(let int in dev["interfaces"]) {
+      if(temp_data["devs"][dev_id]["interfaces"][int]["_draw"] == 1) {
+        let col = temp_data["devs"][dev_id]["interfaces"][int]["_col"];
+        let row = temp_data["devs"][dev_id]["interfaces"][int]["_row"];
+
+        let l = $(LABEL).addClass("inpopup")
+         .css({"background-color": "#FFFFAA", "border": "1px solid black", "padding": "1px 1px", "position": "absolute", "z-index": windows_z - 1,
+               "display": "inline-block", "font-size": "x-small"
+         })
+         .text(int)
+        ;
+
+        let l_css = {};
+
+        if(row == 0) {
+          //l_css = {"transform": "translateY(-100%)", "top": "unset", "margin-top": (dev_y - 1)+"px", "height": "auto", "left": (dev_x + col*int_size)+"px", "width": (int_size - 6)+"px", "writing-mode": "vertical-lr"};
+          l_css = {"transform": "translateY(-100%)", "top": (dev_y - 2)+"px", "height": "auto", "left": (dev_x + col*int_size + 1)+"px", "width": (int_size - 6)+"px", "writing-mode": "vertical-lr"};
+        } else if((row + 1) == temp_data["devs"][dev_id]["_rows"]) {
+          l_css = {"top": (dev_y + dev_h + 4)+"px", "height": "auto", "left": (dev_x + col*int_size + 1)+"px", "width": (int_size - 6)+"px", "writing-mode": "vertical-lr"};
+        } else if(col == 0) {
+          l_css = {"top": (dev_y + row*int_size + 1)+"px", "height": (int_size - 6)+"px", "transform": "translateX(-100%)", "left": (dev_x - 2)+"px", "width": "auto"};
+        } else {
+          l_css = {"top": (dev_y + row*int_size + 1)+"px", "height": (int_size - 6)+"px", "left": (dev_x + dev_w + 4)+"px", "width": "auto"};
+        };
+
+
+        l.appendTo(workspace);
+        l.css(l_css);
+      };
+    };
+  };
+};
+
+function device_out() {
+  $(".inpopup").remove();
+};
+
+function device_to_list(dev_id) {
+  let name_color="darkorange";
+
+  if(data["devs"][dev_id]["overall_status"] == "warn") {
+    name_color="orange";
+  } else if(data["devs"][dev_id]["overall_status"] == "error") {
+    name_color="red";
+  } else if(data["devs"][dev_id]["overall_status"] == "paused") {
+    name_color="grey";
+  } else if(data["devs"][dev_id]["overall_status"] == "ok") {
+    name_color="black";
+  };
+
+  $(dev_list).append(
+    $(DIV)
+     .data('id',dev_id)
+     .data('shortname', data["devs"][dev_id]["short_name"] != undefined ? data["devs"][dev_id]["short_name"] : dev_id)
+     .addClass("ns")
+     .addClass("dev_in_list")
+     .css("border", "1px black solid")
+     .css("color", name_color)
+     .css("background-color", "white")
+     .css("margin-top", "3px")
+     .css("margin-left", "3px")
+     .css("padding-left", "0.3em")
+     .css("padding-right", "0.3em")
+     .hover(
+       function (e) {
+         e.stopPropagation();
+         device_in(data["devs"][dev_id])
+       },
+       device_out
+     )
+     .append( $(LABEL)
+       .css("white-space", "nowrap")
+       .text(data["devs"][dev_id]["short_name"] != undefined ? data["devs"][dev_id]["short_name"] : dev_id)
+     )
+  );
+};
+
+function device_dblclick(ui) {
+  let id=ui.parent().prop('id');
+
+  delete map_data["loc"][id];
+ 
+  save_map("loc", id);
+
+  device_to_list(id);
+  delete temp_data["devs"][id];
+
+  $(document.getElementById(id)).remove();
+  for(let link_id in connections) {
+    if(connections[link_id]["to_dev"] == id || connections[link_id]["from_dev"] == id) {
+      clear_link_objects(link_id);
+      delete connections[link_id];
+      delete map_data["tps"][link_id];
+    };
+  };
+  save_map("tps");
+  resort_dev_list();
+  delete(map_data["tps"][id]);
+  $(".inpopup").remove();
+};
+
+function device_win(dev) {
+  let dlg = createWindow("devwin_"+dev["id"], dev["short_name"]);
+  dlg.find(".content")
+   .css({"white-space": "pre"})
+   .text(JSON.stringify(dev, null, 2))
+  ;
+  dlg.trigger("recenter");
+};
+
+function device_click(ui, e) {
+  let id=ui.parent().attr('id');
+
+  if(e.shiftKey) {
+    device_win(data["devs"][id]);
+    return;
+  };
+
+  //device_clicked(data["devs"][id]);
+  if(data["devs"][id] != undefined && allow_select) {
+    if(e.ctrlKey) {
+      let i=dev_selected.indexOf(id);
+      if(i < 0) {
+        dev_selected.push(id);
+        dev_select_border($(document.getElementById(id)), true);
+      } else {
+        dev_selected.splice(i,1);
+        dev_select_border($(document.getElementById(id)), false);
+      };
+    } else {
+      dev_select_border($(".device"), false);
+      dev_select_border($(document.getElementById(id)), true);
+      dev_selected=[id];
+    };
+
+    if($("#virtLinksWin").length > 0) {
+      virtLinksWin();
+    };
+
+    if(dev_selected.length > 0) {
+      $("#btnSetColor").prop("disabled", false);
+    } else {
+      $("#btnSetColor").prop("disabled", true);
+    };
+    if(dev_selected.length == 1) {
+      $("#btnGetColor").prop("disabled", false);
+    } else {
+      $("#btnGetColor").prop("disabled", true);
+    };
+  };
+};
+
+function drag_start() {
+  $(".inpopup").remove();
+};
+
+function device_drag(id, X,Y) {
+
+  map_data["loc"][id]={"x": X, "y": Y};
+
+  save_map("loc", id);
+
+  devices_arranged = {};
+  connections_rearranged = {};
+
+/*
+  arrange_interfaces_dev2tp(id, true);
+  arrange_interfaces_dev2dev(id, true, true);
+*/
+
+  for(let dev_id in data["devs"]) {
+    if(temp_data["devs"][dev_id] != undefined && temp_data["devs"][dev_id]["_draw"] == 1) {
+      arrange_interfaces_dev2tp(dev_id, false);
+      arrange_interfaces_dev2dev(dev_id, false, false);
+    };
+  };
+
+  for(let link_id in connections) {
+    draw_connection(link_id);
+  };
+};
+
+function device_drag_stop(e, ui) {
+  let X=$(this).position().left+workspace.scrollLeft();
+  let Y=$(this).position().top+workspace.scrollTop();
+  let id=$(this).attr('id');
+
+  X = Math.floor(X / int_size) * int_size;
+  Y = Math.floor(Y / int_size) * int_size;
+
+  $(this).css({"top": Y, "left": X});
+
+  if(dev_selected.length < 2 || dev_selected.indexOf(id) < 0) {
+    device_drag(id,X,Y);
+  } else {
+    let dX=X-map_data["loc"][id]["x"];
+    let dY=Y-map_data["loc"][id]["y"];
+
+    devices_arranged={};
+    connections_rearranged={};
+
+    let dev_links = [];
+    let link_devs = {};
+
+    for(let i in dev_selected) {
+      let newX, newY;
+      let dev_id=dev_selected[i];
+      let dev_elm=$(document.getElementById(dev_id));
+      if(dev_elm.length) {
+        if(dev_id != id) {
+          let curLeft=dev_elm.position().left;
+          let curTop=dev_elm.position().top;
+          newX=curLeft+workspace.scrollLeft()+dX;
+          newY=curTop+workspace.scrollTop()+dY;
+          dev_elm.css({"left": newX, "top": newY});
+        } else {
+          newX=X;
+          newY=Y;
+        };
+        map_data["loc"][dev_id]={"x": newX, "y": newY};
+        //device_drag(dev_id,newX,newY);
+        for(let int in data["devs"][dev_id]["interfaces"]) {
+          if(site == "l3") {
+            if(temp_data["devs"][dev_id] !== undefined && temp_data["devs"][dev_id]["interfaces"] !== undefined &&
+               temp_data["devs"][dev_id]["interfaces"][int] !== undefined &&
+               temp_data["devs"][dev_id]["interfaces"][int]["l3_links"] !== undefined
+            ) {
+              for(let lid in temp_data["devs"][dev_id]["interfaces"][int]["l3_links"]) {
+                let link_id = temp_data["devs"][dev_id]["interfaces"][int]["l3_links"][lid];
+                if(temp_data["p2p_links"][link_id] !== undefined &&
+                   connections[link_id] !== undefined &&
+                   map_data["tps"][link_id] !== undefined &&
+                   dev_links.indexOf(link_id) < 0
+                ) {
+                  dev_links.push(link_id);
+                  link_devs[link_id] = { "dev1": temp_data["p2p_links"][link_id]["from_dev"],
+                                         "dev2": temp_data["p2p_links"][link_id]["to_dev"]
+                                       }
+                  ;
+                };
+              };
+            };
+          } else {
+            if(data["devs"][dev_id]["interfaces"][int]["l2_links"] !== undefined) {
+              for(let lid in data["devs"][dev_id]["interfaces"][int]["l2_links"]) {
+                let link_id=data["devs"][dev_id]["interfaces"][int]["l2_links"][lid];
+                if(connections[link_id] !== undefined &&
+                   map_data["tps"][link_id] !== undefined &&
+                   data["l2_links"][link_id] !== undefined &&
+                   dev_links.indexOf(link_id) < 0
+                ) {
+                  dev_links.push(link_id);
+                  link_devs[link_id] = { "dev1": data["l2_links"][link_id][0]["DevId"],
+                                         "dev2": data["l2_links"][link_id][1]["DevId"]
+                                       }
+                  ;
+                };
+              };
+            };
+          };
+        };
+      };
+    };
+
+    for(let l in dev_links) {
+      let link_id=dev_links[l];
+      if(dev_selected.indexOf( link_devs[link_id]["dev1"] ) >= 0 && dev_selected.indexOf( link_devs[link_id]["dev2"] ) >= 0) {
+        for(let tpi in map_data["tps"][link_id]) {
+          map_data["tps"][link_id][tpi]["x"] += dX;
+          map_data["tps"][link_id][tpi]["y"] += dY;
+        };
+      };
+    };
+
+    for(let dev_id in data["devs"]) {
+      if(temp_data["devs"][dev_id] != undefined && temp_data["devs"][dev_id]["_draw"] == 1) {
+        arrange_interfaces_dev2tp(dev_id, false);
+        arrange_interfaces_dev2dev(dev_id, false, false);
+      };
+    };
+
+    for(let lid in connections) {
+      draw_connection(lid);
+    };
+
+    save_map();
+  };
+};
+
+function int_popup_label(int, dev_id) {
+
+  if(document.getElementById("inpopup_"+int+"@"+dev_id) !== null) return;
+
+  let dev_elm=$(document.getElementById(dev_id));
+  let dev_name=dev_elm.children(".devname");
+
+  if(dev_name == undefined || dev_name.length == 0) {
+    error_at("Cannot get dev name handle");
+    return;
+  };
+
+  let int_st=int_style(int,data["devs"][dev_id]);
+
+  let name_width=dev_name.outerWidth();
+  let name_height=dev_name.outerHeight();
+  let name_top=dev_name.position().top;
+  let name_left=dev_name.position().left;
+
+  let over_name_text=int_st["short_name"];
+
+  let col=temp_data["devs"][dev_id]["interfaces"][int]["_col"];
+  let row=temp_data["devs"][dev_id]["interfaces"][int]["_row"];
+  let cols=temp_data["devs"][dev_id]["_cols"];
+  let rows=temp_data["devs"][dev_id]["_rows"];
+
+  let to_left=false;
+
+  if(col == cols-1 && (row > 0 && row < rows - 1)) {
+    to_left=true;
+  };
+
+
+  let div=$(DIV, {"id": "inpopup_"+int+"@"+dev_id})
+   .addClass("inpopup")
+   .css("position", "absolute")
+   .css("left", name_left+"px")
+   .css("top", name_top+"px")
+//   .css("width", name_width-2+"px")
+   .css("height", name_height-2+"px")
+   .css("white-space", "nowrap")
+   .css("font-size", dev_name_size)
+   //.css("background-color", "yellow")
+   .css("background-color", "#FFFFAA")
+   .css("border", "1px solid black")
+   .css("z-index", windows_z-1)
+   .append( $(LABEL).html("&bull;").css({"font-size": "larger", "color": int_st["bullet_color"]}) )
+   .append( $(LABEL).text(over_name_text) )
+  ;
+
+  div.appendTo(dev_elm);
+
+  let int_label_width=div.outerWidth();
+
+  if(int_label_width <= name_width-2) {
+    div.css("width", name_width-2+"px");
+  } else if(to_left) {
+    div.css("left", (name_left - (int_label_width-name_width))+"px");
+  };
+
+  let draw_dash=false;
+  let dash_left;
+  let dash_top;
+  let dash_width;
+  let dash_height;
+
+  if(row == 0 || row == rows-1) { //horizontal dash
+    draw_dash=true;
+    dash_width=int_size-2;
+    dash_height=3;
+    if(row == 0) {
+      dash_top = -dash_height;
+    } else {
+      dash_top = int_size*rows-2;
+    };
+    dash_left=int_size*col;
+  };
+
+  if(draw_dash) {
+    let dash=$(DIV)
+     .addClass("inpopup")
+     .css("position", "absolute")
+     .css("left", dash_left+"px")
+     .css("top", dash_top+"px")
+     .css("width", dash_width+"px")
+     .css("height", dash_height+"px")
+     .css("background-color", "fuchsia")
+     .css("z-index", windows_z-1)
+     .appendTo(dev_elm);
+  };
+
+  draw_dash=false;
+
+  if(col == 0 || col == cols-1) {
+    draw_dash=true;
+    dash_height=int_size-2;
+    dash_width=3;
+    if(col == 0) {
+      dash_left = -dash_width;
+    } else {
+      dash_left = int_size*cols-2;
+    };
+    dash_top=int_size*row;
+  };
+  if(draw_dash) {
+    let dash=$(DIV)
+     .addClass("inpopup")
+     .css("position", "absolute")
+     .css("left", dash_left+"px")
+     .css("top", dash_top+"px")
+     .css("width", dash_width+"px")
+     .css("height", dash_height+"px")
+     .css("background-color", "fuchsia")
+     .css("z-index", windows_z-1)
+     .appendTo(dev_elm);
+  };
+
+};
+
+function kmg(speed,space) {
+  if(! /^\d+$/.test(speed)) {
+    return("error");
+  };
+  if(space == undefined) {
+    space=" ";
+  };
+  let num_speed=Number(speed);
+  if(num_speed < 1000) {
+    return num_speed+space;
+  } else if(num_speed < 1000000) {
+    return Number(num_speed/1000).toFixed(1).toString().replace(/\.0$/,"")+space+"K";
+  } else if(num_speed < 1000000000) {
+    return Number(num_speed/1000000).toFixed(1).toString().replace(/\.0$/,"")+space+"M";
+  } else {
+    return Number(num_speed/1000000000).toFixed(1).toString().replace(/\.0$/,"")+space+"G";
+  };
+};
+
+
+function int_labels(int, dev) {
+  let labels={};
+  if(dev == undefined || dev["interfaces"] == undefined ||
+     dev["interfaces"][int] == undefined) {
+    labels["00_error"]["short_text"]="ERROR";
+    labels["00_error"]["long_text"]="undefined data!!!";
+    labels["00_error"]["bg_color"]="red";
+  } else {
+    labels["00_ifstatus"]={};
+    if(dev["interfaces"][int]['ifAdminStatus'] == 2) {
+      labels["00_ifstatus"]["short_text"]="Sh";
+      labels["00_ifstatus"]["long_text"]="Shutdown";
+      labels["00_ifstatus"]["bg_color"]="gray";
+    } else {
+      if(dev["interfaces"][int]['ifOperStatus'] == 2) {
+        labels["00_ifstatus"]["short_text"]="Dn";
+        labels["00_ifstatus"]["long_text"]="Down";
+        labels["00_ifstatus"]["bg_color"]="red";
+      } else if(dev["interfaces"][int]['ifOperStatus'] == 1) {
+        if(dev["interfaces"][int]["stpBlockInstances"] == undefined) {
+          labels["00_ifstatus"]["short_text"]="Up";
+          labels["00_ifstatus"]["long_text"]="Up";
+          labels["00_ifstatus"]["bg_color"]="lightgreen";
+        } else {
+          labels["00_ifstatus"]["short_text"]="Bl";
+          labels["00_ifstatus"]["long_text"]="STP Blocked";
+          labels["00_ifstatus"]["bg_color"]="magenta";
+        };
+      } else {
+        labels["00_ifstatus"]["short_text"]="Un";
+        labels["00_ifstatus"]["long_text"]="Unknown";
+        labels["00_ifstatus"]["bg_color"]="orange";
+      };
+    };
+
+    if(dev["interfaces"][int]['ips'] != undefined) {
+      labels["01_ips"]={};
+      let ips_keys=keys(dev["interfaces"][int]['ips']);
+      let count=hash_length(dev["interfaces"][int]['ips']);
+      if(count == 0) {
+        labels["01_ips"]["short_text"]="ERROR";
+        labels["01_ips"]["long_text"]="IPs object error!";
+        labels["01_ips"]["bg_color"]="red";
+      } else {
+        labels["01_ips"]["short_text"]=count+"&nbsp;IPs";
+        labels["01_ips"]["long_text"]=ips_keys.join(",");
+        labels["01_ips"]["bg_color"]="lightgreen";
+      };
+    };
+
+    if(dev["interfaces"][int]['ifSpeed'] != undefined && dev["interfaces"][int]['ifSpeed'] != "4294967295") {
+      labels["02_speed"]={};
+      labels["02_speed"]["short_text"]=kmg(dev["interfaces"][int]['ifSpeed'])+"bps";
+      labels["02_speed"]["long_text"]="ifSpeed "+dev["interfaces"][int]['ifSpeed'];
+      labels["02_speed"]["bg_color"]="white";
+    } else if(dev["interfaces"][int]['ifHighSpeed'] != undefined) {
+      labels["02_speed"]={};
+      labels["02_speed"]["short_text"]=kmg(dev["interfaces"][int]['ifHighSpeed']*1000000)+"bps";
+      labels["02_speed"]["long_text"]="ifSpeed "+dev["interfaces"][int]['ifSpeed']*1000000;
+      labels["02_speed"]["bg_color"]="white";
+    };
+
+    if(dev["interfaces"][int]['portMode'] != undefined &&
+       dev["interfaces"][int]['portPvid'] != undefined &&
+       1
+    ) {
+      labels["03_switchport"]={};
+      if(dev["interfaces"][int]['portMode'] == 1) { //access
+        labels["03_switchport"]["short_text"]="A&nbsp;"+dev["interfaces"][int]['portPvid'];
+        labels["03_switchport"]["long_text"]="Access VLAN:&nbsp;"+dev["interfaces"][int]['portPvid'];
+        labels["03_switchport"]["bg_color"]="#AAAAFF";
+      } else if(dev["interfaces"][int]['portMode'] == 2 && dev["interfaces"][int]['portTrunkVlans'] != undefined) { //trunk
+        labels["03_switchport"]["short_text"]="T&nbsp;"+dev["interfaces"][int]['portTrunkVlans']+"/"+dev["interfaces"][int]['portPvid'];
+        labels["03_switchport"]["long_text"]="Trunk PVID:&nbsp;"+dev["interfaces"][int]['portPvid']+
+                                   ",&nbsp;Allowed:&nbsp;"+dev["interfaces"][int]['portTrunkVlans'];
+        labels["03_switchport"]["bg_color"]="#AAAAFF";
+      } else if(dev["interfaces"][int]['portMode'] == 3 && dev["interfaces"][int]['portHybridUntag'] != undefined && dev["interfaces"][int]['portHybridTag'] != undefined) { //hybrid
+        labels["03_switchport"]["short_text"]="H&nbsp;"+dev["interfaces"][int]['portHybridUntag']+"/"+dev["interfaces"][int]['portHybridTag']+"/"+dev["interfaces"][int]['portPvid'];
+        labels["03_switchport"]["long_text"]="Hybrid PVID:&nbsp;"+dev["interfaces"][int]['portPvid']+
+                                   ",&nbsp;Untag:&nbsp;"+dev["interfaces"][int]['portHybridUntag']+
+                                   ",&nbsp;Tag:&nbsp;"+dev["interfaces"][int]['portHybridTag'];
+        labels["03_switchport"]["bg_color"]="#AAAAFF";
+      } else { //unknown
+        labels["03_switchport"]["short_text"]="U&nbsp;"+dev["interfaces"][int]['portPvid'];
+        labels["03_switchport"]["long_text"]="Unknown, PVID:&nbsp;"+dev["interfaces"][int]['portPvid'];
+        labels["03_switchport"]["bg_color"]="#FFAAFF";
+      };
+    };
+
+    if(dev["interfaces"][int]["portIndex"] != undefined && dev["lldp_ports"] != undefined &&
+       dev["lldp_ports"][ dev["interfaces"][int]["portIndex"] ] != undefined &&
+       dev["lldp_ports"][ dev["interfaces"][int]["portIndex"] ]["neighbours"] != undefined
+    ) {
+      let port_neighs=dev["lldp_ports"][ dev["interfaces"][int]["portIndex"] ]["neighbours"];
+      let nei_count=keys(port_neighs).length;
+      let links_count=0;
+      if(dev["interfaces"][int]["l2_links"] != undefined) {
+        links_count=dev["interfaces"][int]["l2_links"].length;
+      };
+      labels["04_lldp"]={};
+      labels["04_lldp"]["short_text"]="LLDP&nbsp;"+keys(port_neighs).length;
+      labels["04_lldp"]["long_text"]=keys(port_neighs).length+"&nbsp;LLDP Neighbours&nbsp;/&nbsp;"+links_count+"&nbsp;links built";
+      if(nei_count == links_count) {
+        labels["04_lldp"]["bg_color"]="#FFCCFF";
+      } else {
+        labels["04_lldp"]["bg_color"]="#FF8888";
+      };
+    };
+  };
+
+  let ret="";
+
+  let k=keys(labels).sort();
+  for(let i in k) {
+    let key=k[i];
+    ret += "&nbsp;<LABEL style=\"background-color: "+labels[key]["bg_color"]+"; border: 1px black solid\" title=\""+labels[key]["long_text"]+"\">"+labels[key]["short_text"]+"</LABEL>";
+  };
+  return ret;
+};
+
+
+
+function interface_in(int, dev) {
+  let dev_id=dev["id"];
+  let int_st=int_style(int,dev);
+
+  int_popup_label(int, dev_id);
+
+  let sec=new Date().getTime();
+
+  let safe_dev_id = dev["safe_dev_id"];
+  let safe_int = dev["interfaces"][int]["safe_if_name"];
+
+  let int_info_text=dev["interfaces"][int]["ifName"]+"&nbsp;";
+  let io_src="graph?type=int_io&dev_id="+safe_dev_id+"&int="+safe_int+"&small&"+sec;
+  let pkt_src="graph?type=int_pkts&dev_id="+safe_dev_id+"&int="+safe_int+"&small&"+sec;
+  let ifspeed=1000000000;
+  if(dev["interfaces"][int]["ifSpeed"] != undefined && dev["interfaces"][int]["ifSpeed"] > 0) {
+    ifspeed=dev["interfaces"][int]["ifSpeed"];
+  };
+  io_src += "&max="+ifspeed;
+  pkt_src += "&max="+Math.floor(ifspeed/12000);
+  int_info_text += "<IMG src=\""+io_src+"\"/>&nbsp;<IMG src=\""+pkt_src+"\"/>&nbsp;"
+  int_info_text += int_labels(int,dev);
+  int_info_text += "&nbsp;";
+
+  let int_descr = dev["interfaces"][int]["ifAlias"];
+
+  let int_info=$(DIV)
+   .addClass("ns")
+   .addClass("inpopup")
+   .css("position", "fixed")
+   .css("overflow", "auto")
+   .css("border", "1px black solid")
+   .css("z-index", windows_z-1)
+   .css("background-color", "#FFFFAA")
+   .css("font-size", dev_name_size)
+   .css("white-space", "nowrap")
+   .css("padding", "0.5em")
+   .css({"top": "1em", "left": "3em", "right": "1em", "height": "auto"})
+   .html(int_info_text)
+   .append( $(LABEL).text(int_descr) )
+  ;
+
+  if(dev["interfaces"][int]["ips"] != undefined) {
+    for(let ip in dev["interfaces"][int]["ips"]) {
+      int_info.append( $(BR) )
+       .append( $(LABEL).text(ip+"/"+dev["interfaces"][int]["ips"][ip]["masklen"]) );
+    };
+  };
+
+  int_info.appendTo($("BODY"));
+
+  let dev_elm = $(document.getElementById(dev_id));
+  if(dev_elm.length > 0) {
+    let info_bottom = int_info.position().top + int_info.height();
+    if(info_bottom >= dev_elm.position().top) {
+      //relocate
+      let info_pos = {"bottom": "1em", "left": "3em", "right": "1em", "height": "auto", "top": "unset"};
+      int_info.css(info_pos);
+    };
+  };
+
+  let int_links = [];
+
+  if(site != "l3" && dev["interfaces"][int]["l2_links"] != undefined) {
+    int_links = dev["interfaces"][int]["l2_links"];
+  } else if(site == "l3" && temp_data["devs"][dev_id] !== undefined &&
+            temp_data["devs"][dev_id]["interfaces"][int] !== undefined &&
+            temp_data["devs"][dev_id]["interfaces"][int]["l3_links"] !== undefined
+  ) {
+    int_links = temp_data["devs"][dev_id]["interfaces"][int]["l3_links"];
+  };
+
+  for(let i in int_links) {
+    let lid=int_links[i];
+    if(connections[lid] == undefined) {
+      continue;
+    };
+
+    let nei_dev_id=undefined;
+    let nei_int=undefined;
+
+    if(connections[lid]["from_dev"] == dev_id && connections[lid]["from_int"] == int) {
+       nei_dev_id=connections[lid]["to_dev"];
+       nei_int=connections[lid]["to_int"];
+    } else if(connections[lid]["to_dev"] == dev_id && connections[lid]["to_int"] == int) {
+       nei_dev_id=connections[lid]["from_dev"];
+       nei_int=connections[lid]["from_int"];
+    } else {
+      error_at("Connections error "+lid);
+      return;
+    };
+
+    int_popup_label(nei_int, nei_dev_id);
+
+    link_highlight(lid);
+  };
+
+  if(site == "l3" && int_links.length == 0 && dev["interfaces"][int]["ips"] !== undefined) {
+    for(let ip in dev["interfaces"][int]["ips"]) {
+      let net = dev["interfaces"][int]["ips"][ip]["net"];
+      if(data["l3_links"][net] !== undefined) {
+        for(let nei_ip in data["l3_links"][net]) {
+          let nei_int = data["l3_links"][net][nei_ip]["ifName"];
+          let nei_dev_id = data["l3_links"][net][nei_ip]["dev_id"];
+          if(data["devs"][nei_dev_id] !== undefined && data["devs"][nei_dev_id]["interfaces"][nei_int] !== undefined &&
+             temp_data["devs"][nei_dev_id] !== undefined && temp_data["devs"][nei_dev_id]["_draw"] == 1
+          ) {
+            int_popup_label(nei_int, nei_dev_id);
+          };
+        };
+      };
+    };
+  };
+};
+
+function interface_out() {
+  $(".inpopup").remove();
+  $(".line_highlight").each(function() {
+    let svg=$(this).find("svg");
+    let line=svg.find("line");
+
+    let stroke_width = "1";
+    if(site == "l3" && !tp_show) stroke_width = "0";
+
+    line.attr("stroke-width", stroke_width);
+    line.attr("x1", $(this).data("x1"));
+    line.attr("x2", $(this).data("x2"));
+    line.attr("y1", $(this).data("y1"));
+    line.attr("y2", $(this).data("y2"));
+    svg.attr("width", $(this).data("svg_width"));
+    svg.attr("height", $(this).data("svg_height"));
+    $(this).removeClass("line_highlight");
+  });
+};
+
+function int_style(int,dev) {
+  let ret={};
+  //by default interface status is unknown
+  ret["label_bg_color"]="red";
+  ret["bullet_color"]="darkred";
+
+  let short_name=dev["interfaces"][int]["ifName"];
+  short_name=short_name.replace(/giga.*ethernet/i, "Gi");
+  short_name=short_name.replace(/fastethernet/i, "Fa");
+  short_name=short_name.replace(/ethernet/i, "Eth");
+  short_name=short_name.replace(/vlan/i, "Vl");
+  short_name=short_name.replace(/loopback/i, "Lo");
+  short_name=short_name.replace(/Port\./i, "Port");
+  short_name=short_name.replace(/ip interface/i, "Ip");
+
+  ret["short_name"]=short_name;
+
+  if(dev &&
+     dev["interfaces"] && dev["interfaces"][int] &&
+     dev["interfaces"][int]["ifOperStatus"] != undefined &&
+     dev["interfaces"][int]["ifAdminStatus"] != undefined &&
+     dev["interfaces"][int]["ifType"] != undefined
+  ) {
+//    let type=dev["interfaces"][int]["ifType"];
+    let as=dev["interfaces"][int]["ifAdminStatus"];
+    let os=dev["interfaces"][int]["ifOperStatus"];
+    if(as == 2) {
+      //interface is shot down
+      ret["label_bg_color"]="gray";
+      ret["bullet_color"]="darkgray";
+    } else {
+      if(os == 1) {
+        ret["label_bg_color"]="lightgreen";
+        ret["bullet_color"]="darkgreen";
+        if(dev["interfaces"][int]["stpBlockInstances"] != undefined) {
+          ret["label_bg_color"]="magenta";
+          ret["bullet_color"]="darkmagenta";
+        };
+      } else if(os == 2) {
+        ret["label_bg_color"]="red";
+        ret["bullet_color"]="darkred";
+      } else {
+        ret["label_bg_color"]="orange";
+        ret["bullet_color"]="saddlebrown";
+      };
+    };
+  };
+  return ret;
+};
+
+function interface_click(int, dev, e) {
+  let dev_id=dev["id"];
+  if(e.shiftKey) {
+    let int_win=createWindow("int_win"+dev['id']+"_"+int, "Int "+int+" of "+dev["short_name"], true);
+    let content=int_win.find(".content");
+
+    let text=JSON.stringify(dev['interfaces'][int], null, 2);
+    if(dev['interfaces'][int]["portIndex"] != undefined &&
+       dev['lldp_ports'] != undefined &&
+       dev['lldp_ports'][ dev['interfaces'][int]["portIndex"] ] != undefined
+    ) {
+      text += "\nlldp_ports[portIndex="+dev['interfaces'][int]["portIndex"]+"]:\n";
+      text += JSON.stringify(dev['lldp_ports'][ dev['interfaces'][int]["portIndex"] ], null, 2);
+    };
+    if(dev['interfaces'][int]["l2_links"] != undefined) {
+      text += "\nl2_links:\n";
+      for(let li in dev['interfaces'][int]["l2_links"]) {
+        let link_id=dev['interfaces'][int]["l2_links"][li];
+        text += "\n  "+link_id+":\n";
+        text += JSON.stringify(data["l2_links"][link_id], null, 2)+"\n";
+      };
+    };
+    content
+     .addClass("sel")
+     //.css("max-height", "600px")
+     //.css("max-width", "600px")
+     //.css("overflow-y", "scroll")
+     //.css("overflow-x", "hidden")
+     .css("white-space", "pre")
+     .text(text)
+    ;
+
+    int_win.trigger("recenter");
+
+    e.stopPropagation();
+  } else if(e.ctrlKey && allow_select && site != "l3") {
+
+    select_down(dev_id, int, [dev_id], 0);
+
+    if(dev_selected.length > 0) {
+      $("#btnSetColor").prop("disabled", false);
+    } else {
+      $("#btnSetColor").prop("disabled", true);
+    };
+    if(dev_selected.length == 1) {
+      $("#btnGetColor").prop("disabled", false);
+    } else {
+      $("#btnGetColor").prop("disabled", true);
+    };
+    if($("#virtLinksWin").length > 0) {
+      virtLinksWin();
+    };
+  };
+};
+
+function select_down(dev_id, int, excl, counter) {
+  if(counter > 64) return;
+  if(site == "l3") {
+  } else {
+    if(data["devs"][dev_id]["interfaces"][int]["l2_links"] != undefined) {
+      for(let lid in data["devs"][dev_id]["interfaces"][int]["l2_links"]) {
+        let link_id=data["devs"][dev_id]["interfaces"][int]["l2_links"][lid];
+        if(connections[link_id] !== undefined) {
+          let nei_dev;
+          if(data["l2_links"][link_id][0]["DevId"] == dev_id) {
+            nei_dev=data["l2_links"][link_id][1]["DevId"];
+          } else {
+            nei_dev=data["l2_links"][link_id][0]["DevId"];
+          };
+          if(dev_selected.indexOf(nei_dev) >= 0 || excl.indexOf(nei_dev) >= 0) continue; //for(let link_id ...
+          dev_selected.push(nei_dev);
+          dev_select_border($(document.getElementById(nei_dev)), true);
+          //$(document.getElementById(nei_dev)).css("border", dev_sel_border);
+          for(let nei_int_i in data["devs"][nei_dev]["interfaces_sorted"]) {
+            let nei_int = data["devs"][nei_dev]["interfaces_sorted"][nei_int_i];
+            select_down(nei_dev, nei_int, excl, counter + 1);
+          };
+        };
+      };
+    };
+  };
+};
+
+
+function add_device(dev_id) {
+
+// build drawable interface list
+// 0 do not draw
+// 1 draw outside
+// 2 draw inside
+
+  let power_sensor=undefined;
+  let power_sensor_at=undefined;
+
+  let on_battery=0;
+
+  let draw1_count=0;
+  let draw2_count=0;
+
+  temp_data["devs"][dev_id]={};
+  temp_data["devs"][dev_id]["interfaces"]={};
+
+  if(data["devs"][dev_id]["powerState"] != undefined && data["devs"][dev_id]["powerState"] != 1 && ! /(?:^|\W)rps(?:\W|$)/i.test(data["devs"][dev_id]["sysLocation"])) {
+    power_sensor=0;
+    power_sensor_at="Onboard";
+    on_battery=1;
+  };
+
+  if(data["devs"][dev_id]["interfaces"] != undefined) {
+    for(let int_i in data["devs"][dev_id]["interfaces_sorted"]) {
+      let int = data["devs"][dev_id]["interfaces_sorted"][int_i];
+      if(data["devs"][dev_id]["interfaces"][int]["ifAlias"] != undefined && /power.*sensor/i.test(data["devs"][dev_id]["interfaces"][int]["ifAlias"]) &&
+         power_sensor == undefined &&
+         data["devs"][dev_id]["interfaces"][int]["ifAdminStatus"] == 1
+      ) {
+        if(power_sensor_at == undefined) {
+          power_sensor_at = int;
+        } else {
+          power_sensor_at += ", "+int;
+        };
+        if(data["devs"][dev_id]["interfaces"][int]["ifOperStatus"] == 1) {
+          if(power_sensor == undefined) {
+            power_sensor=1;
+          };
+        } else {
+          power_sensor=0;
+        };
+      };
+      temp_data["devs"][dev_id]["interfaces"][int]={};
+
+// draw 0 - do not put interface on main screen
+// draw 1 - put interface around device
+// draw 2 - put interface below device name
+      if(site == "l3") {
+        if(
+          data["devs"][dev_id]["interfaces"][int]["ips"] != undefined &&
+          data["devs"][dev_id]["interfaces"][int]["ifType"] != 24 &&
+//String(int).indexOf("56137") > 0 && //TEMP
+//String(int).indexOf("Tu") == 0 && //TEMP
+          true
+        ) {
+          temp_data["devs"][dev_id]["interfaces"][int]["_draw"]=1;
+          draw1_count++;
+        } else if(
+          data["devs"][dev_id]["interfaces"][int]["ifType"] == 24 && //loopback
+//          false &&//TEMP
+          true
+        ) {
+          temp_data["devs"][dev_id]["interfaces"][int]["_draw"]=2;
+          draw2_count++;
+        } else {
+          temp_data["devs"][dev_id]["interfaces"][int]["_draw"]=0;
+        };
+      } else {
+        if( data["devs"][dev_id]["interfaces"][int]["ifType"] == 131 ) {
+          temp_data["devs"][dev_id]["interfaces"][int]["_draw"]=0;
+        } else  if(
+            (
+             data["devs"][dev_id]["interfaces"][int]['l2_links'] != undefined
+            ) ||
+            (data["devs"][dev_id]["interfaces"][int]["ifAlias"] != undefined &&
+             (/alert/i.test(data["devs"][dev_id]["interfaces"][int]["ifAlias"]))
+            ) ||
+            (data["devs"][dev_id]["interfaces"][int]["ifType"] == 6 &&
+             data["devs"][dev_id]["interfaces"][int]["ips"] != undefined &&
+             !int.match(/^(?:BD|Vl|CPU port)/))
+        ) {
+          temp_data["devs"][dev_id]["interfaces"][int]["_draw"]=1;
+          draw1_count++;
+        } else if(data["devs"][dev_id]["interfaces"][int]["ifAlias"] !== undefined && /hide/.test(data["devs"][dev_id]["interfaces"][int]["ifAlias"])) {
+          temp_data["devs"][dev_id]["interfaces"][int]["_draw"]=0;
+        } else if(data["devs"][dev_id]["sysLocation"] != undefined && data["devs"][dev_id]["sysLocation"].match(/[, ]show_all/i) &&
+                  (data["devs"][dev_id]["interfaces"][int]["ifType"] == 6 || data["devs"][dev_id]["interfaces"][int]["ifType"] == 117) &&
+                  !int.match(/^(?:BD|Vl|CPU port)/) &&
+                  1
+        ) {
+          temp_data["devs"][dev_id]["interfaces"][int]["_draw"]=1;
+          draw1_count++;
+        } else if((//data["devs"][dev_id]["interfaces"][int]["portIndex"] == undefined &&
+                   data["devs"][dev_id]["interfaces"][int]["ips"] != undefined &&
+                   data["devs"][dev_id]["interfaces"][int]["ifAdminStatus"] == 1 &&
+                   data["devs"][dev_id]["interfaces"][int]["ifType"] != 23 &&
+                   data["devs"][dev_id]["interfaces"][int]["ifType"] != 135 &&
+                   !int.match(/^BD/) &&
+                   data["devs"][dev_id]["isGroup"] == undefined &&
+                   true) ||
+                  (int.match(/^Po\d+$/) && data["devs"][dev_id]["interfaces"][int]["ifType"] == 53 && data["devs"][dev_id]["interfaces"][int]["ifAdminStatus"] == 1) ||
+                  (int.match(/^EPON\d+\/\d+$/) && data["devs"][dev_id]["interfaces"][int]["ifAdminStatus"] == 1)
+        ) {
+          temp_data["devs"][dev_id]["interfaces"][int]["_draw"]=2;
+          draw2_count++;
+        };
+      };
+    };
+  };
+
+  let x=0;
+  let y=0;
+  if(map_data["loc"] != undefined && map_data["loc"][dev_id] != undefined) {
+    x=map_data["loc"][dev_id]["x"];
+    if(x < 0) x=0;
+    y=map_data["loc"][dev_id]["y"];
+    if(y < 0) y=0;
+  };
+
+  x=Math.floor(x/grid)*grid;
+  y=Math.floor(y/grid)*grid;
+
+  let name_color="darkorange";
+
+  if(data["devs"][dev_id]["overall_status"] == "warn") {
+    name_color="orange";
+  } else if(data["devs"][dev_id]["overall_status"] == "error") {
+    name_color="red";
+  } else if(data["devs"][dev_id]["overall_status"] == "paused") {
+    name_color="grey";
+  } else if(data["devs"][dev_id]["overall_status"] == "ok") {
+    name_color="black";
+  };
+
+  let dev_name_text=data["devs"][dev_id]["short_name"] != undefined ? data["devs"][dev_id]["short_name"] : "no data";
+
+  let name_border;
+
+  let dev_name=$(LABEL)
+   .data("dev_id", dev_id)
+   .text(dev_name_text)
+   .addClass("devname")
+   .addClass("handle")
+   .addClass("ns")
+   .css("position", "absolute")
+   .css("top", int_size+"px")
+   .css("left", int_size+"px")
+   .css("white-space", "nowrap")
+   .css("background", "white")
+   .css("font-size", dev_name_size)
+   .css("text-align", "center")
+   .css("color", name_color)
+   .hover(
+     function (e) {
+       e.stopPropagation();
+       device_in(data["devs"][$(this).data("dev_id")])
+     },
+     device_out
+   )
+  ;
+
+  if(data["devs"][dev_id]["isGroup"] != undefined) {
+    dev_name.css("border", "1px green dashed")
+  } else {
+    dev_name.css("border", "1px green solid")
+  };
+
+
+  let device=$(DIV, { id: dev_id })
+   .addClass("device")
+   .addClass("ns")
+   .css("left", x+"px")
+   .css("top", y+"px")
+   .css("background-color", (map_data["colors"][dev_id] != undefined ? map_data["colors"][dev_id] : "white") )
+   .css("position", "absolute")
+   .append(dev_name)
+   .append( $(DIV)
+     .addClass("select_border")
+     .hide()
+     .css({"position": "absolute", "top": sel_border_offset, "bottom": sel_border_offset,
+           "left": sel_border_offset, "right": sel_border_offset, "border": sel_border_width+"px "+sel_border_line_color, "z-index": "-1"
+     })
+   )
+   .draggable({
+     start: drag_start,
+     stop: device_drag_stop,
+     handle: ".handle",
+     grid: [grid, grid],
+     zIndex: 2147483647
+   })
+   .dblclick(function(e) {
+     e.stopPropagation();
+     if($(e.target).is(".devname")) {
+       device_dblclick($(e.target));
+     };
+   })
+   .click(function(e) {
+     e.stopPropagation();
+     if($(e.target).is(".devname")) {
+       device_click($(e.target), e);
+     };
+   })
+   .css("dummy", "dummy")
+  ;
+
+  device.css("border", dev_border);
+
+  if(movementLock) {
+    device.draggable('disable');
+    device.off("dblclick");
+  };
+
+  temp_data["devs"][dev_id]["_draw"] = 1;
+  workspace.append(device);
+
+  let name_width=dev_name.outerWidth();
+  let name_height=dev_name.outerHeight();
+
+  let name_cells_x=Math.ceil(name_width/int_size);
+  let name_cells_y=Math.ceil(name_height/int_size);
+
+  if(name_cells_x == 0) name_cells_x = 1;
+  if(name_cells_y == 0) name_cells_y = 1;
+
+  let outer_slots=4 + name_cells_x * 2 + name_cells_y * 2;
+  let add_rows=0;
+  let add_cols=0;
+
+  while(outer_slots < draw1_count) {
+    if((name_cells_x+add_cols) > (name_cells_y+add_rows)) {
+      add_rows++;
+    } else {
+      add_cols++;
+    };
+
+    outer_slots=4 + name_cells_x * 2 + name_cells_y * 2 + add_rows * 2 + add_cols * 2;
+  };
+
+  let inner_slots=add_rows * name_cells_x + add_rows * add_cols;
+  while(inner_slots < draw2_count) {
+    if((name_cells_x+add_cols) > (name_cells_y+add_rows)) {
+      add_rows++;
+    } else {
+      add_cols++;
+    };
+
+    outer_slots=4 + name_cells_x * 2 + name_cells_y * 2 + add_rows * 2 + add_cols * 2;
+    inner_slots=add_rows * name_cells_x + add_rows * add_cols;
+  };
+
+  name_width=name_cells_x * int_size + add_cols * int_size;
+  name_height=name_cells_y * int_size;
+
+  //device.width(name_width + int_size * 2 + add_cols * int_size - 2);
+  //device.height(name_height + int_size * 2 + add_rows * int_size - 2);
+  device.width(name_width + int_size * 2 - 2);
+  device.height(name_height + int_size * 2 + add_rows * int_size -2)
+
+  dev_name.width(name_width-3); // minus border width
+  dev_name.height(name_height-3); // minus border width
+
+  if(power_sensor != undefined) {
+    let ps_bg_color="green";
+    let ps_html="On";
+    let ps_title="220V Ok";
+    let ps_size="7px";
+    if(!power_sensor) {
+      ps_bg_color="red";
+      ps_html="Off";
+      ps_title="220V Off";
+      if(on_battery) {
+        ps_bg_color="orangered";
+        ps_html="Batt";
+        ps_title="On battery";
+      };
+      ps_size="15px";
+    };
+    $(DIV)
+     .css("position", "absolute")
+     .css("border", "1px solid "+ps_bg_color)
+     .css("background-color", ps_bg_color)
+     .css("left", "-1px")
+     .css("right", "-1px")
+     .css("bottom", "-1px")
+     .css("font-size", "6px")
+     .css("color", "white")
+     .prop("title", ps_title+"; Sensor at: "+power_sensor_at)
+     .html(ps_html)
+     .appendTo(dev_name);
+  };
+
+//  dev_name.prop("title", data["devs"][dev_id]['sysLocation']+" "+draw1_count+":"+outer_slots+" "+draw2_count+":"+inner_slots);
+  temp_data["devs"][dev_id]["_window"]=device;
+  temp_data["devs"][dev_id]["_cols"]=name_cells_x+add_cols+2;
+  temp_data["devs"][dev_id]["_rows"]=name_cells_y+add_rows+2;
+  temp_data["devs"][dev_id]["_inner_start_row"]=1+name_cells_y;
+  temp_data["devs"][dev_id]["_inner_cols"]=name_cells_x+add_cols;
+  temp_data["devs"][dev_id]["_inner_rows"]=add_rows;
+
+  let cur_row=0;
+  let cur_col=0;
+
+  let cur_row_inn=temp_data["devs"][dev_id]["_inner_start_row"];
+  let cur_col_inn=1;
+
+  if(data["devs"][dev_id]["interfaces_sorted"] != undefined) {
+    for(let int_i=0; int_i < data["devs"][dev_id]["interfaces_sorted"].length; int_i++) {
+      let int=data["devs"][dev_id]["interfaces_sorted"][int_i];
+      if(temp_data["devs"][dev_id]["interfaces"][int]["_draw"] != undefined &&
+         temp_data["devs"][dev_id]["interfaces"][int]["_draw"] != 0
+      ) {
+        let x,y;
+        if(temp_data["devs"][dev_id]["interfaces"][int]["_draw"] == 1) {
+          temp_data["devs"][dev_id]["interfaces"][int]["_col"] = cur_col;
+          temp_data["devs"][dev_id]["interfaces"][int]["_row"] = cur_row;
+          x=cur_col * int_size;
+          y=cur_row * int_size;
+          if(cur_row > 0 && cur_row < (temp_data["devs"][dev_id]["_rows"] - 1)) {
+            if(cur_col == 0) {
+              cur_col = temp_data["devs"][dev_id]["_cols"] - 1;
+            } else {
+              cur_col++;
+            };
+          } else {
+            cur_col++;
+          };
+
+          if(cur_col == temp_data["devs"][dev_id]["_cols"]) {
+            cur_col = 0;
+            cur_row++;
+          };
+        } else {
+          temp_data["devs"][dev_id]["interfaces"][int]["_col"] = cur_col_inn;
+          temp_data["devs"][dev_id]["interfaces"][int]["_row"] = cur_row_inn;
+          x=cur_col_inn * int_size;
+          y=cur_row_inn * int_size;
+          cur_col_inn++;
+          if(cur_col_inn >= (temp_data["devs"][dev_id]["_cols"] - 1)) {
+            cur_col_inn=1;
+            cur_row_inn++;
+          };
+        };
+        let if_text="Un";
+        let if_type=data["devs"][dev_id]["interfaces"][int]["ifType"];
+        if(if_type == 24) {
+          if_text="Lo";
+        } else if(if_type == 6 || if_type == 117) {
+          if(int.match(/^BD/)) {
+            if_text="Bd";
+          } else if(int.match(/^CPU port/)) {
+            if_text="Cp";
+          } else {
+            if_text="Et";
+          };
+        } else if(if_type == 136 || if_type == 53) {
+          if_text="Vl";
+        } else if(if_type == 135) {
+          if_text="Dt";
+        } else if(if_type == 161) {
+          if_text="Po";
+        } else if(if_type == 131) {
+          if_text="Tu";
+        } else if(if_type == 23) {
+          if_text="Pp";
+        } else if(if_type == 1 && int.match(/^EPON\d+\/\d+:\d+/)) {
+          if_text="On";
+        };
+
+        if(site != "l3" && ( if_type == 6 || if_type == 117) && !int.match(/^BD/) && !int.match(/^CPU port/)) {
+          let portnum;
+          if(portnum = int.match(/^(?:.*[^0-9]+)?([0-9]+)$/)) {
+            if_text=portnum[1];
+          };
+        };
+
+        let int_div=$(LABEL, {
+           id: int+"@"+dev_id
+         })
+         .data("int", int)
+         .data("dev", data["devs"][dev_id])
+         .css("position", "absolute")
+         .css("text-align", "center")
+         .css("top", (y)+"px")
+         .css("left", (x)+"px")
+         .css("border", "1px green solid")
+         .css("font-size", (int_size-6)+"px")
+         .css("width", (int_size-4)+"px")
+         .css("height", (int_size-4)+"px")
+         .text(if_text)
+         .click(function (e) {
+           e.stopPropagation();
+           interface_click($(this).data("int"), $(this).data("dev"), e)
+         })
+         .dblclick(function (e) {
+           e.stopPropagation();
+           //interface_dblclick($(this).data("int"), $(this).data("dev"), e)
+         })
+         .hover(
+           function (e) {
+             e.stopPropagation();
+             interface_in($(this).data("int"), $(this).data("dev"))
+           },
+           interface_out
+         );
+         let int_st=int_style(int, data["devs"][dev_id]);
+         int_div.css("background-color", int_st["label_bg_color"]);
+         int_div.appendTo(device);
+      };
+    };
+  };
+};
+
+function build_connections() {
+  for(let dev_id in data["devs"]) {
+    let from_div=document.getElementById(dev_id);
+    if(from_div != undefined && data["devs"][dev_id]["interfaces"] != undefined) {
+      for(let int_i in data["devs"][dev_id]["interfaces_sorted"]) {
+        let int = data["devs"][dev_id]["interfaces_sorted"][int_i];
+
+        let int_links = [];
+
+        if(site == "l3") {
+          if(data["devs"][dev_id]["interfaces"][int]["ips"] !== undefined &&
+             temp_data["devs"][dev_id] != undefined &&
+             temp_data["devs"][dev_id]["interfaces"][int]["_draw"] == 1
+          ) {
+            temp_data["devs"][dev_id]["interfaces"][int]["l3_links"] = [];
+            for(let ip in data["devs"][dev_id]["interfaces"][int]["ips"]) {
+              let ip_net = data["devs"][dev_id]["interfaces"][int]["ips"][ip]["net"];
+              if(String(ip).indexOf("127.") == 0) continue;
+              if(data["l3_links"] !== undefined &&
+                 data["l3_links"][ ip_net ] !== undefined &&
+                 data["l3_links"][ ip_net ] !== undefined &&
+                 data["l3_links"][ ip_net ][ip] !== undefined &&
+                 data["l3_links"][ ip_net ][ip]["dev_id"] == dev_id &&
+                 hash_length(data["l3_links"][ip_net]) == 2
+              ) {
+                let net = data["l3_links"][ip_net];
+                let nei_ip = undefined;
+                for(let _ip in net) {
+                  if(_ip != ip) {
+                    nei_ip = _ip;
+                    break;
+                  };
+                };
+                let nei_dev = net[nei_ip]["dev_id"];
+                let nei_int = net[nei_ip]["ifName"];
+                if(nei_dev == dev_id) continue;
+
+                if(data["devs"][nei_dev] === undefined ||
+                   data["devs"][nei_dev]["interfaces"][nei_int] === undefined ||
+                   temp_data["devs"][nei_dev] === undefined ||
+                   temp_data["devs"][nei_dev]["interfaces"][nei_int]["_draw"] != 1 ||
+                   false
+                ) {
+                  continue;
+                };
+
+                let link_status = 2;
+                if(data["devs"][dev_id]["interfaces"][int]["ifOperStatus"] == 1 &&
+                   data["devs"][nei_dev]["interfaces"][nei_int]["ifOperStatus"] == 1
+                ) {
+                  link_status = 1;
+                };
+                let link_id = ip_link_id(dev_id, int, net[nei_ip]["dev_id"], net[nei_ip]["ifName"]);
+                temp_data["devs"][dev_id]["interfaces"][int]["l3_links"].push(link_id);
+                temp_data["p2p_links"][link_id] = {"from_dev": dev_id, "from_int": int, "to_dev": nei_dev, "to_int": nei_int, "status": link_status};
+                if(connections[link_id] === undefined) {
+                  int_links.push({"link_id": link_id, "nei_dev": nei_dev, "nei_int": nei_int, "status": link_status});
+                };
+              };
+            };
+          };
+        } else {
+          if(temp_data["devs"][dev_id] != undefined && temp_data["devs"][dev_id]["interfaces"][int]["_draw"] == 1) {
+            for(let lid in data["devs"][dev_id]["interfaces"][int]["l2_links"]) {
+              let link_id=data["devs"][dev_id]["interfaces"][int]["l2_links"][lid];
+              if(connections[link_id] == undefined &&
+                 data["l2_links"][link_id] !== undefined &&
+                 data["l2_links"][link_id][0]["DevId"] != data["l2_links"][link_id][1]["DevId"]
+              ) {
+                let nei_dev;
+                let nei_int;
+                if(data["l2_links"][link_id][0]["DevId"] == dev_id) {
+                  nei_dev=data["l2_links"][link_id][1]["DevId"];
+                  nei_int=data["l2_links"][link_id][1]["ifName"];
+                } else {
+                  nei_dev=data["l2_links"][link_id][0]["DevId"];
+                  nei_int=data["l2_links"][link_id][0]["ifName"];
+                };
+                let link_status = data["l2_links"][link_id]["status"];
+                int_links.push({"link_id": link_id, "nei_dev": nei_dev, "nei_int": nei_int, "status": link_status});
+              };
+            };
+          };
+        };
+        for(let li in int_links) {
+          let link_id = int_links[li]["link_id"];
+          let nei_dev = int_links[li]["nei_dev"];
+          let nei_int = int_links[li]["nei_int"];
+          let link_status = int_links[li]["status"];
+
+          let to_div=document.getElementById(nei_dev);
+          if(to_div != undefined) {
+
+            connections[link_id] = {};
+            connections[link_id]["legs"] = [];
+            connections[link_id]["tps"] = {};
+            connections[link_id]["from_dev"] = dev_id;
+            connections[link_id]["from_int"] = int;
+            connections[link_id]["to_dev"] = nei_dev;
+            connections[link_id]["to_int"] = nei_int;
+            connections[link_id]["status"] = link_status;
+
+            let from_div_x=$(from_div).position().left+workspace.scrollLeft()+Math.floor( $(from_div).width() / 2 );
+            let from_div_y=$(from_div).position().top+workspace.scrollTop()+Math.floor( $(from_div).height() / 2 );
+            let to_div_x=$(to_div).position().left+workspace.scrollLeft()+Math.floor( $(to_div).width() / 2 );
+            let to_div_y=$(to_div).position().top+workspace.scrollTop()+Math.floor( $(to_div).height() / 2 );
+            if(map_data["tps"][link_id] != undefined) {
+              connections[link_id]["tps"]={};
+              for(let tpi in map_data["tps"][link_id]) {
+                let tp=map_data["tps"][link_id][tpi];
+                connections[link_id]["tps"][tpi]={};
+                if(tp["type"] == "devdev") {
+                  if((tp["from_dev"] != dev_id && tp["from_dev"] != nei_dev) || (tp["to_dev"] != dev_id && tp["to_dev"] != nei_dev)) {
+                    error_at("invalid turnpoint "+tpi+" @ "+link_id);
+                    continue;
+                  };
+                  connections[link_id]["legs"].push({
+                    type: "devtp",
+                    from_dev: tp["from_dev"],
+                    from_int: tp["from_int"],
+                    to_tp: tpi,
+                    drawn: false
+                  });
+                  connections[link_id]["legs"].push({
+                    type: "devtp",
+                    from_dev: tp["to_dev"],
+                    from_int: tp["to_int"],
+                    to_tp: tpi,
+                    drawn: false
+                  });
+                } else if(tp["type"] == "devtp") {
+
+                  if(connections[link_id]["tps"][ tp["to_tp"] ] == undefined) connections[link_id]["tps"][ tp["to_tp"] ]={};
+
+                  if(tp["from_dev"] != dev_id && tp["from_dev"] != nei_dev) {
+                    error_at("invalid turnpoint "+tpi+" @ "+link_id);
+                    continue;
+                  };
+                  connections[link_id]["legs"].push({
+                    type: "devtp",
+                    from_dev: tp["from_dev"],
+                    from_int: tp["from_int"],
+                    to_tp: tpi,
+                    drawn: false
+                  });
+
+                  if(connections[link_id]["tps"][tpi]["connected"] == undefined ||
+                     connections[link_id]["tps"][tpi]["connected"][ tp["to_tp"] ] == undefined) {
+                    connections[link_id]["legs"].push({
+                      type: "tptp",
+                      from_tp: tpi,
+                      to_tp: tp["to_tp"],
+                      drawn: false
+                    });
+
+                    if(connections[link_id]["tps"][ tp["to_tp"] ]["connected"] == undefined) {
+                      connections[link_id]["tps"][ tp["to_tp"] ]["connected"] = {};
+                    };
+                    if(connections[link_id]["tps"][tpi]["connected"] == undefined) {
+                      connections[link_id]["tps"][tpi]["connected"] = {};
+                    };
+                    connections[link_id]["tps"][ tp["to_tp"] ]["connected"][tpi]=1;
+                    connections[link_id]["tps"][tpi]["connected"][ tp["to_tp"] ]=1;
+                  };
+                } else if(tp["type"] == "tptp") {
+                  if(connections[link_id]["tps"][ tp["from_tp"] ] == undefined) connections[link_id]["tps"][ tp["from_tp"] ] = {};
+                  if(connections[link_id]["tps"][ tp["to_tp"] ] == undefined) connections[link_id]["tps"][ tp["to_tp"] ] = {};
+
+                  if(connections[link_id]["tps"][tpi]["connected"] == undefined || connections[link_id]["tps"][tpi]["connected"][ tp["from_tp"] ] == undefined) {
+                    connections[link_id]["legs"].push({
+                      type: "tptp",
+                      from_tp: tpi,
+                      to_tp: tp["from_tp"],
+                      drawn: false
+                    });
+
+                    if(connections[link_id]["tps"][ tp["from_tp"] ] == undefined) connections[link_id]["tps"][ tp["from_tp"] ] = {};
+
+                    if(connections[link_id]["tps"][ tp["from_tp"] ]["connected"] == undefined) {
+                      connections[link_id]["tps"][ tp["from_tp"] ]["connected"] = {};
+                    };
+                    if(connections[link_id]["tps"][tpi]["connected"] == undefined) {
+                      connections[link_id]["tps"][tpi]["connected"] = {};
+                    };
+                    connections[link_id]["tps"][ tp["from_tp"] ]["connected"][tpi]=1;
+                    connections[link_id]["tps"][tpi]["connected"][ tp["from_tp"] ]=1;
+                  };
+
+                  if(connections[link_id]["tps"][tpi]["connected"] == undefined || connections[link_id]["tps"][tpi]["connected"][ tp["to_tp"] ] == undefined) {
+                    connections[link_id]["legs"].push({
+                      type: "tptp",
+                      from_tp: tpi,
+                      to_tp: tp["to_tp"],
+                      drawn: false
+                    });
+                    if(connections[link_id]["tps"][ tp["to_tp"] ]["connected"] == undefined) {
+                      connections[link_id]["tps"][ tp["to_tp"] ]["connected"] = {};
+                    };
+                    if(connections[link_id]["tps"][tpi]["connected"] == undefined) {
+                      connections[link_id]["tps"][tpi]["connected"] = {};
+                    };
+                    connections[link_id]["tps"][ tp["to_tp"] ]["connected"][tpi]=1;
+                    connections[link_id]["tps"][tpi]["connected"][ tp["to_tp"] ]=1;
+                  };
+
+                };
+              };
+            } else {
+              connections[link_id]["legs"].push({
+                type: "devdev",
+                from_dev: dev_id,
+                from_int: int,
+                to_dev: nei_dev,
+                to_int: nei_int,
+                drawn: false
+              });
+            };
+          };
+        };
+      };
+    };
+  };
+};
+
+function arrange_interfaces_dev2tp(dev_id, moved) {
+
+  let from_elm=document.getElementById(dev_id);
+  if(from_elm == undefined) {
+    error_at("Undefined from element"); 
+    return;
+  };
+  let from_x=$(from_elm).position().left+workspace.scrollLeft()+Math.floor( $(from_elm).width() / 2 ); //device center
+  let from_y=$(from_elm).position().top+workspace.scrollTop()+Math.floor( $(from_elm).height() / 2 );
+    
+  let from_x_0=$(from_elm).position().left+workspace.scrollLeft(); //device top left corner
+  let from_y_0=$(from_elm).position().top+workspace.scrollTop();
+
+  let r=0;
+
+  temp_data["devs"][dev_id]["slots"] = [];
+  temp_data["devs"][dev_id]["relocated"] = {};
+  
+  while(r < temp_data["devs"][dev_id]["_rows"]) {
+    let c=0;
+    while(c < temp_data["devs"][dev_id]["_cols"]) {
+
+      temp_data["devs"][dev_id]["slots"].push({ "col": c, "row": r, "occupied": false});
+
+      c++;
+      if(r > 0 && r < (temp_data["devs"][dev_id]["_rows"] - 1) && c == 1) {
+        c = temp_data["devs"][dev_id]["_cols"] - 1;
+      };
+    };
+    r++;
+  };
+
+
+  if(data["devs"][dev_id]["interfaces"] != undefined) {
+    for(let int_i in data["devs"][dev_id]["interfaces_sorted"]) {
+      let int = data["devs"][dev_id]["interfaces_sorted"][int_i];
+      if(temp_data["devs"][dev_id]["interfaces"][int]["_draw"] == 1) {
+        let relocated=false;
+        let distances=Array();
+
+        let int_links = [];
+
+        if(site != "l3" && data["devs"][dev_id]["interfaces"][int]["l2_links"] != undefined) {
+          int_links = data["devs"][dev_id]["interfaces"][int]["l2_links"];
+        } else if(site == "l3" && temp_data["devs"][dev_id]["interfaces"][int]["l3_links"] !== undefined) {
+          int_links = temp_data["devs"][dev_id]["interfaces"][int]["l3_links"];
+        };
+
+        int_links.sort();
+
+        for(let i in int_links) {
+          let link_id=int_links[i];
+
+          if(connections[link_id] == undefined) {
+            continue;
+          };
+
+          let leg_count=hash_length(connections[link_id]["legs"]);
+
+          let to_x=undefined;
+          let to_y=undefined;
+
+          let nei_dev=undefined;
+          let nei_int=undefined;
+
+          if(connections[link_id]["from_dev"] == dev_id && connections[link_id]["from_int"] == int) {
+            nei_dev=connections[link_id]["to_dev"];
+            nei_int=connections[link_id]["to_int"];
+          } else if(connections[link_id]["to_dev"] == dev_id && connections[link_id]["to_int"] == int) {
+            nei_dev=connections[link_id]["from_dev"];
+            nei_int=connections[link_id]["from_int"];
+          } else {
+            error_at("Connections error "+link_id);
+            return;
+          };
+
+          if(leg_count == 1) {
+            continue;
+          } else {
+            //connected via turnpoint
+            for(let l in connections[link_id]["legs"]) {
+              if(connections[link_id]["legs"][l]["type"] == "devtp" &&
+                 connections[link_id]["legs"][l]["from_dev"] == dev_id &&
+                 connections[link_id]["legs"][l]["from_int"] == int &&
+                 true
+              ) {
+                let tp=connections[link_id]["legs"][l]["to_tp"];
+                if(map_data["tps"] == undefined || map_data["tps"][link_id] == undefined ||
+                   map_data["tps"][link_id][tp] == undefined ||
+                   map_data["tps"][link_id][tp]["type"] == "tptp"
+                ) {
+                  alert("Turnpoint error");
+                  return;
+                };
+                to_x=map_data["tps"][link_id][tp]["x"];
+                to_y=map_data["tps"][link_id][tp]["y"];
+                break;
+              };
+            };
+            if(to_x == undefined) {
+              alert("Turnpoint not found");
+              return;
+            };
+          };
+          let dx=to_x - from_x;
+          let dy=to_y - from_y;
+
+          let distance=dx*dx+dy*dy; //center of device to turnpoint (?center? TODO check)
+
+          distances.push({"distance": distance, "x": to_x, "y": to_y, "link_id": link_id });
+        };
+
+        if(hash_length(distances) > 0) {
+          distances.sort(function(a,b) { return a["distance"]-b["distance"] }); //shortest first
+          let to_x=distances[0]["x"]; //use closest turnpoint as reference
+          let to_y=distances[0]["y"];
+
+          let link_id = distances[0]["link_id"];
+
+          let nearest_slot=undefined;
+          let nearest_distance=0;
+
+          for(let sl in temp_data["devs"][dev_id]["slots"]) if(temp_data["devs"][dev_id]["slots"][sl]["occupied"] == false) {
+
+            let dx=from_x_0+temp_data["devs"][dev_id]["slots"][sl]["col"]*int_size - to_x;
+            let dy=from_y_0+temp_data["devs"][dev_id]["slots"][sl]["row"]*int_size - to_y;
+
+            let distance=dx*dx+dy*dy;
+
+            if(nearest_slot == undefined || nearest_distance > distance) {
+              nearest_slot=sl;
+              nearest_distance=distance;
+            };
+          };
+
+          if(nearest_slot != undefined) {
+            let c=temp_data["devs"][dev_id]["slots"][nearest_slot]["col"];
+            let r=temp_data["devs"][dev_id]["slots"][nearest_slot]["row"];
+
+            temp_data["devs"][dev_id]["slots"][nearest_slot]["occupied"]=true;
+            temp_data["devs"][dev_id]["slots"][nearest_slot]["by"]=int;
+            temp_data["devs"][dev_id]["slots"][nearest_slot]["func"]="dev2tp";
+
+            let int_elm=document.getElementById(int+"@"+dev_id);
+            if(int_elm == undefined) {
+              error_at("Cannot find interface element "+int+"@"+dev_id);
+              return;
+            };
+
+            if(temp_data["devs"][dev_id]["interfaces"][int]["_col"] != c ||
+               temp_data["devs"][dev_id]["interfaces"][int]["_row"] != r ||
+               moved
+            ) {
+              connections_rearranged[link_id] = 1;
+            }; // else no point in recursion
+               // no point in redraw
+
+            temp_data["devs"][dev_id]["interfaces"][int]["_col"] = c;
+            temp_data["devs"][dev_id]["interfaces"][int]["_row"] = r;
+
+            $(int_elm).css("top", (r*int_size)+"px").css("left", (c*int_size)+"px");
+            relocated=true;
+
+          } else {
+            error_at("no slots!");
+            return;
+          };
+        };
+        if(relocated) {
+          temp_data["devs"][dev_id]["relocated"][int] = 1;
+        };
+      };
+    };
+  };
+};
+
+function arrange_interfaces_dev2dev(dev_id, recursive, moved) {
+
+  let from_elm=document.getElementById(dev_id);
+  if(from_elm == undefined) {
+    error_at("Undefined from element"); 
+    return;
+  };
+  let from_x=$(from_elm).position().left+workspace.scrollLeft()+Math.floor( $(from_elm).width() / 2 ); //device center
+  let from_y=$(from_elm).position().top+workspace.scrollTop()+Math.floor( $(from_elm).height() / 2 );
+    
+  let from_x_0=$(from_elm).position().left+workspace.scrollLeft(); //device top left corner
+  let from_y_0=$(from_elm).position().top+workspace.scrollTop();
+
+  let nei_devs={};
+
+  if(data["devs"][dev_id]["interfaces"] != undefined) {
+    for(let int_i in data["devs"][dev_id]["interfaces_sorted"]) {
+      let int = data["devs"][dev_id]["interfaces_sorted"][int_i];
+      if(temp_data["devs"][dev_id]["interfaces"][int]["_draw"] == 1) {
+        let relocated=false;
+        let distances=Array();
+
+        let int_links = [];
+
+        if(site != "l3" && data["devs"][dev_id]["interfaces"][int]["l2_links"] != undefined) {
+          int_links = data["devs"][dev_id]["interfaces"][int]["l2_links"];
+        } else if(site == "l3" && temp_data["devs"][dev_id]["interfaces"][int]["l3_links"] !== undefined) {
+          int_links = temp_data["devs"][dev_id]["interfaces"][int]["l3_links"];
+        };
+
+        int_links.sort();
+
+        for(let i in int_links) {
+          let link_id=int_links[i];
+
+          if(connections[link_id] == undefined) {
+            continue;
+          };
+
+          let leg_count=hash_length(connections[link_id]["legs"]);
+
+          let to_x=undefined;
+          let to_y=undefined;
+
+          let nei_dev=undefined;
+          let nei_int=undefined;
+
+          if(connections[link_id]["from_dev"] == dev_id && connections[link_id]["from_int"] == int) {
+            nei_dev=connections[link_id]["to_dev"];
+            nei_int=connections[link_id]["to_int"];
+          } else if(connections[link_id]["to_dev"] == dev_id && connections[link_id]["to_int"] == int) {
+            nei_dev=connections[link_id]["from_dev"];
+            nei_int=connections[link_id]["from_int"];
+          } else {
+            error_at("Connections error "+link_id);
+            return;
+          };
+
+          if(leg_count == 1) {
+            //direct link without map_data["tps"]
+            let to_elm=document.getElementById(nei_dev);
+            if(to_elm == undefined) {
+              error_at("Cannot find nei element");
+              return;
+            };
+
+            let from_left = $(from_elm).position().left + workspace.scrollLeft() + int_half;
+            let from_top = $(from_elm).position().top + workspace.scrollTop() + int_half;
+            let from_right = from_left + $(from_elm).width() - int_size;
+            let from_bottom = from_top + $(from_elm).height() - int_size;
+
+            let to_left = $(to_elm).position().left + workspace.scrollLeft() + int_half;
+            let to_top = $(to_elm).position().top + workspace.scrollTop() + int_half;
+            let to_right = to_left + $(to_elm).width() - int_size;
+            let to_bottom = to_top + $(to_elm).height() - int_size;
+
+            if(to_right <= from_left && to_bottom <= from_top) { // neighbour is in left top corner
+              to_x = to_right;
+              to_y = to_bottom;
+            } else if(to_right <= from_left &&
+                      to_bottom >= from_top &&
+                      to_top <= from_bottom
+            ) {                                                 //neigbour is to the left
+              to_x = to_right;
+              let top_ref;
+              let bottom_ref;
+              if(to_top > from_top) { top_ref = to_top } else { top_ref = from_top };
+              if(to_bottom < from_bottom) { bottom_ref = to_bottom } else { bottom_ref = from_bottom };
+              if(top_ref > bottom_ref) { error_at(); return; };
+              to_y = top_ref + Math.floor( (bottom_ref-top_ref) / 2);
+            } else if(to_right <= from_left && to_top < from_bottom) { // neighbour is in left bottom corner
+              to_x = to_right;
+              to_y = to_top;
+            } else if(to_left >= from_right && to_bottom <= from_top) { // neighbour is in right top corner
+              to_x = to_left;
+              to_y = to_bottom;
+            } else if(to_left >= from_right && to_top > from_bottom) { // neighbour is in right bottom corner
+              to_x = to_left;
+              to_y = to_top;
+            } else if(to_left >= from_right &&
+                      to_bottom >= from_top &&
+                      to_top <= from_bottom
+            ) {                                                 //neigbour is to the right
+              to_x = to_left;
+              let top_ref;
+              let bottom_ref;
+              if(to_top > from_top) { top_ref = to_top } else { top_ref = from_top };
+              if(to_bottom < from_bottom) { bottom_ref = to_bottom } else { bottom_ref = from_bottom };
+              if(top_ref > bottom_ref) { error_at(); return; };
+              to_y = top_ref + Math.floor( (bottom_ref-top_ref) / 2);
+            } else if(to_bottom <= from_top &&
+                      to_right >= from_left &&
+                      to_left <= from_right
+            ) {                                                //neigbour is to the top
+              to_y = to_bottom;
+              let left_ref;
+              let right_ref;
+              if(to_left > from_left) { left_ref = to_left } else { left_ref = from_left };
+              if(to_right < from_right) { right_ref = to_right } else { right_ref = from_right };
+              if(left_ref > right_ref) { error_at(); return; };
+              to_x = left_ref + Math.floor( (right_ref-left_ref) / 2);
+            } else if(to_top >= from_bottom &&
+                      to_right >= from_left &&
+                      to_left <= from_right
+            ) {                                                //neigbour is to the bottom
+              to_y = to_top;
+              let left_ref;
+              let right_ref;
+              if(to_left > from_left) { left_ref = to_left } else { left_ref = from_left };
+              if(to_right < from_right) { right_ref = to_right } else { right_ref = from_right };
+              if(left_ref > right_ref) { error_at(); return; };
+              to_x = left_ref + Math.floor( (right_ref-left_ref) / 2);
+            } else {
+              to_x = to_left + Math.floor( (to_right - to_left) /2 );
+              to_y = to_top + Math.floor( (to_bottom - to_top) /2 );
+            };
+
+          } else {
+            continue;
+          };
+          let dx=to_x - from_x;
+          let dy=to_y - from_y;
+
+          let distance=dx*dx+dy*dy; //center of device to center of device
+
+          distances.push({"distance": distance, "x": to_x, "y": to_y, "dev_id": nei_dev, "link_id": link_id });
+        };
+
+        if(hash_length(distances) > 0) {
+          distances.sort(function(a,b) { return a["distance"]-b["distance"] }); //shortest first
+          let to_x=distances[0]["x"]; //use closest device as reference
+          let to_y=distances[0]["y"];
+          let nei_dev = distances[0]["dev_id"];
+          let link_id = distances[0]["link_id"];
+
+          let nearest_slot=undefined;
+          let nearest_distance=0;
+
+          for(let sl in temp_data["devs"][dev_id]["slots"]) if(temp_data["devs"][dev_id]["slots"][sl]["occupied"] == false) {
+
+            let dx=from_x_0+temp_data["devs"][dev_id]["slots"][sl]["col"]*int_size+int_half - to_x;
+            let dy=from_y_0+temp_data["devs"][dev_id]["slots"][sl]["row"]*int_size+int_half - to_y;
+
+            let distance=dx*dx+dy*dy;
+
+            if(nearest_slot == undefined || nearest_distance > distance) {
+              nearest_slot=sl;
+              nearest_distance=distance;
+            };
+          };
+
+          if(nearest_slot != undefined) {
+            let c=temp_data["devs"][dev_id]["slots"][nearest_slot]["col"];
+            let r=temp_data["devs"][dev_id]["slots"][nearest_slot]["row"];
+
+            temp_data["devs"][dev_id]["slots"][nearest_slot]["occupied"]=true;
+            temp_data["devs"][dev_id]["slots"][nearest_slot]["by"]=int;
+            temp_data["devs"][dev_id]["slots"][nearest_slot]["func"]="dev2dev_dev";
+
+            let int_elm=document.getElementById(int+"@"+dev_id);
+            if(int_elm == undefined) {
+              error_at("Cannot find interface element "+int+"@"+dev_id);
+              return;
+            };
+
+            if(temp_data["devs"][dev_id]["interfaces"][int]["_col"] != c ||
+               temp_data["devs"][dev_id]["interfaces"][int]["_row"] != r ||
+               moved
+            ) {
+              nei_devs[nei_dev]=1;
+              connections_rearranged[link_id] = 1;
+            }; // else no point in recursion
+               // no point in redraw
+
+            temp_data["devs"][dev_id]["interfaces"][int]["_col"] = c;
+            temp_data["devs"][dev_id]["interfaces"][int]["_row"] = r;
+
+            $(int_elm).css("top", (r*int_size)+"px").css("left", (c*int_size)+"px");
+            relocated=true;
+
+          } else {
+            error_at("no slots!");
+            return;
+          };
+        };
+        if(relocated) {
+          temp_data["devs"][dev_id]["relocated"][int] = 1;
+        };
+      };
+    };
+  };
+
+  if(data["devs"][dev_id]["interfaces"] != undefined) {
+    for(let int_i in data["devs"][dev_id]["interfaces_sorted"]) {
+      let int = data["devs"][dev_id]["interfaces_sorted"][int_i];
+      if(temp_data["devs"][dev_id]["interfaces"][int]["_draw"] == 1 &&
+         temp_data["devs"][dev_id]["relocated"][int] === undefined
+      ) {
+        let relocated=false;
+        for(let sl in temp_data["devs"][dev_id]["slots"]) if(temp_data["devs"][dev_id]["slots"][sl]["occupied"] == false) {
+          let c=temp_data["devs"][dev_id]["slots"][sl]["col"];
+          let r=temp_data["devs"][dev_id]["slots"][sl]["row"];
+
+          temp_data["devs"][dev_id]["slots"][sl]["occupied"]=true;
+          temp_data["devs"][dev_id]["slots"][sl]["by"]=int;
+          temp_data["devs"][dev_id]["slots"][sl]["func"]="dev2dev_reloc";
+
+          let int_elm=document.getElementById(int+"@"+dev_id);
+          if(int_elm == undefined) {
+            error_at("Cannot find interface element "+int+"@"+dev_id);
+            return;
+          };
+
+          temp_data["devs"][dev_id]["interfaces"][int]["_col"] = c;
+          temp_data["devs"][dev_id]["interfaces"][int]["_row"] = r;
+
+          $(int_elm).css("top", (r*int_size)+"px").css("left", (c*int_size)+"px");
+          relocated=true;
+          break;
+        };
+        if(!relocated) {
+          error_at("Relocation error for "+int+"@"+dev_id);
+          return;
+        };
+      };
+    };
+  };
+
+  devices_arranged[dev_id]=1;
+
+  if(recursive == true) {
+    for(let dev in nei_devs) {
+      arrange_interfaces_dev2tp(dev, false);
+    };
+    for(let dev in nei_devs) {
+      if(devices_arranged[dev] == undefined) {
+        arrange_interfaces_dev2tp(dev, false);
+        arrange_interfaces_dev2dev(dev, false, false);
+      };
+    };
+  };
+};
+
+function draw_connection(link_id) {
+ 
+  if(connections[link_id] === undefined) {
+    return;
+  };
+  for(let l in connections[link_id]["legs"]) {
+    let leg=connections[link_id]["legs"][l];
+    let x1, x2, y1, y2, len;
+    if(leg["type"] == "devdev") {
+      let d1=leg["from_dev"];
+      let i1=leg["from_int"];
+
+      let elm_d1=document.getElementById(d1);
+      let elm_i1=document.getElementById(i1+"@"+d1);
+
+      if(elm_d1 == undefined || elm_i1 == undefined) {
+        error_at("undefined elm_d1 or elm_i1");
+        continue;
+      };
+
+      let d2=leg["to_dev"];
+      let i2=leg["to_int"];
+
+      let elm_d2=document.getElementById(d2);
+      let elm_i2=document.getElementById(i2+"@"+d2);
+
+      if(elm_d2 == undefined || elm_i2 == undefined) {
+        error_at("undefined elm_d2 or elm_i2");
+        continue;
+      };
+
+      x1=$(elm_d1).position().left + workspace.scrollLeft() +
+         $(elm_i1).position().left + Math.floor( $(elm_i1).width() / 2 ) + 2;
+      y1=$(elm_d1).position().top + workspace.scrollTop() + $(elm_i1).position().top +
+         Math.floor( $(elm_i1).height() / 2 ) + 2;
+
+      x2=$(elm_d2).position().left + workspace.scrollLeft() +
+         $(elm_i2).position().left + Math.floor( $(elm_i2).width() / 2 ) + 2;
+      y2=$(elm_d2).position().top + workspace.scrollTop() + $(elm_i2).position().top +
+         Math.floor( $(elm_i2).height() / 2 ) + 2;
+
+
+    } else if(leg["type"] == "devtp") {
+      let d1=leg["from_dev"];
+      let i1=leg["from_int"];
+
+      let elm_d1=document.getElementById(d1);
+      let elm_i1=document.getElementById(i1+"@"+d1);
+
+      if(elm_d1 == undefined || elm_i1 == undefined) {
+        error_at("undefined elm_d1 or elm_i1");
+        continue;
+      };
+
+      x1=$(elm_d1).position().left + workspace.scrollLeft() +
+         $(elm_i1).position().left + Math.floor( $(elm_i1).width() / 2 ) + 2;
+      y1=$(elm_d1).position().top + workspace.scrollTop() + $(elm_i1).position().top +
+         Math.floor( $(elm_i1).height() / 2 ) + 2;
+
+      x2=map_data["tps"][link_id][ leg["to_tp"] ]["x"];
+      y2=map_data["tps"][link_id][ leg["to_tp"] ]["y"];
+
+    } else if(leg["type"] == "tptp") {
+
+      x1=map_data["tps"][link_id][ leg["from_tp"] ]["x"];
+      y1=map_data["tps"][link_id][ leg["from_tp"] ]["y"];
+
+      x2=map_data["tps"][link_id][ leg["to_tp"] ]["x"];
+      y2=map_data["tps"][link_id][ leg["to_tp"] ]["y"];
+
+    } else {
+      error_at("Unknown leg type "+leg["type"]+" at "+link_id+" @ "+l);
+      continue;
+    };
+
+    let line_id="line_"+link_id+"_leg_"+l;
+    connections[link_id]["legs"][l]["drawn"]=line_id;
+
+    let color="black";
+
+    if(connections[link_id]["status"] == 2) {
+      color="red";
+    } else if(connections[link_id]["status"] == 3) {
+      color="mediumblue";
+    } else if(connections[link_id]["status"] == 4) {
+      color="saddlebrown";
+    };
+
+    let stroke_width = "1";
+    if(site == "l3" && !tp_show) stroke_width = "0";
+    draw_line(line_id, x1, y1, x2, y2, color, stroke_width);
+
+    len=Math.sqrt( (x2-x1)*(x2-x1) + (y2-y1)*(y2-y1) );
+
+    let new_tp_btn_id="new_tp_"+link_id+"@"+l;
+    let new_tp_btn=$(document.getElementById(new_tp_btn_id));
+
+    if(len > min_line_length) {
+      let cx=Math.ceil( (x2-x1)/2 + x1);
+      let cy=Math.ceil( (y2-y1)/2 + y1);
+
+      if(new_tp_btn.length == 0) {
+        new_tp_btn=$(LABEL, {
+          id: "new_tp_"+link_id+"@"+l
+        })
+        .addClass("new_tp")
+        .addClass("ns")
+        .data("link_id", link_id)
+        .data("leg", l)
+        .css("position", "absolute")
+        .css("text-align", "center")
+        .css("vertical-align", "middle")
+        .css("height", tp_btn_size+"px")
+        .css("width", tp_btn_size+"px")
+        .css("border-radius", Math.ceil(tp_btn_size/2))
+        .css("background-color", "orange")
+        .css("border", "1px orangered solid")
+        .css("font-size", tp_btn_size-1+"px")
+        .text("+")
+        .css("z-index", 0)
+        .css("dummy", "dummy")
+        .dblclick(new_tp)
+        .click(tp_click)
+        .hover(
+          function() {
+            let link_id=$(this).data("link_id");
+            link_highlight(link_id);
+          },
+          interface_out
+        )
+        .appendTo(workspace);
+      };
+      new_tp_btn
+        .data("cx", cx)
+        .data("cy", cy)
+        .css("left", cx - Math.ceil(tp_btn_size/2) - 0)
+        .css("top", cy - Math.ceil(tp_btn_size/2) - 0);
+
+      
+      if(movementLock) {
+        new_tp_btn.off("dblclick");
+      };
+
+      if(!tp_show) new_tp_btn.hide();
+    } else {
+      if(new_tp_btn.length > 0) new_tp_btn.remove();
+    };
+  };
+  if(connections[link_id]["tps"] != undefined) {
+    for(let tpi in connections[link_id]["tps"]) {
+      let cx=map_data["tps"][link_id][tpi]["x"];
+      let cy=map_data["tps"][link_id][tpi]["y"];
+      let tp_btn_id="tp_"+link_id+"@"+tpi;
+
+      let tp_btn=$(document.getElementById(tp_btn_id));
+
+      if(tp_btn.length == 0) {
+        tp_btn=$(LABEL, { id: tp_btn_id })
+         .addClass("tp")
+         .addClass("ns")
+         .data("link_id", link_id)
+         .data("tpi", tpi)
+         .css("position", "absolute")
+         .css("text-align", "center")
+         .css("vertical-align", "middle")
+         .css("height", tp_btn_size+"px")
+         .css("width", tp_btn_size+"px")
+         .css("border-radius", Math.ceil(tp_btn_size/2))
+         .css("background-color", "pink")
+         .css("border", "1px salmon solid")
+         .css("font-size", tp_btn_size-1+"px")
+         .html("&#10535;")
+         .css("z-index", 0)
+         .css("dummy", "dummy")
+         .hover(
+           function() {
+             let link_id=$(this).data("link_id");
+             link_highlight(link_id);
+           },
+           interface_out
+         )
+         .dblclick(remove_tp)
+         .click(function(e) {
+         })
+         .draggable({
+           start: drag_start,
+           stop: tp_moved,
+           //containment: [$(superworkspace).position().left,$(superworkspace).position().top,2048,2048],
+           grid: [tp_grid, tp_grid],
+           zIndex: 2147483647
+         })
+         .appendTo(workspace)
+        ;
+
+      };
+      tp_btn
+       .data("x", cx)
+       .data("y", cy)
+       .css("left", cx - Math.ceil(tp_btn_size/2))
+       .css("top", cy - Math.ceil(tp_btn_size/2))
+      ;
+
+      if(movementLock) {
+        tp_btn.draggable('disable');
+        tp_btn.off("dblclick");
+      };
+
+      if(!tp_show) tp_btn.hide();
+    };
+  };
+};
+
+function draw_line(line_id, x1, y1, x2, y2, color, width) {
+
+  let cx,cy,fx,fy,tx,ty,w,h;
+
+  if(x1 < x2) {
+    cx=x1;
+    fx=0;
+    tx=x2-x1;
+    w=tx;
+  } else {
+    cx=x2;
+    tx=0;
+    fx=x1-x2;
+    w=fx;
+  };
+
+  if(y1 < y2) {
+    cy=y1;
+    fy=0;
+    ty=y2-y1;
+    h=ty;
+  } else {
+    cy=y2;
+    ty=0;
+    fy=y1-y2;
+    h=fy;
+  };
+
+  if(w < 1) w=1;
+  if(h < 1) h=1;
+
+  w++;
+  h++;
+
+  let link_html="<SVG style=\"display:block;\" width=\""+w+"\" height=\""+h+"\"><line x1=\""+fx+"\" y1=\""+fy+"\" x2=\""+tx+"\" y2=\""+ty+"\" stroke=\""+color+"\" stroke-width=\""+width+"\"/></SVG>";
+
+  $( document.getElementById(line_id) ).remove();
+  let line=$(DIV, { id: line_id })
+   .css("position", "absolute")
+   .css("z-index", "-1")
+   .css("left", cx+"px")
+   .css("top", cy+"px")
+   .width("width", w)
+   .height("height", h)
+   .html(link_html)
+   .appendTo( workspace )
+  ;
+};
+
+function clear_link_objects(link_id) {
+  if(connections[link_id] != undefined) {
+    for(let l in connections[link_id]["legs"]) {
+      if(connections[link_id]["legs"][l]["drawn"]) {
+        let elm_line=document.getElementById(connections[link_id]["legs"][l]["drawn"]);
+        if(elm_line != undefined) $( elm_line ).remove();
+        connections[link_id]["legs"][l]["drawn"]=false;
+      };
+      let new_tp_btn_id="new_tp_"+link_id+"@"+l;
+      let elm_tp=document.getElementById(new_tp_btn_id);
+      if(elm_tp != undefined) $( elm_tp ).remove();
+    };
+  };
+
+  if(map_data["tps"][link_id] != undefined) {
+    for(let tpii in map_data["tps"][link_id]) {
+      let elm_tp=document.getElementById("tp_"+link_id+"@"+tpii);
+      if(elm_tp != undefined) $( elm_tp ).remove();
+    };
+  };
+};
+
+function remove_tp(e) {
+  let link_id=$(this).data("link_id");
+  let tpi=$(this).data("tpi");
+
+
+  clear_link_objects(link_id);
+
+  if(map_data["tps"][link_id][tpi]["type"] == "devdev") {
+    //do nothing
+  } else if(map_data["tps"][link_id][tpi]["type"] == "devtp") {
+    let next_tp=map_data["tps"][link_id][tpi]["to_tp"];
+
+    if(map_data["tps"][link_id][next_tp]["type"] == "devtp") {
+      if(map_data["tps"][link_id][next_tp]["to_tp"] != tpi) {
+        error_at("Corrupted turnpoints database, link_id: "+link_id);
+        return;
+      };
+      map_data["tps"][link_id][next_tp]["type"] = "devdev";
+      delete map_data["tps"][link_id][next_tp]["to_tp"];
+      map_data["tps"][link_id][next_tp]["to_dev"] = map_data["tps"][link_id][tpi]["from_dev"];
+      map_data["tps"][link_id][next_tp]["to_int"] = map_data["tps"][link_id][tpi]["from_int"];
+    } else if(map_data["tps"][link_id][next_tp]["type"] == "tptp") {
+      let to_tp;
+      if(map_data["tps"][link_id][next_tp]["from_tp"] == tpi) {
+        to_tp=map_data["tps"][link_id][next_tp]["to_tp"];
+      } else if(map_data["tps"][link_id][next_tp]["to_tp"] == tpi) {
+        to_tp=map_data["tps"][link_id][next_tp]["from_tp"];
+      } else {
+        error_at("Corrupted turnpoints database, link_id: "+link_id);
+        return;
+      };
+      map_data["tps"][link_id][next_tp]["type"] = "devtp";
+      delete map_data["tps"][link_id][next_tp]["from_tp"];
+      map_data["tps"][link_id][next_tp]["to_tp"]=to_tp;
+      map_data["tps"][link_id][next_tp]["from_dev"] = map_data["tps"][link_id][tpi]["from_dev"];
+      map_data["tps"][link_id][next_tp]["from_int"] = map_data["tps"][link_id][tpi]["from_int"];
+    } else {
+      error_at("Corrupted turnpoints database, link_id: "+link_id);
+      return;
+    };
+  } else if(map_data["tps"][link_id][tpi]["type"] == "tptp") {
+    let prev_tp=map_data["tps"][link_id][tpi]["from_tp"];
+    let next_tp=map_data["tps"][link_id][tpi]["to_tp"];
+
+    if(map_data["tps"][link_id][prev_tp]["type"] == "devtp") {
+      if(map_data["tps"][link_id][prev_tp]["to_tp"] != tpi) {
+        error_at("Corrupted turnpoints database, link_id: "+link_id);
+        return;
+      };
+      map_data["tps"][link_id][prev_tp]["to_tp"] = next_tp;
+    } else if(map_data["tps"][link_id][prev_tp]["type"] == "tptp") {
+      if(map_data["tps"][link_id][prev_tp]["from_tp"] == tpi) {
+        map_data["tps"][link_id][prev_tp]["from_tp"]=next_tp;
+      } else if(map_data["tps"][link_id][prev_tp]["to_tp"] == tpi) {
+        map_data["tps"][link_id][prev_tp]["to_tp"]=next_tp;
+      } else {
+        error_at("Corrupted turnpoints database, link_id: "+link_id);
+        return;
+      };
+    } else {
+      error_at("Corrupted turnpoints database, link_id: "+link_id);
+      return;
+    };
+
+    if(map_data["tps"][link_id][next_tp]["type"] == "devtp") {
+      if(map_data["tps"][link_id][next_tp]["to_tp"] != tpi) {
+        error_at("Corrupted turnpoints database, link_id: "+link_id);
+        return;
+      };
+      map_data["tps"][link_id][next_tp]["to_tp"] = prev_tp;
+    } else if(map_data["tps"][link_id][next_tp]["type"] == "tptp") {
+      if(map_data["tps"][link_id][next_tp]["from_tp"] == tpi) {
+        map_data["tps"][link_id][next_tp]["from_tp"]=prev_tp;
+      } else if(map_data["tps"][link_id][next_tp]["to_tp"] == tpi) {
+        map_data["tps"][link_id][next_tp]["to_tp"]=prev_tp;
+      } else {
+        error_at("Corrupted turnpoints database, link_id: "+link_id);
+        return;
+      };
+    } else {
+      error_at("Corrupted turnpoints database, link_id: "+link_id);
+      return;
+    };
+  };
+
+  delete map_data["tps"][link_id][tpi];
+  if(hash_length(map_data["tps"][link_id]) == 0) {
+    delete map_data["tps"][link_id];
+  } else {
+  };
+  save_map("tps", link_id);
+
+  delete connections[link_id];
+  build_connections();
+  devices_arranged={};
+  connections_rearranged={};
+/*
+  arrange_interfaces_dev2tp(connections[link_id]["from_dev"], true);
+  arrange_interfaces_dev2tp(connections[link_id]["to_dev"], true);
+
+  arrange_interfaces_dev2dev(connections[link_id]["from_dev"], false, true);
+  arrange_interfaces_dev2dev(connections[link_id]["to_dev"], false, true);
+*/
+
+  for(let dev_id in data["devs"]) {
+    if(temp_data["devs"][dev_id] != undefined && temp_data["devs"][dev_id]["_draw"] == 1) {
+      arrange_interfaces_dev2tp(dev_id, false);
+      arrange_interfaces_dev2dev(dev_id, false, false);
+    };
+  };
+
+  for(let lid in connections) {
+    draw_connection(lid);
+  };
+};
+
+function tp_moved(e, ui) {
+  let x=$(this).position().left+workspace.scrollLeft();
+  let y=$(this).position().top+workspace.scrollTop();
+
+  let offset = tp_grid_offset - Math.ceil(tp_btn_size/2);
+  x = Math.floor((x - offset) / tp_grid) * tp_grid + offset;
+  y = Math.floor((y - offset) / tp_grid) * tp_grid + offset;
+
+  $(this).css({"top": y, "left": x});
+
+  let link_id=$(this).data("link_id");
+  let tpi=$(this).data("tpi");
+
+  x += tp_btn_size/2;
+  y += tp_btn_size/2;
+
+  map_data["tps"][link_id][tpi]["x"]=x;
+  map_data["tps"][link_id][tpi]["y"]=y;
+  save_map("tps", link_id);
+
+  devices_arranged={};
+  connections_rearranged={};
+
+  for(let dev_id in data["devs"]) {
+    if(temp_data["devs"][dev_id] != undefined && temp_data["devs"][dev_id]["_draw"] == 1) {
+      arrange_interfaces_dev2tp(dev_id, false);
+      arrange_interfaces_dev2dev(dev_id, false, false);
+    };
+  };
+  for(let lid in connections) {
+    draw_connection(lid);
+  };
+};
+
+function tp_click(e) {
+  if(e.shiftKey) {
+    e.stopPropagation();
+    let link_id=$(e.target).data("link_id");
+  };
+};
+
+function new_tp(e) {
+  e.stopPropagation();
+  let link_id=$(e.target).data("link_id");
+  let leg=$(e.target).data("leg");
+  let cx=$(e.target).data("cx");
+  let cy=$(e.target).data("cy");
+  $(e.target).remove();
+
+  cx=Math.floor(cx/tp_grid)*tp_grid + tp_grid_offset;
+  cy=Math.floor(cy/tp_grid)*tp_grid + tp_grid_offset;
+
+  //delete connection graphic objects and turn points
+  for(let l in connections[link_id]["legs"]) {
+    if(connections[link_id]["legs"][l]["drawn"]) {
+      let elm_line=document.getElementById(connections[link_id]["legs"][l]["drawn"]);
+      if(elm_line != undefined) $( elm_line ).remove();
+      connections[link_id]["legs"][l]["drawn"]=false;
+    };
+    let new_tp_btn_id="new_tp_"+link_id+"@"+l;
+    let elm_tp=document.getElementById(new_tp_btn_id);
+    if(elm_tp != undefined) $( elm_tp ).remove();
+  };
+
+  if(map_data["tps"][link_id] != undefined) {
+    for(let tpi in map_data["tps"][link_id]) {
+      let elm_tp=document.getElementById("tp_"+tpi);
+      if(elm_tp != undefined) $( elm_tp ).remove();
+    };
+  };
+
+  if((map_data["tps"][link_id] != undefined && connections[link_id]["legs"][leg]["type"] == "devdev") ||
+     (map_data["tps"][link_id] == undefined && connections[link_id]["legs"][leg]["type"] != "devdev")
+  ) {
+    error_at("Invalid leg type");
+    return;
+  };
+
+  if(map_data["tps"][link_id] == undefined) {
+    map_data["tps"][link_id]={};
+  };
+
+  let new_tpi=0;
+  while(map_data["tps"][link_id][new_tpi] != undefined) new_tpi++;
+  map_data["tps"][link_id][new_tpi]={};
+  map_data["tps"][link_id][new_tpi]["x"]=cx;
+  map_data["tps"][link_id][new_tpi]["y"]=cy;
+
+  if(connections[link_id]["legs"][leg]["type"] == "devdev") {
+    map_data["tps"][link_id][new_tpi]["type"]="devdev";
+    map_data["tps"][link_id][new_tpi]["from_dev"]=connections[link_id]["legs"][leg]["from_dev"];
+    map_data["tps"][link_id][new_tpi]["from_int"]=connections[link_id]["legs"][leg]["from_int"];
+    map_data["tps"][link_id][new_tpi]["to_dev"]=connections[link_id]["legs"][leg]["to_dev"];
+    map_data["tps"][link_id][new_tpi]["to_int"]=connections[link_id]["legs"][leg]["to_int"];
+  } else if(connections[link_id]["legs"][leg]["type"] == "devtp") {
+    let old_tp1=connections[link_id]["legs"][leg]["to_tp"];
+
+    map_data["tps"][link_id][new_tpi]["type"]="devtp";
+    map_data["tps"][link_id][new_tpi]["from_dev"]=connections[link_id]["legs"][leg]["from_dev"];
+    map_data["tps"][link_id][new_tpi]["from_int"]=connections[link_id]["legs"][leg]["from_int"];
+    map_data["tps"][link_id][new_tpi]["to_tp"]=old_tp1;
+
+    if(map_data["tps"][link_id][old_tp1]["type"] == "devdev") {
+      map_data["tps"][link_id][old_tp1]["type"]="devtp";
+
+      if(map_data["tps"][link_id][old_tp1]["from_dev"] == map_data["tps"][link_id][new_tpi]["from_dev"]) {
+        map_data["tps"][link_id][old_tp1]["from_dev"] = map_data["tps"][link_id][old_tp1]["to_dev"];
+        map_data["tps"][link_id][old_tp1]["from_int"] = map_data["tps"][link_id][old_tp1]["to_int"];
+      };
+      map_data["tps"][link_id][old_tp1]["to_tp"]=new_tpi;
+      delete map_data["tps"][link_id][old_tp1]["to_dev"];
+      delete map_data["tps"][link_id][old_tp1]["to_int"];
+    } else if(map_data["tps"][link_id][old_tp1]["type"] == "devtp") {
+      map_data["tps"][link_id][old_tp1]["type"]="tptp";
+      map_data["tps"][link_id][old_tp1]["from_tp"]=new_tpi;
+      delete map_data["tps"][link_id][old_tp1]["from_dev"];
+      delete map_data["tps"][link_id][old_tp1]["from_int"];
+    };
+  } else if(connections[link_id]["legs"][leg]["type"] == "tptp") {
+    let old_tp1=connections[link_id]["legs"][leg]["from_tp"];
+    let old_tp2=connections[link_id]["legs"][leg]["to_tp"];
+
+    map_data["tps"][link_id][new_tpi]["type"]="tptp";
+    map_data["tps"][link_id][new_tpi]["from_tp"]=old_tp1;
+    map_data["tps"][link_id][new_tpi]["to_tp"]=old_tp2;
+
+    if(map_data["tps"][link_id][old_tp1]["type"] == "devtp") {
+      map_data["tps"][link_id][old_tp1]["to_tp"]=new_tpi;
+    } else if(map_data["tps"][link_id][old_tp1]["type"] == "tptp") {
+      if(map_data["tps"][link_id][old_tp1]["from_tp"] == old_tp2) {
+        map_data["tps"][link_id][old_tp1]["from_tp"] = new_tpi;
+      } else {
+        map_data["tps"][link_id][old_tp1]["to_tp"] = new_tpi;
+      };
+    };
+
+    if(map_data["tps"][link_id][old_tp2]["type"] == "devtp") {
+      map_data["tps"][link_id][old_tp2]["to_tp"]=new_tpi;
+    } else if(map_data["tps"][link_id][old_tp2]["type"] == "tptp") {
+      if(map_data["tps"][link_id][old_tp2]["from_tp"] == old_tp1) {
+        map_data["tps"][link_id][old_tp2]["from_tp"] = new_tpi;
+      } else {
+        map_data["tps"][link_id][old_tp2]["to_tp"] = new_tpi;
+      };
+    };
+
+  };
+
+  save_map("tps", link_id);
+
+  delete connections[link_id];
+
+  build_connections();
+
+  devices_arranged={};
+  connections_rearranged={};
+/*
+  arrange_interfaces_dev2tp(connections[link_id]["from_dev"], true);
+  arrange_interfaces_dev2tp(connections[link_id]["to_dev"], true);
+
+  arrange_interfaces_dev2dev(connections[link_id]["from_dev"], false, true);
+  arrange_interfaces_dev2dev(connections[link_id]["to_dev"], false, true);
+*/
+
+  for(let dev_id in data["devs"]) {
+    if(temp_data["devs"][dev_id] != undefined && temp_data["devs"][dev_id]["_draw"] == 1) {
+      arrange_interfaces_dev2tp(dev_id, false);
+      arrange_interfaces_dev2dev(dev_id, false, false);
+    };
+  };
+
+  for(let lid in connections) {
+    draw_connection(lid);
+  };
+
+};
+
+function link_highlight(link_id) {
+  int_popup_label(connections[link_id]["from_int"], connections[link_id]["from_dev"]);
+  int_popup_label(connections[link_id]["to_int"], connections[link_id]["to_dev"]);
+
+  for(let l in connections[link_id]["legs"]) {
+    let leg=connections[link_id]["legs"][l];
+    if(connections[link_id]["legs"][l]["drawn"] !== undefined) {
+      let line_id=connections[link_id]["legs"][l]["drawn"];
+      let line_div=$(document.getElementById(line_id));
+      line_div.addClass("line_highlight");
+      let svg=line_div.find("svg");
+      let svg_width=svg.attr("width");
+      let svg_height=svg.attr("height");
+      let line=svg.find("line");
+      let x1=line.attr("x1");
+      let x2=line.attr("x2");
+      let y1=line.attr("y1");
+      let y2=line.attr("y2");
+      line_div.data("svg_width", svg_width);
+      line_div.data("svg_height", svg_height);
+      line_div.data("x1", x1);
+      line_div.data("x2", x2);
+      line_div.data("y1", y1);
+      line_div.data("y2", y2);
+      svg.attr("width", Number(svg_width)+3);
+      svg.attr("height", Number(svg_height)+3);
+      line.attr("stroke-width", 3);
+      if(Number(x1) == Number(x2) && Number(x1) == 0) {
+        line.attr("x1", 1);
+        line.attr("x2", 1);
+      } else if(Number(y1) == Number(y2) && Number(y1) == 0) {
+        line.attr("y1", 1);
+        line.attr("y2", 1);
+      };
+    };
+  };
+};
+
+
+function save_map(key, id, fk) {
+  if(!enable_save) {
+    g_unsaved = true;
+    return;
+  };
+  let save_fk = file_key;
+  if(fk !== undefined) save_fk = fk;
+  let save_data;
+  let query = {};
+  if(key !== undefined && id !== undefined) {
+    save_data = map_data[key][id];
+    if(save_data !== undefined) {
+      query = {"action": "save_map_key_id", "key": key, "id": id, "file_key": save_fk, "save_data": JSON.stringify(save_data)};
+    } else {
+      query = {"action": "del_map_key_id", "key": key, "id": id, "file_key": save_fk};
+    };
+  } else if(key !== undefined) {
+    save_data = map_data[key];
+    if(save_data !== undefined) {
+      query = {"action": "save_map_key", "key": key, "file_key": save_fk, "save_data": JSON.stringify(save_data)};
+    } else {
+      query = {"action": "del_map_key", "key": key, "file_key": save_fk};
+    };
+  } else {
+    save_data = map_data;
+    query = {"action": "save_map", "file_key": save_fk, "save_data": JSON.stringify(save_data)};
+  };
+
+  query["site"] = site;
+  query["proj"] = proj;
+  run_query(query, function() {
+    if(fk === undefined) {
+      file_saved = unix_timestamp();
+      g_unsaved = false;
+    };
+  });
+};
+
+function get_file_row(fk) {
+  let tr = $(TR)
+   .data("id", fk)
+  ;
+
+  tr
+   .tooltip({
+     classes: { "ui-tooltip": "ui-corner-all ui-widget-shadow wsp tooltip" },
+     //items: "TR",
+     content: function() {
+       return $(this).prop("title");
+     }
+   })
+  ;
+
+  let name_td = $(TD).appendTo(tr);
+
+  if(fk === file_key) {
+    //tr.addClass("current_map_file");
+    let t = data["files_list"][fk]["time"];
+    if(file_saved != 0) { t = file_saved; };
+    tr.title("Последнее сохранение: "+from_unix_time(t, false, 'н/д'));
+    name_td
+     .append( $(LABEL).addClass(["ui-icon", "ui-icon-check"])
+       .css({"color": "green"})
+       .title("Текущая загруженная карта")
+     )
+    ;
+  } else {
+    tr.title("Последнее сохранение: "+from_unix_time(data["files_list"][fk]["time"], false, 'н/д'));
+    name_td
+     .append( $(LABEL).addClass(["ui-icon", "ui-icon-empty"]) )
+    ;
+  };
+
+  if(fk === "") {
+    name_td
+     .append( $(LABEL).text("Основная карта")
+       .title("Карта, которая загружается при выборе локации и проекта, по умолчанию")
+     )
+    ;
+  } else {
+    let map_name = "";
+    if(data["files_list"][fk]["name"] !== undefined) {
+      map_name = data["files_list"][fk]["name"];
+    };
+
+    name_td
+     .append( $(INPUT).addClass("map_name")
+       .val(map_name)
+       .inputStop(500)
+       .on("input_stop", function() {
+       })
+     )
+    ;
+  };
+
+  let act_td = $(TD).appendTo(tr);
+
+  act_td
+   .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-extlink"])
+     .title("Загрузить карту")
+     .click(function() {
+       let tr = $(this).closest("TR");
+       let fk = tr.data("id");
+
+       window.location = "?action=get_front&site="+site+"&proj="+proj+"&file_key="+fk+(DEBUG?"&debug":"");
+     })
+   )
+  ;
+
+  if(data["files_list"][fk]["shared"] !== undefined) {
+    act_td
+     .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-clipboard"])
+       .title("Скопировать ссылку общего доступа")
+       .click(function() {
+         let tr = $(this).closest("TR");
+         let fk = tr.data("id");
+
+         let url = window.location.origin + window.location.pathname +
+                   "?shared="+data["files_list"][fk]["shared"];
+
+         try {
+           navigator.clipboard.writeText(url).then(
+             function() {
+               /* clipboard successfully set */
+               tr.closest(".dialog_start").animateHighlight("green", 500);
+             },
+             function() {
+               /* clipboard write failed */
+               error_at('Opps! Your browser does not support the Clipboard API')
+             }
+           );
+         } catch(e) {
+           error_at(e);
+         };
+
+       })
+     )
+    ;
+    act_td
+     .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-cancel"])
+       .title("Убрать общий доступ")
+       .click(function() {
+         let tr = $(this).closest("TR");
+         let fk = tr.data("id");
+         let query = {"action": "unshare_map", "file_key": fk, "site": site, "proj": proj};
+
+         let text = "Внимание, после закрытия, повторное открытие общего доступа"+
+                    "\nсоздаст ДРУГУЮ ссылку. Текущая перестанет работать без возможности отката.";
+         show_confirm_checkbox(text, function() {
+           run_query(query, function(res) {
+             delete(data["files_list"][fk]["shared"]);
+             tr.replaceWith( get_file_row(fk) );
+           });
+         });
+       })
+     )
+    ;
+  } else {
+    act_td
+     .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-group"])
+       .title("Открыть общий доступ")
+       .click(function() {
+         let tr = $(this).closest("TR");
+         let fk = tr.data("id");
+         let query = {"action": "share_map", "file_key": fk, "site": site, "proj": proj};
+
+         run_query(query, function(res) {
+           data["files_list"][fk]["shared"] = res["ok"]["key"];
+           tr.replaceWith( get_file_row(fk) );
+         });
+       })
+     )
+    ;
+  };
+
+
+  if(fk !== file_key) {
+    act_td
+     .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-save"])
+       .title("Сохранить текущую карту в этот файл")
+       .click(function() {
+         let tr = $(this).closest("TR");
+         let fk = tr.data("id");
+         show_confirm_checkbox("Подтвердите перезапись данных.\nВНИМАНИЕ: Отмена будет невозможна!", function() {
+         })
+       })
+     )
+    ;
+  };
+
+
+  act_td
+   .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-trash"])
+     .title("Удалить данные карты")
+     .click(function() {
+       let tr = $(this).closest("TR");
+       let fk = tr.data("id");
+       let text = "Подтвердите удаление данных.";
+       if(fk === file_key) {
+         if(fk == "") {
+           text += "\nВы удаляете текущую карту, которая является Основной."+
+                   "\nПосле удаления будет загружена пустая карта или карта по умолчанию,"+
+                   "\nесли задана администратором";
+         } else {
+           text += "\nВы удаляете текущую карту. После удаления будет загружена Основная карта.";
+         };
+       };
+       if(data["files_list"][fk]["shared"] !== undefined) {
+         text += "\n\nК удаляемой карте предоставлен общий доступ.\nПосле удаления, ссылка общего доступа станет недоступна.";
+       };
+       show_confirm_checkbox(text, function() {
+         let query = {"action": "del_map", "file_key": fk, "site": site, "proj": proj};
+
+         run_query(query, function() {
+           if(fk === file_key) {
+             window.location = "?action=get_front&site="+site+"&proj="+proj+(DEBUG?"&debug":"");
+           } else {
+             if(fk !== "") {
+               tr.remove();
+               delete(data["files_list"][fk]);
+             } else {
+               data["files_list"][fk] = {};
+               tr.replaceWith(get_file_row(""));
+             };
+           };
+         });
+       })
+     })
+   )
+  ;
+
+  act_td.find("LABEL.button").css({"margin-right": "0.5em"});
+
+  return tr;
+};
+
+function showFileWindow() {
+  let dlg = createWindow("files", "Управление файлами", {modal: true});
+
+  let content = dlg.find(".content");
+
+  let table = $(TABLE).addClass("fixed_head_table")
+   .append( $(THEAD)
+     .append( $(TR)
+       .append( $(TH).text("Имя файла") )
+       .append( $(TH).text("Операция") )
+     )
+   )
+   .append( $(TBODY)
+   )
+   .append( $(TFOOT)
+     .append( $(TR)
+       .append( $(TD)
+         .append( $(INPUT).addClass("new_file_name") )
+       )
+       .append( $(TD)
+         .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-plus"])
+           .title("Сохранить копию текущей карты под новым именем")
+           .click(function(e) {
+             e.stopPropagation();
+             let new_name = String($(".new_file_name").val()).trim();
+             if(new_name == "") { $(".new_file_name").animateHighlight("red", 300); return; };
+
+             let found = false;
+
+             $(this).closest("TABLE").find("TBODY").find("TR").each(function() {
+               let this_name = String($(this).find("INPUT").val()).trim();
+               if(this_name.toLowerCase() == new_name.toLowerCase()) {
+                 found = true;
+                 $(this).animateHighlight("red", 300);
+                 return false;
+               };
+             });
+             if(found) return;
+
+             let query = {"action": "new_map", "site": site, "proj": proj, "map_name": new_name,
+                          "map_data": JSON.stringify(map_data)
+             };
+
+             let tb = $(this).closest("TABLE").find("TBODY");
+
+             run_query(query, function(res) {
+               let fk = res["ok"]["file"]["file_key"];
+               data["files_list"][fk] = res["ok"]["file"];
+               tb.append( get_file_row(fk) );
+               $(".new_file_name").val("");
+             });
+           })
+         )
+       )
+     )
+   )
+  ;
+
+  let tbody = table.find("TBODY");
+
+  let k = keys(data["files_list"]);
+  k.sort();
+
+  for(let i in k) {
+    let fk = k[i];
+    tbody.append(get_file_row(fk));
+  };
+
+
+  table.appendTo(content);
+
+  dlg.trigger("recenter");
+  dlg.find(".new_file_name").focus();
+};
+
+function selectLocation(e) {
+  e.stopPropagation();
+  let buttons = [];
+  buttons.push({
+    "text": "Перейти",
+    "click": function() {
+      let sites_selected = $("#site_tree").jstree(true).get_selected(false);
+      let projs_selected = $("#proj_tree").jstree(true).get_selected(false);
+
+      if(sites_selected.length != 1) { $("#selected_site").animateHighlight("red", 500); return; };
+      if(projs_selected.length == 0) { $("#selected_proj").animateHighlight("red", 500); return; };
+      if(projs_selected.length > 1 && (projs_selected.indexOf("all") >= 0 || projs_selected.indexOf("none") >= 0)) {
+        $("#selected_proj").animateHighlight("red", 500);
+        return;
+      };
+
+      window.location = "?action=get_front&site="+sites_selected[0]+"&proj="+projs_selected.join(",")+"&file_key="+(DEBUG?"&debug":"");
+    },
+  });
+  buttons.push({
+    "text": "Закрыть",
+    "click": function() {
+      $(this).dialog( "close" );
+    },
+  });
+  let dlg = createWindow("location", "Выбор локации и инф. системы", {
+    minHeight: 800,
+    height: 800,
+    minWidth: 1000,
+    width: 1000,
+    buttons: buttons,
+    position: {"my": "center top", "at": "center top", "of": window},
+  });
+  let content = dlg.find(".content")
+  ;
+
+  let header_div = $(DIV)
+   .css({"position": "absolute", "top": "0px", "left": "0px", "right": "0px", "height": "2em", "white-space": "nowrap",
+         "padding-top": "0.5em"
+   })
+   .appendTo(content)
+  ;
+
+  let selected_site_div = $(DIV, {"id": "selected_site"})
+   .css({"display": "inline-block", "width": "50%",
+   })
+   .append( get_tag({"id": "root", "data": {}, "children": data["sites"]}, site) )
+   .appendTo(header_div)
+  ;
+
+  let selected_proj_div = $(DIV, {"id": "selected_proj"})
+   .css({"display": "inline-block", "width": "50%",
+   })
+   .appendTo(header_div)
+  ;
+
+  let projs = String(proj).split(",");
+  for(let i in projs) {
+    selected_proj_div
+     .append( get_tag({"id": "root", "data": {}, "children": data["projects"]}, projs[i]) )
+    ;
+  };
+
+  let search_div = $(DIV)
+   .css({"position": "absolute", "top": "2em", "left": "0px", "right": "0px", "height": "2em", "white-space": "nowrap",
+         "padding-top": "0.5em"
+   })
+   .appendTo(content)
+  ;
+
+  $(DIV)
+   .css({"display": "inline-block", "width": "50%",
+   })
+   .append( $(SPAN).text("Поиск: ") )
+   .append( $(INPUT, {"type": "search"})
+     .inputStop(500)
+     .on("input_stop", function() {
+       let instance = $("#site_tree").jstree(true);
+       instance.search($(this).val());
+     })
+   )
+   .appendTo(search_div)
+  ;
+
+  $(DIV)
+   .css({"display": "inline-block", "width": "50%",
+   })
+   .append( $(SPAN).text("Поиск: ") )
+   .append( $(INPUT, {"type": "search"})
+     .inputStop(500)
+     .on("input_stop", function() {
+       let instance = $("#proj_tree").jstree(true);
+       instance.search($(this).val());
+     })
+   )
+   .appendTo(search_div)
+  ;
+
+  let trees_div = $(DIV)
+   .css({"position": "absolute", "top": "4.5em", "left": "0px", "right": "0px", "bottom": "0px"})
+   .appendTo(content)
+  ;
+
+  let loc_div = $(DIV)
+   .css({"display": "inline-block", "top": "0px", "left": "0px", "width": "calc(50% - 1px)", "bottom": "0px", "overflow-y": "scroll",
+         "position": "absolute", "background-color": "white", "border-right": "0px solid gray", "border-top": "1px solid gray"
+   })
+   .appendTo(trees_div)
+  ;
+
+  let loc_tree = $(DIV, {"id": "site_tree"}).addClass("tree")
+   .appendTo(loc_div)
+  ;
+
+  let loc_tree_plugins = [ "search" ];
+  loc_tree
+   .jstree({
+     "core": {
+       "multiple" : false,
+       "animation" : 0,
+       "data": data["sites"],
+       "dblclick_toggle": true,
+       "force_text": true
+     },
+     "state": { "key": "jstree_loc_"+user_self_sub + "_" + site + proj },
+     "plugins": loc_tree_plugins
+   })
+   .on("ready.jstree", function(e, tree_data) {
+     let instance = tree_data.instance;
+     instance.deselect_all(false);
+     instance.select_node(site, true);
+   })
+   .on("deselect_node.jstree", function(e, tree_data) {
+     $(this).trigger("select_node.jstree", tree_data);
+   })
+   .on("select_node.jstree", function(e, tree_data) {
+     let instance = tree_data.instance;
+     let nodes = instance.get_selected(false);
+     $("#selected_site").empty();
+     if(nodes.length == 0) {
+        $("#selected_site").append( $(LABEL).addClass("tag").text("Не выбран") );
+        return;
+     }; 
+     if(nodes.length > 1) { error_at(); return; };
+
+     let tag_elm = get_tag({"id": "root", "data": {}, "children": data["sites"]}, nodes[0]);
+     $("#selected_site").append( tag_elm );
+   })
+  ;
+
+  let proj_div = $(DIV)
+   .css({"display": "inline-block", "top": "0px", "right": "0px", "width": "50%", "bottom": "0px", "overflow-y": "scroll",
+         "position": "absolute", "background-color": "white", "border-top": "1px solid gray"
+   })
+   .appendTo(trees_div)
+  ;
+
+  let proj_tree = $(DIV, {"id": "proj_tree"}).addClass("tree")
+   .appendTo(proj_div)
+  ;
+
+  let proj_tree_plugins = [ "search" ];
+  proj_tree
+   .jstree({
+     "core": {
+       "multiple" : true,
+       "animation" : 0,
+       "data": data["projects"],
+       "dblclick_toggle": true,
+       "force_text": true,
+     },
+     "state": { "key": "jstree_proj_"+user_self_sub + "_" + site + proj },
+     "plugins": proj_tree_plugins
+   })
+   .on("ready.jstree", function(e, tree_data) {
+     let instance = tree_data.instance;
+     instance.deselect_all(false);
+     instance.select_node(proj, true);
+   })
+   .on("deselect_node.jstree", function(e, tree_data) {
+     $(this).trigger("select_node.jstree", tree_data);
+   })
+   .on("select_node.jstree", function(e, tree_data) {
+     let instance = tree_data.instance;
+     let nodes = instance.get_selected(false);
+     $("#selected_proj").empty();
+     if(nodes.length == 0) {
+        $("#selected_proj").append( $(LABEL).addClass("tag").text("Не выбран") );
+        return;
+     }; 
+
+     for(let i in nodes) {
+       $("#selected_proj").append( get_tag({"id": "root", "data": {}, "children": data["projects"]}, nodes[i]) );
+     };
+
+   })
+  ;
+  //dlg.trigger("recenter");
+};
