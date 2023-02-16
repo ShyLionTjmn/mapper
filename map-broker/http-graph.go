@@ -11,6 +11,7 @@ import (
   "net/http"
   "runtime/debug"
   "sort"
+  "encoding/json"
 
   . "github.com/ShyLionTjmn/mapper/mapaux"
 
@@ -29,6 +30,16 @@ var g_graph_integer_reg *regexp.Regexp
 var g_graph_dev_id_reg *regexp.Regexp
 var g_graph_if_name_reg *regexp.Regexp
 var g_graph_cpu_name_reg *regexp.Regexp
+var g_graph_file_reg *regexp.Regexp
+
+var g_graph_json_graph_left_reg *regexp.Regexp
+var g_graph_json_graph_top_reg *regexp.Regexp
+var g_graph_json_graph_width_reg *regexp.Regexp
+var g_graph_json_graph_height_reg *regexp.Regexp
+var g_graph_json_image_width_reg *regexp.Regexp
+var g_graph_json_image_height_reg *regexp.Regexp
+var g_graph_json_start_reg *regexp.Regexp
+var g_graph_json_end_reg *regexp.Regexp
 
 func init() {
   g_graph_start_reg = regexp.MustCompile(`^[0-9+\-a-zA-Z \:\.\/]+$`)
@@ -36,6 +47,16 @@ func init() {
   g_graph_dev_id_reg = regexp.MustCompile(`^[a-zA-Z0-9\.\-_]+$`)
   g_graph_if_name_reg = regexp.MustCompile(`^[a-zA-Z0-9\.\-_]+$`)
   g_graph_cpu_name_reg = regexp.MustCompile(`^[a-z0-9 \/.,;:\-]+$`)
+  g_graph_file_reg = regexp.MustCompile(`^[a-zA-Z0-9 .,:\-_]+\.png$`)
+
+  g_graph_json_graph_left_reg = regexp.MustCompile(`^graph_left = (\d+)$`)
+  g_graph_json_graph_top_reg = regexp.MustCompile(`^graph_top = (\d+)$`)
+  g_graph_json_graph_width_reg = regexp.MustCompile(`^graph_width = (\d+)$`)
+  g_graph_json_graph_height_reg = regexp.MustCompile(`^graph_height = (\d+)$`)
+  g_graph_json_image_width_reg = regexp.MustCompile(`^image_width = (\d+)$`)
+  g_graph_json_image_height_reg = regexp.MustCompile(`^image_height = (\d+)$`)
+  g_graph_json_start_reg = regexp.MustCompile(`^graph_start = (\d+)$`)
+  g_graph_json_end_reg = regexp.MustCompile(`^graph_end = (\d+)$`)
 }
 
 func handle_graph_error(dbg bool, r interface{}, w http.ResponseWriter, req *http.Request) {
@@ -129,8 +150,12 @@ func handleGraph(w http.ResponseWriter, req *http.Request) {
         q[k] = v
       }
     }
+  } else if req.Method == "POST" {
+    jdec := json.NewDecoder( req.Body )
+    err = jdec.Decode(&q)
+    if err != nil { panic(err) }
   } else {
-    panic("Only GET method supported, " + req.Method + " method requested")
+    panic("Unsupported method: " + req.Method)
   }
 
   if q["debug"] != nil {
@@ -183,6 +208,21 @@ func handleGraph(w http.ResponseWriter, req *http.Request) {
   var var_ok bool
   _ = var_ok
 
+  if q["file"] != nil {
+    var filename string
+    if filename, err = get_p_string(q, "file", g_graph_file_reg); err != nil { panic(err) }
+
+    var f *os.File
+    if f, err = os.Open(PNG_CACHE + "/" + filename); err != nil { panic(err) }
+    defer f.Close()
+
+    w.WriteHeader(http.StatusOK)
+    w.Header().Set("Content-Type", "image/png")
+    io.Copy(w, f)
+
+    return
+  }
+
   var cache_off bool
   if q["no_cache"] != nil {
     cache_off = true
@@ -192,7 +232,7 @@ func handleGraph(w http.ResponseWriter, req *http.Request) {
   width := "400"
   height := "100"
 
-  cmd := []string{"graph", "PNG_PLACE_HOLDER", "--daemon", RRD_SOCKET, "--slope-mode"}
+  cmd := []string{"graphv", "PNG_PLACE_HOLDER", "--daemon", RRD_SOCKET, "--slope-mode"}
 
 
   png_end := ""
@@ -305,8 +345,10 @@ func handleGraph(w http.ResponseWriter, req *http.Request) {
   png_cache := PNG_CACHE + "/"
 
   png := ""
+  json_png := ""
 
   if gtype == "int_io" {
+    json_png = dev_id + "." + safe_int + "." + gtype + png_end + ".png"
     png = png_cache + dev_id + "." + safe_int + "." + gtype + png_end + ".png"
     rrds := rrd_root + dev_id + "/" + safe_int + "."
 
@@ -434,6 +476,7 @@ func handleGraph(w http.ResponseWriter, req *http.Request) {
     }
 
   } else if gtype == "int_pkts" {
+    json_png = dev_id + "." + safe_int + "." + gtype + png_end + ".png"
     png = png_cache + dev_id + "." + safe_int + "." + gtype + png_end + ".png"
     rrds := rrd_root + dev_id + "/" + safe_int + "."
 
@@ -619,6 +662,7 @@ func handleGraph(w http.ResponseWriter, req *http.Request) {
 
 
   } else if gtype == "opt_power" {
+    json_png = dev_id + "." + safe_int + "." + gtype + png_end + ".png"
     png = png_cache + dev_id + "." + safe_int + "." + gtype + png_end + ".png"
     rrds := rrd_root + dev_id + "/" + safe_int + "."
 
@@ -711,6 +755,7 @@ func handleGraph(w http.ResponseWriter, req *http.Request) {
     }
 
   } else if gtype == "cpu" {
+    json_png = dev_id + ".CPU" + png_end + ".png"
     png = png_cache + dev_id + ".CPU" + png_end + ".png"
     rrds := rrd_root + dev_id + "/CPU."
 
@@ -756,6 +801,7 @@ func handleGraph(w http.ResponseWriter, req *http.Request) {
     }
 
   } else if gtype == "mem" {
+    json_png = dev_id + ".memoryUsed" + png_end + ".png"
     png = png_cache + dev_id + ".memoryUsed" + png_end + ".png"
     rrd := rrd_root + dev_id + "/memoryUsed.rrd"
     if fi, serr := os.Stat(rrd); serr == nil && !fi.IsDir() {
@@ -791,7 +837,14 @@ func handleGraph(w http.ResponseWriter, req *http.Request) {
   }
 
   if total == 0 {
-    panic("wait")
+    if q["json"] == nil {
+      panic("wait")
+    } else {
+      w.WriteHeader(http.StatusOK)
+      w.Header().Set("Content-Type", "text/javascript; charset=UTF-8")
+      w.Write([]byte( M{"ok": "no_data" }.ToJsonStr(true) ))
+      return
+    }
   }
 
   if time_src != "" {
@@ -808,7 +861,9 @@ func handleGraph(w http.ResponseWriter, req *http.Request) {
   use_cache := true
   png_stat, stat_err := os.Stat(png)
 
-  if stat_err != nil || cache_off || time.Now().Sub(png_stat.ModTime()) >= PNG_MAX_AGE {
+  if stat_err != nil || cache_off || time.Now().Sub(png_stat.ModTime()) >= PNG_MAX_AGE ||
+     q["json"] != nil ||
+  false {
     use_cache = false
   }
 
@@ -873,6 +928,38 @@ func handleGraph(w http.ResponseWriter, req *http.Request) {
     }
     if err != nil {
       panic("exec_error")
+    }
+
+    if q["json"] != nil {
+      out := M{
+        "file": json_png,
+      }
+      for _, str := range strings.Split(stdout.String(), "\n") {
+        if a := g_graph_json_graph_left_reg.FindStringSubmatch(str); a != nil {
+          out["graph_left"] = a[1]
+        } else if a := g_graph_json_graph_top_reg.FindStringSubmatch(str); a != nil {
+          out["graph_top"] = a[1]
+        } else if a := g_graph_json_graph_width_reg.FindStringSubmatch(str); a != nil {
+          out["graph_width"] = a[1]
+        } else if a := g_graph_json_graph_height_reg.FindStringSubmatch(str); a != nil {
+          out["graph_height"] = a[1]
+        } else if a := g_graph_json_image_width_reg.FindStringSubmatch(str); a != nil {
+          out["image_width"] = a[1]
+        } else if a := g_graph_json_image_height_reg.FindStringSubmatch(str); a != nil {
+          out["image_height"] = a[1]
+        } else if a := g_graph_json_start_reg.FindStringSubmatch(str); a != nil {
+          out["start"] = a[1]
+        } else if a := g_graph_json_end_reg.FindStringSubmatch(str); a != nil {
+          out["end"] = a[1]
+        }
+      }
+      if len(out) != 9 {
+        panic("bad graphv output:\n"+stdout.String())
+      }
+      w.WriteHeader(http.StatusOK)
+      w.Header().Set("Content-Type", "text/javascript; charset=UTF-8")
+      w.Write([]byte( M{"ok": out }.ToJsonStr(true) ))
+      return
     }
   }
 

@@ -274,3 +274,14 @@ table.dataTable tfoot td {
   white-space: pre;
   margin: 0.2em 0.2em;
 }
+.time:hover {
+  cursor: col-resize;
+}
+.rangecursor {
+  border-left: 1px solid black;
+  border-right: 1px solid black;
+  position: absolute;
+  top: 0px;
+  bottom: 0px;
+  background-color: #8080FF80;
+}

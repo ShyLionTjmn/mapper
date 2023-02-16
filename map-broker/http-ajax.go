@@ -1867,6 +1867,21 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
 
     out["data"] = data
     out["refs"] = dev_refs
+  } else if action == "get_interface" {
+    var dev_id string
+    var ifName string
+
+    if dev_id, err = get_p_string(q, "dev_id", nil); err != nil { panic(err) }
+    if ifName, err = get_p_string(q, "int", nil); err != nil { panic(err) }
+
+    globalMutex.RLock()
+    defer globalMutex.RUnlock()
+
+    if !devs.EvM(dev_id, "interfaces", ifName) {
+      out["fail"] = "no_data"
+    } else {
+      out["int"] = devs.VM(dev_id, "interfaces", ifName)
+    }
   } else if action == "query" {
     out["_query"] = q
     goto OUT

@@ -49,7 +49,7 @@ var g_win_stack_xy = 40;
 
 var connections = {};
 
-var dev_border="1px gray dotted";
+var dev_border="1px lightgray dotted";
 var group_border="1px gray dashed";
 
 var devices_arranged = {};
@@ -60,6 +60,9 @@ var min_line_length=10; //for new turnpoint button
 var tp_show = false;
 
 var userinfo = {};
+
+var default_graph_size = "500x150";
+var graph_sizes_list = ["500x70", default_graph_size, "800x100", "800x200", "1000x150", "1000x300", "1600x180", "1600x350"];
 
 function shift_stack_xy() {
   g_win_stack_xy += 20;
@@ -454,6 +457,9 @@ function dev_list_stop(e, ui) {
     let X=ui.position.left-workspace.offset().left + workspace.scrollLeft();
     let Y=ui.position.top-workspace.offset().top + workspace.scrollTop();
 
+    if(X < 0) X = 0;
+    if(Y < 0) Y = 0;
+
     X=Math.floor(X/grid)*grid;
     Y=Math.floor(Y/grid)*grid;
 
@@ -553,6 +559,15 @@ $( document ).ready(function() {
       $("UL.popupmenu").remove();
       $(".tooltip").remove();
     };
+  });
+
+  $(document).on("mouseup", function(e) {
+    $(".graph").find(".time")
+     .data("md", false)
+     .removeData("range-start")
+     .removeData("range-end")
+     .find(".rangecursor").remove()
+    ;
   });
 
   $("BODY").append (
@@ -892,6 +907,11 @@ function data_loaded(new_data) {
   for(let link_id in connections) {
     draw_connection(link_id);
   };
+
+  //DEBUG
+  if(site == "12") {
+    show_interface_window("lldp:08798c7d0081", "100GE1/0/8");
+  };
 };
 
 function resort_dev_list() {
@@ -1158,6 +1178,9 @@ function device_drag_stop(e, ui) {
   let Y=$(this).position().top+workspace.scrollTop();
   let id=$(this).attr('id');
 
+  if(X < 0) X = 0;
+  if(Y < 0) Y = 0;
+
   X = Math.floor(X / int_size) * int_size;
   Y = Math.floor(Y / int_size) * int_size;
 
@@ -1399,7 +1422,7 @@ function kmg(speed,space) {
 };
 
 
-function int_labels(int, dev) {
+function int_metrics(int, dev) {
   let labels={};
   if(dev == undefined || dev["interfaces"] == undefined ||
      dev["interfaces"][int] == undefined) {
@@ -1422,6 +1445,7 @@ function int_labels(int, dev) {
           labels["00_ifstatus"]["short_text"]="Up";
           labels["00_ifstatus"]["long_text"]="Up";
           labels["00_ifstatus"]["bg_color"]="lightgreen";
+          //labels["00_ifstatus"]["bg_color"]="greenyellow";
         } else {
           labels["00_ifstatus"]["short_text"]="Bl";
           labels["00_ifstatus"]["long_text"]="STP Blocked";
@@ -1446,6 +1470,7 @@ function int_labels(int, dev) {
         labels["01_ips"]["short_text"]=count+"&nbsp;IPs";
         labels["01_ips"]["long_text"]=ips_keys.join(",");
         labels["01_ips"]["bg_color"]="lightgreen";
+        //labels["01_ips"]["bg_color"]="greenyellow";
       };
     };
 
@@ -1508,7 +1533,11 @@ function int_labels(int, dev) {
       };
     };
   };
+  return labels;
+};
 
+function int_labels(int, dev) {
+  let labels = int_metrics(int, dev);
   let ret="";
 
   let k=keys(labels).sort();
@@ -1689,6 +1718,7 @@ function int_style(int,dev) {
     } else {
       if(os == 1) {
         ret["label_bg_color"]="lightgreen";
+        //ret["label_bg_color"]="greenyellow";
         ret["bullet_color"]="darkgreen";
         if(dev["interfaces"][int]["stpBlockInstances"] != undefined) {
           ret["label_bg_color"]="magenta";
@@ -1707,41 +1737,9 @@ function int_style(int,dev) {
 };
 
 function interface_click(int, dev, e) {
+  e.stopPropagation();
   let dev_id=dev["id"];
-  if(e.shiftKey) {
-    let int_win=createWindow("int_win"+dev['id']+"_"+int, "Int "+int+" of "+dev["short_name"], true);
-    let content=int_win.find(".content");
-
-    let text=JSON.stringify(dev['interfaces'][int], null, 2);
-    if(dev['interfaces'][int]["portIndex"] != undefined &&
-       dev['lldp_ports'] != undefined &&
-       dev['lldp_ports'][ dev['interfaces'][int]["portIndex"] ] != undefined
-    ) {
-      text += "\nlldp_ports[portIndex="+dev['interfaces'][int]["portIndex"]+"]:\n";
-      text += JSON.stringify(dev['lldp_ports'][ dev['interfaces'][int]["portIndex"] ], null, 2);
-    };
-    if(dev['interfaces'][int]["l2_links"] != undefined) {
-      text += "\nl2_links:\n";
-      for(let li in dev['interfaces'][int]["l2_links"]) {
-        let link_id=dev['interfaces'][int]["l2_links"][li];
-        text += "\n  "+link_id+":\n";
-        text += JSON.stringify(data["l2_links"][link_id], null, 2)+"\n";
-      };
-    };
-    content
-     .addClass("sel")
-     //.css("max-height", "600px")
-     //.css("max-width", "600px")
-     //.css("overflow-y", "scroll")
-     //.css("overflow-x", "hidden")
-     .css("white-space", "pre")
-     .text(text)
-    ;
-
-    int_win.trigger("recenter");
-
-    e.stopPropagation();
-  } else if(e.ctrlKey && allow_select && site != "l3") {
+  if(e.ctrlKey && allow_select && site != "l3") {
 
     select_down(dev_id, int, [dev_id], 0);
 
@@ -1758,6 +1756,8 @@ function interface_click(int, dev, e) {
     if($("#virtLinksWin").length > 0) {
       virtLinksWin();
     };
+  } else {
+    show_interface_window(dev_id, int);
   };
 };
 
@@ -2176,7 +2176,7 @@ function add_device(dev_id) {
          .css("text-align", "center")
          .css("top", (y)+"px")
          .css("left", (x)+"px")
-         .css("border", "1px green solid")
+         .css("border", "1px darkgreen solid")
          .css("font-size", (int_size-6)+"px")
          .css("width", (int_size-4)+"px")
          .css("height", (int_size-4)+"px")
@@ -3274,6 +3274,9 @@ function tp_moved(e, ui) {
   x = Math.floor((x - offset) / tp_grid) * tp_grid + offset;
   y = Math.floor((y - offset) / tp_grid) * tp_grid + offset;
 
+  if(x < 0) x = 0;
+  if(y < 0) y = 0;
+
   $(this).css({"top": y, "left": x});
 
   let link_id=$(this).data("link_id");
@@ -3482,31 +3485,32 @@ function link_highlight(link_id) {
 };
 
 
-function save_map(key, id, fk) {
+function save_map(key, id, fk, md) {
   if(!enable_save) {
     g_unsaved = true;
     return;
   };
+  if(md == undefined) md = map_data;
   let save_fk = file_key;
   if(fk !== undefined) save_fk = fk;
   let save_data;
   let query = {};
   if(key !== undefined && id !== undefined) {
-    save_data = map_data[key][id];
+    save_data = md[key][id];
     if(save_data !== undefined) {
       query = {"action": "save_map_key_id", "key": key, "id": id, "file_key": save_fk, "save_data": JSON.stringify(save_data)};
     } else {
       query = {"action": "del_map_key_id", "key": key, "id": id, "file_key": save_fk};
     };
   } else if(key !== undefined) {
-    save_data = map_data[key];
+    save_data = md[key];
     if(save_data !== undefined) {
       query = {"action": "save_map_key", "key": key, "file_key": save_fk, "save_data": JSON.stringify(save_data)};
     } else {
       query = {"action": "del_map_key", "key": key, "file_key": save_fk};
     };
   } else {
-    save_data = map_data;
+    save_data = md;
     query = {"action": "save_map", "file_key": save_fk, "save_data": JSON.stringify(save_data)};
   };
 
@@ -3666,6 +3670,7 @@ function get_file_row(fk) {
          let tr = $(this).closest("TR");
          let fk = tr.data("id");
          show_confirm_checkbox("Подтвердите перезапись данных.\nВНИМАНИЕ: Отмена будет невозможна!", function() {
+           save_map(undefined, undefined, fk);
          })
        })
      )
@@ -3674,44 +3679,60 @@ function get_file_row(fk) {
 
 
   act_td
-   .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-trash"])
-     .title("Удалить данные карты")
+   .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-erase"])
+     .title("Очистить карту")
      .click(function() {
        let tr = $(this).closest("TR");
        let fk = tr.data("id");
        let text = "Подтвердите удаление данных.";
-       if(fk === file_key) {
-         if(fk == "") {
-           text += "\nВы удаляете текущую карту, которая является Основной."+
-                   "\nПосле удаления будет загружена пустая карта или карта по умолчанию,"+
-                   "\nесли задана администратором";
-         } else {
-           text += "\nВы удаляете текущую карту. После удаления будет загружена Основная карта.";
-         };
-       };
        if(data["files_list"][fk]["shared"] !== undefined) {
-         text += "\n\nК удаляемой карте предоставлен общий доступ.\nПосле удаления, ссылка общего доступа станет недоступна.";
+         text += "\nК очищаемой карте предоставлен общий доступ.";
        };
        show_confirm_checkbox(text, function() {
-         let query = {"action": "del_map", "file_key": fk, "site": site, "proj": proj};
-
-         run_query(query, function() {
-           if(fk === file_key) {
-             window.location = "?action=get_front&site="+site+"&proj="+proj+(DEBUG?"&debug":"");
-           } else {
-             if(fk !== "") {
-               tr.remove();
-               delete(data["files_list"][fk]);
-             } else {
-               data["files_list"][fk] = {};
-               tr.replaceWith(get_file_row(""));
-             };
-           };
-         });
+         save_map(undefined, undefined, fk, {});
+         if(fk === file_key) {
+           window.location = "?action=get_front&site="+site+"&proj="+proj+"&file_key="+fk+(DEBUG?"&debug":"");
+         };
        })
      })
    )
   ;
+
+  if(fk != "") {
+    act_td
+     .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-trash"])
+       .title("Удалить данные карты")
+       .click(function() {
+         let tr = $(this).closest("TR");
+         let fk = tr.data("id");
+         let text = "Подтвердите удаление данных.";
+         if(fk === file_key) {
+           text += "\nВы удаляете текущую карту. После удаления будет загружена Основная карта.";
+         };
+         if(data["files_list"][fk]["shared"] !== undefined) {
+           text += "\n\nК удаляемой карте предоставлен общий доступ.\nПосле удаления, ссылка общего доступа станет недоступна.";
+         };
+         show_confirm_checkbox(text, function() {
+           let query = {"action": "del_map", "file_key": fk, "site": site, "proj": proj};
+
+           run_query(query, function() {
+             if(fk === file_key) {
+               window.location = "?action=get_front&site="+site+"&proj="+proj+(DEBUG?"&debug":"");
+             } else {
+               if(fk !== "") {
+                 tr.remove();
+                 delete(data["files_list"][fk]);
+               } else {
+                 data["files_list"][fk] = {};
+                 tr.replaceWith(get_file_row(""));
+               };
+             };
+           });
+         })
+       })
+     )
+    ;
+  };
 
   act_td.find("LABEL.button").css({"margin-right": "0.5em"});
 
@@ -3738,7 +3759,7 @@ function showFileWindow() {
          .append( $(INPUT).addClass("new_file_name") )
        )
        .append( $(TD)
-         .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-plus"])
+         .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-copy"])
            .title("Сохранить копию текущей карты под новым именем")
            .click(function(e) {
              e.stopPropagation();
@@ -3771,10 +3792,45 @@ function showFileWindow() {
              });
            })
          )
+         .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-plus"])
+           .title("Создать пустой файл")
+           .click(function(e) {
+             e.stopPropagation();
+             let new_name = String($(".new_file_name").val()).trim();
+             if(new_name == "") { $(".new_file_name").animateHighlight("red", 300); return; };
+
+             let found = false;
+
+             $(this).closest("TABLE").find("TBODY").find("TR").each(function() {
+               let this_name = String($(this).find("INPUT").val()).trim();
+               if(this_name.toLowerCase() == new_name.toLowerCase()) {
+                 found = true;
+                 $(this).animateHighlight("red", 300);
+                 return false;
+               };
+             });
+             if(found) return;
+
+             let query = {"action": "new_map", "site": site, "proj": proj, "map_name": new_name,
+                          "map_data": JSON.stringify({})
+             };
+
+             let tb = $(this).closest("TABLE").find("TBODY");
+
+             run_query(query, function(res) {
+               let fk = res["ok"]["file"]["file_key"];
+               data["files_list"][fk] = res["ok"]["file"];
+               tb.append( get_file_row(fk) );
+               $(".new_file_name").val("");
+             });
+           })
+         )
        )
      )
    )
   ;
+
+  table.find("TFOOT").find("LABEL.button").css({"margin-right": "0.5em"});
 
   let tbody = table.find("TBODY");
 
@@ -3991,4 +4047,699 @@ function selectLocation(e) {
    })
   ;
   //dlg.trigger("recenter");
+};
+
+function show_interface_window(dev_id, int) {
+  run_query({"action": "get_interface", "dev_id": dev_id, "int": int}, function(res) {
+    if(res["ok"]["no_data"] !== undefined) {
+      show_dialog("Интерфейс отсутсвует в данных.");
+      return;
+    };
+    let int_info = res["ok"]["int"];
+    data["devs"][dev_id]["interfaces"][int] = res["ok"]["int"];
+
+    let dlg = createWindow("int_win_"+int+"@"+dev_id,
+      data["devs"][dev_id]["short_name"] + ": " + int
+    );
+
+    let im = int_metrics(int, data["devs"][dev_id]);
+
+    let content = dlg.find(".content");
+    content
+     .append( $(DIV)
+       .css({"white-space": "nowrap"})
+       .append( $(LABEL).css({"background-color": im["00_ifstatus"]["bg_color"], "border": "1px black solid"})
+         .text( im["00_ifstatus"]["short_text"] )
+         .title( im["00_ifstatus"]["long_text"] )
+         .css({"margin-right": "0.3em"})
+       )
+       .append( $(SPAN).text(int_info["ifDescr"] != "" ? int_info["ifDescr"] : int) )
+       .append( $(SPAN)
+         .css({"float": "right", "margin-left": "2em"})
+         .append( $(LABEL).text("BW: ") )
+         .append( $(SPAN).text(im["02_speed"]["short_text"]) )
+         .append( int_info["ifDelay"] == undefined ? $(LABEL) : $(LABEL).text(" DLY: ") )
+         .append( int_info["ifDelay"] == undefined ? $(LABEL) : $(SPAN).text(Math.floor(int_info["ifDelay"]/10))
+           .title("Cisco DLY: "+int_info["ifDelay"]+"\nConfig delay: "+Math.floor(int_info["ifDelay"]/10))
+         )
+         .append( !DEBUG ? $(LABEL) : $(LABEL).addClass(["button", "ui-icon", "ui-icon-info"])
+           .css({"margin-left": "0.3em"})
+           .data("json", jstr(int_info))
+           .data("int", int)
+           .data("dev_id", dev_id)
+           .click(function() {
+             let dev_id = $(this).data("dev_id");
+             let int = $(this).data("int");
+             createWindow("int_json_" + int + "@" + dev_id, "JSON: " + data["devs"][dev_id]["short_name"] + ": "+int, {
+                           minWidth: 500,
+                           maxWidth: 1500,
+                           width: 500,
+              })
+              .find(".content").css({"white-space": "pre"}).text( $(this).data("json") )
+              .parent().trigger("recenter")
+             ;
+           })
+         )
+       )
+     )
+     .append( $(DIV)
+       .css({"border": "1px solid lightgray", "padding-top": "0.1em", "padding-bottom": "0.1em", "margin-top": "0.2em", "margin-bottom": "0.2em"})
+       .append( $(SPAN).text(int_info["ifAlias"]) )
+     )
+    ;
+
+    if(int_info["ips"] !== undefined) {
+      let ips = $(DIV)
+       .css({"display": "inline-block", "padding-left": "1em"})
+      ;
+      let ips_a = keys(int_info["ips"]);
+      ips_a.sort(num_compare);
+      for(let ipi in ips_a) {
+        let ip = ips_a[ipi];
+        ips
+         .append( $(DIV)
+           .append( $(SPAN).text(ip+"/"+int_info["ips"][ip]["masklen"])
+             .css({"margin-right": "0.5em", "min-width": "8em", "display": "inline-block"})
+           )
+           .append( $(A, {"target": "blank", "href": "ssh://"+ip}).text("SSH")
+             .css({"margin-right": "0.5em"})
+           )
+           .append( $(A, {"target": "blank", "href": "telnet://"+ip}).text("TELNET")
+             .css({"margin-right": "0.5em"})
+           )
+           .append( $(A, {"target": "blank", "href": "/ipdb/?action=link&ip="+ip}).text("IPDB")
+           )
+         )
+        ;
+      };
+      content
+       .append( $(DIV)
+         .css({"white-space": "nowrap"})
+         .append( $(DIV).text("IP:")
+           .css({"display": "inline-block", "vertical-align": "top"})
+         )
+         .append( ips )
+       )
+      ;
+    };
+
+    content
+     .append( $(DIV)
+       .graph({"type": "int_io", "dev_id": dev_id, "int": int})
+     )
+     .append( $(DIV)
+       .graph({"type": "int_pkts", "dev_id": dev_id, "int": int, "hide": true})
+     )
+    ;
+
+  });
+};
+
+$.fn.graph = function(gdata) {
+  let cont = $(this);
+  cont.addClass("graph");
+  cont.data("gdata", gdata);
+  cont.css({"border-top": "1px solid lightgray", "margin-top": "0.2em"});
+
+  let sync = "sync_" + gdata["dev_id"];
+
+  let head_text;
+
+  let safe_if_name;
+  if(gdata["type"] == "int_io" || gdata["type"] == "int_pkts" ||
+     false
+  ) {
+    if(gdata["type"] == "int_io") {
+      head_text = "Ввод/вывод бит/с";
+    } else if(gdata["type"] == "int_pkts") {
+      head_text = "Ввод/вывод пакеты/с";
+    };
+
+    sync += "_int_" + gdata["int"];
+  };
+
+
+  cont.data("sync", sync);
+  cont.addClass(sync);
+
+  let show = true;
+  if(gdata["hide"] === true) show = false;
+
+  let canvas = $(DIV).addClass("canvas");
+  let controls = $(DIV).addClass("control");
+  cont
+   .append( $(DIV)
+     .css({"padding-top": "0.3em", "padding-bottom": "0.3em"})
+     .append( $(SPAN).text(head_text) )
+     .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-arrowthickstop-1-n"])
+       .css({"position": "absolute", "right": "0px", "margin-right": "0.5em"})
+       .title("Свернуть/развернуть")
+       .click(function() {
+         let collapsable = $(this).closest(".graph").find(".collapse");
+         if(collapsable.data("show")) {
+           collapsable.css("height", "0px");
+           collapsable.data("show", false);
+         } else {
+           collapsable.css("height", "auto");
+           collapsable.data("show", true);
+         };
+       })
+     )
+   )
+   .append( $(DIV).addClass("collapse")
+     .css({"overflow": "hidden"})
+     .css("height", show?"auto":"0px")
+     .data("show", show)
+     .append( canvas )
+     .append( controls )
+   )
+   .append( $(DIV).addClass("debug").addClass("wsp")
+   )
+  ;
+     
+  canvas
+   .css({"display": "inline-block", "position": "relative" })
+   .append( $(LABEL).addClass("len_ind").addClass("ns")
+     .css({"position": "absolute", "top": "0px", "left": "0px", "background-color": "#E0E0E080", "font-size": "small"})
+   )
+   .append( $(LABEL).addClass("ind").addClass("ns")
+     .css({"position": "absolute", "top": "0px", "right": "0px"})
+     .hide()
+   )
+   .append( $(DIV).addClass("time").addClass("ns")
+     .css({"position": "absolute", "overflow": "hidden" })
+     .on("mousewheel", function(e) {
+       let elm_offset = $(this).offset();
+       let x = e.pageX - elm_offset.left;
+       let g = $(this).closest(".graph");
+       let im = g.data("im");
+
+       let g_start = Number(im["start"]);
+       let g_end = Number(im["end"]);
+       let g_w = Number(im["graph_width"]);
+
+       let pos_time = Math.floor(g_start + (g_end - g_start)*x/g_w);
+
+       let new_half;
+       let new_start;
+       let new_end;
+
+       let timer = $(this).data("timer");
+       if(timer !== undefined) clearTimeout(timer);
+       $(this).removeData("timer");
+
+       let wheel_count = $(this).data("wheel_count");
+       if(wheel_count === undefined) wheel_count = 0;
+
+       if(e.originalEvent.wheelDelta > 0) {
+         wheel_count++;
+       } else {
+         wheel_count--;
+       };
+
+       $(this).data("wheel_count", wheel_count);
+
+       if(wheel_count == 0) return;
+
+       if(wheel_count > 0) {
+         //scroll Up - zoom IN
+         new_half = Math.floor((g_end - g_start)/(4*wheel_count));
+         if(new_half < 150) return;
+       } else {
+         new_half = Math.abs((g_end - g_start)*wheel_count);
+       };
+
+
+       new_start = pos_time - new_half;
+       new_end = pos_time + new_half;
+
+       let show_start = new_start;
+       let show_end = new_end;
+
+       if(new_end >= unix_timestamp()) {
+         let r_len = new_end - new_start;
+         new_end = "now";
+         new_start = "now-"+r_len;
+         show_end = unix_timestamp();
+         show_start = show_end - r_len;
+       };
+
+       $(this).parent().find(".ind").text(from_unix_time(show_start) + " - " + from_unix_time(show_end) + " : " + wdhm(show_end - show_start));
+
+       timer = setTimeout(function(elm, time_div) {
+         if(document.contains(elm[0])) {
+           time_div.removeData("timer");
+           let g = elm;
+           let wheel_count = time_div.data("wheel_count");
+
+           if(wheel_count === undefined || wheel_count == 0) {
+             return;
+           };
+
+           let elm_offset = time_div.offset();
+           let x = e.pageX - elm_offset.left;
+           let im = g.data("im");
+
+           let g_start = Number(im["start"]);
+           let g_end = Number(im["end"]);
+           let g_w = Number(im["graph_width"]);
+
+           let pos_time = Math.floor(g_start + (g_end - g_start)*x/g_w);
+
+           let new_half;
+           let new_start;
+           let new_end;
+
+           if(wheel_count > 0) {
+             //scroll Up - zoom IN
+             new_half = Math.floor((g_end - g_start)/(4*wheel_count));
+             if(new_half < 150) return;
+           } else {
+             new_half = Math.abs((g_end - g_start)*wheel_count);
+           };
+
+           new_start = pos_time - new_half;
+           new_end = pos_time + new_half;
+
+           if(new_end >= unix_timestamp()) {
+             let r_len = new_end - new_start;
+             new_end = "now";
+             new_start = "now-"+r_len;
+           };
+
+           time_div.removeData("wheel_count");
+
+           $("."+$.escapeSelector(g.data("sync"))).each(function() {
+             let gd = $(this).data("gdata");
+             gd["start"] = new_start;
+             gd["end"] = new_end;
+             $(this).data("gdata", gd);
+           }).trigger("graph_update");
+
+         };
+       }, 1000, g, $(this));
+       $(this).data("timer", timer);
+     })
+     .on("mouseup", function(e) {
+       if($(this).data("md") && $(this).data("range-start") !== undefined) {
+         let new_start = Number($(this).data("range-start"));
+         let new_end = Number($(this).data("range-end"));
+         if((new_end - new_start) > 300) {
+
+           let g= $(this).closest(".graph");
+
+           $("."+$.escapeSelector(g.data("sync"))).each(function() {
+             let gd = $(this).data("gdata");
+             gd["start"] = new_start;
+             gd["end"] = new_end;
+             $(this).data("gdata", gd);
+           }).trigger("graph_update");
+
+         };
+       };
+     })
+     .on("mousemove", function(e) {
+       e.stopPropagation();
+       let elm_offset = $(this).offset();
+       let x = e.pageX - elm_offset.left;
+       let g = $(this).closest(".graph");
+       let im = g.data("im");
+
+       let timer = $(this).data("timer");
+       if(timer !== undefined) clearTimeout(timer);
+       $(this).removeData("timer");
+       $(this).removeData("wheel_count");
+
+       let g_start = Number(im["start"]);
+       let g_end = Number(im["end"]);
+       let g_w = Number(im["graph_width"]);
+
+       let pos_time = Math.floor(g_start + (g_end - g_start)*x/g_w);
+
+       if($(this).data("md")) {
+         let cursor = $(this).find(".rangecursor");
+         if(cursor.length == 0) {
+           cursor = $(DIV).addClass("rangecursor").appendTo($(this));
+         };
+         let left = $(this).data("md-x");
+         let width = Number(x) - Number(left);
+         if(width < 0) {
+           left = x;
+           width = -width;
+         };
+         let new_start = Math.floor(g_start + (g_end - g_start)*left/g_w);
+         let new_end = Math.floor(g_start + (g_end - g_start)*(left+width)/g_w);
+         $(this).data("range-start", new_start);
+         $(this).data("range-end", new_end);
+         cursor.css({"left": left+"px", "width": width+"px"});
+         $(this).parent().find(".ind").text(from_unix_time(new_start) + " - " + from_unix_time(new_end) + " : " + wdhm(new_end - new_start));
+       } else {
+         $(this).parent().find(".ind").text(from_unix_time(pos_time));
+       };
+       $(this).parent().find(".ind").show();
+     })
+     .on("mouseout", function() {
+       $(this).parent().find(".ind").hide();
+
+       let timer = $(this).data("timer");
+       if(timer !== undefined) clearTimeout(timer);
+       $(this).removeData("timer");
+       $(this).removeData("wheel_count");
+     })
+     .on("mousedown", function(e) {
+       e.stopPropagation();
+       let elm_offset = $(this).offset();
+       let x = e.pageX - elm_offset.left;
+       $(this).data("md", true);
+       $(this).data("md-x", x);
+
+       let timer = $(this).data("timer");
+       if(timer !== undefined) clearTimeout(timer);
+       $(this).removeData("timer");
+       $(this).removeData("wheel_count");
+     })
+   )
+  ;
+
+  let size_sel = $(SELECT).addClass("size_sel");
+
+  for(let i in graph_sizes_list) {
+    size_sel.append( $(OPTION).text(graph_sizes_list[i]).val(graph_sizes_list[i]) );
+  };
+
+  size_sel.val(get_local("graph_WxH", default_graph_size));
+
+  controls
+   .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-arrowthick-1-w"])
+     .title("На страницу влево")
+     .click(function(e) {
+       e.stopPropagation();
+       let g = $(this).closest(".graph");
+       let im = g.data("im");
+
+       let offset = Number(im["end"]) - Number(im["start"]);
+       let new_start = Number(im["start"]) - offset;
+       let new_end = Number(im["end"]) - offset;
+
+       $("."+$.escapeSelector(g.data("sync"))).each(function() {
+         let gd = $(this).data("gdata");
+         gd["start"] = new_start;
+         gd["end"] = new_end;
+         $(this).data("gdata", gd);
+       }).trigger("graph_update");
+
+     })
+   )
+   .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-arrow-l"])
+     .title("На четверть страницы влево")
+     .click(function(e) {
+       e.stopPropagation();
+       let g = $(this).closest(".graph");
+       let im = g.data("im");
+
+       let offset = Math.floor((Number(im["end"]) - Number(im["start"]))/4);
+       let new_start = Number(im["start"]) - offset;
+       let new_end = Number(im["end"]) - offset;
+
+       $("."+$.escapeSelector(g.data("sync"))).each(function() {
+         let gd = $(this).data("gdata");
+         gd["start"] = new_start;
+         gd["end"] = new_end;
+         $(this).data("gdata", gd);
+       }).trigger("graph_update");
+
+     })
+   )
+   .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-arrow-r"])
+     .title("На четверть страницы вправо")
+     .click(function(e) {
+       e.stopPropagation();
+       let g = $(this).closest(".graph");
+       let im = g.data("im");
+
+       let offset = Math.floor((Number(im["end"]) - Number(im["start"]))/4);
+       let new_start = Number(im["start"]) + offset;
+       let new_end = Number(im["end"]) + offset;
+
+       if(new_end > unix_timestamp()) {
+         let diff = new_end - new_start;
+         new_end = "now";
+         new_start = "end-"+diff;
+       };
+
+       $("."+$.escapeSelector(g.data("sync"))).each(function() {
+         let gd = $(this).data("gdata");
+         gd["start"] = new_start;
+         gd["end"] = new_end;
+         $(this).data("gdata", gd);
+       }).trigger("graph_update");
+
+     })
+   )
+   .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-arrowthick-1-e"])
+     .title("На страницу вправо")
+     .click(function(e) {
+       e.stopPropagation();
+       let g = $(this).closest(".graph");
+       let im = g.data("im");
+
+       let offset = Number(im["end"]) - Number(im["start"]);
+       let new_start = Number(im["start"]) + offset;
+       let new_end = Number(im["end"]) + offset;
+
+       if(new_end > unix_timestamp()) {
+         let diff = new_end - new_start;
+         new_end = "now";
+         new_start = "end-"+diff;
+       };
+
+       $("."+$.escapeSelector(g.data("sync"))).each(function() {
+         let gd = $(this).data("gdata");
+         gd["start"] = new_start;
+         gd["end"] = new_end;
+         $(this).data("gdata", gd);
+       }).trigger("graph_update");
+
+     })
+   )
+   .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-arrowthickstop-1-e"])
+     .title("Сейчас")
+     .click(function(e) {
+       e.stopPropagation();
+       let g = $(this).closest(".graph");
+       let im = g.data("im");
+
+       let diff = Number(im["end"]) - Number(im["start"]);
+       let new_end = "now";
+       let new_start = "end-"+diff;
+
+       $("."+$.escapeSelector(g.data("sync"))).each(function() {
+         let gd = $(this).data("gdata");
+         gd["start"] = new_start;
+         gd["end"] = new_end;
+         $(this).data("gdata", gd);
+       }).trigger("graph_update");
+
+     })
+   )
+   .append( $(LABEL).addClass("min5em") )
+   .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-zoomin"])
+     .title("Уменьшить масштаб (также можно прокрутить колесо мыши вверх наведя на график)")
+     .click(function(e) {
+       e.stopPropagation();
+       let g = $(this).closest(".graph");
+       let im = g.data("im");
+
+       let diff = Number(im["end"]) - Number(im["start"]);
+       let center = Number(im["start"]) + Math.floor(diff/2);
+       let new_start = center - Math.floor(diff/4);
+       let new_end = center + Math.floor(diff/4);
+       let new_diff = new_end - new_start;
+       if(new_diff < 300) { return; };
+
+       if(new_end > unix_timestamp()) {
+         let diff = new_end - new_start;
+         new_end = "now";
+         new_start = "end-"+diff;
+       };
+
+       $("."+$.escapeSelector(g.data("sync"))).each(function() {
+         let gd = $(this).data("gdata");
+         gd["start"] = new_start;
+         gd["end"] = new_end;
+         $(this).data("gdata", gd);
+       }).trigger("graph_update");
+     })
+   )
+   .append( $(LABEL).addClass(["button"]).text("1H")
+     .title("Установить масштаб в 1 час")
+     .click(function(e) {
+       e.stopPropagation();
+       let g = $(this).closest(".graph");
+       let im = g.data("im");
+
+       let diff = Number(im["end"]) - Number(im["start"]);
+       let center = Number(im["start"]) + Math.floor(diff/2);
+       let new_start = center - 1800;
+       let new_end = center + 1800;
+       let new_diff = new_end - new_start;
+
+       let btn_gd = g.data("gdata");
+
+       if(new_end > unix_timestamp()) {
+         let diff = new_end - new_start;
+         new_end = "now";
+         new_start = "end-"+diff;
+       } else if(btn_gd["end"] === "now") {
+         new_end = "now";
+         new_start = "end-1h";
+       };
+
+       $("."+$.escapeSelector(g.data("sync"))).each(function() {
+         let gd = $(this).data("gdata");
+         gd["start"] = new_start;
+         gd["end"] = new_end;
+         $(this).data("gdata", gd);
+       }).trigger("graph_update");
+     })
+   )
+   .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-zoomout"])
+     .title("Увеличить масштаб (также можно прокрутить колесо мыши вниз наведя на график)")
+     .click(function(e) {
+       e.stopPropagation();
+       let g = $(this).closest(".graph");
+       let im = g.data("im");
+
+       let diff = Number(im["end"]) - Number(im["start"]);
+       let center = Number(im["start"]) + Math.floor(diff/2);
+       let new_start = center - diff;
+       let new_end = center + diff;
+       let new_diff = new_end - new_start;
+
+       if(new_end > unix_timestamp()) {
+         let diff = new_end - new_start;
+         new_end = "now";
+         new_start = "end-"+diff;
+       };
+
+       $("."+$.escapeSelector(g.data("sync"))).each(function() {
+         let gd = $(this).data("gdata");
+         gd["start"] = new_start;
+         gd["end"] = new_end;
+         $(this).data("gdata", gd);
+       }).trigger("graph_update");
+     })
+   )
+   .append( size_sel
+     .on("change", function() {
+       let g = $(this).closest(".graph");
+       let a = String($(this).val()).split("x");
+
+       save_local("graph_WxH", $(this).val());
+
+       $("."+$.escapeSelector(g.data("sync"))).each(function() {
+         let gd = $(this).data("gdata");
+         gd["width"] = a[0];
+         gd["height"] = a[1];
+         $(this).data("gdata", gd);
+       }).trigger("graph_update");
+
+     })
+   )
+   .append( $(LABEL).addClass("min1em") )
+   .append( $(INPUT, {"type": "checkbox", "checked": get_local("graph_compact", false)})
+     .on("change", function() {
+       let compact = $(this).is(":checked");
+       save_local("graph_compact", compact);
+       let g = $(this).closest(".graph");
+       $("."+$.escapeSelector(g.data("sync"))).each(function() {
+         let gd = $(this).data("gdata");
+         gd["compact"] = compact;
+         $(this).data("gdata", gd);
+       }).trigger("graph_update");
+
+     })
+   )
+   .find(".button").css({"margin-right": "0.5em"})
+  ;
+
+  //{
+  // "file": "lldpc18ef63b54580.Gi0s28.int_io_500x150.png",
+  // "graph_width": "500",
+  // "graph_height": "150",
+  // "graph_left": "51",
+  // "graph_top": "15",
+  // "image_width": "581",
+  // "image_height": "289",
+  // "start": "1676350613"
+  // "end": "1676354213",
+  // }
+
+  cont.on("graph_update", function(e) {
+    e.stopPropagation();
+    let gdata = $(this).data("gdata");
+    let cont = $(this);
+
+
+    let safe_dev_id = data["devs"][ gdata["dev_id"] ]["safe_dev_id"];
+    let query = {"json": 1, "type": gdata["type"], "dev_id": safe_dev_id};
+
+    let graph_WxH = get_local("graph_WxH", default_graph_size);
+    let a = String(graph_WxH).split("x");
+
+    if(gdata["width"] !== undefined) {
+      query["width"] = gdata["width"];
+      query["height"] = gdata["height"];
+    } else {
+      query["width"] = a[0];
+      query["height"] = a[1];
+    };
+
+    if(gdata["compact"] === true || get_local("graph_compact", false)) {
+      query["compact"] = 1;
+    };
+
+    if(gdata["start"] !== undefined) {
+      query["start"] = gdata["start"];
+      query["end"] = gdata["end"];
+    };
+
+    if(gdata["type"] == "int_io" || gdata["type"] == "int_pkts" ||
+       false
+    ) {
+      query["int"] = data["devs"][ gdata["dev_id"] ]["interfaces"][ gdata["int"] ]["safe_if_name"];
+    };
+
+    run_query(query, function(res) {
+      if(res["ok"] == "no_data") {
+        cont.empty();
+        return;
+      };
+
+      let im = res["ok"];
+      cont.data("im", im);
+      let canvas = cont.find(".canvas");
+      let control = cont.find(".control");
+
+      canvas.find(".len_ind").text(wdhm(im["end"] - im["start"]));
+
+      canvas
+       .css({"display": "inline-block", "width": im["image_width"]+"px", "height": im["image_height"]+"px",
+             "background-image": "url(\"graph?file=" + im["file"] + "&"+ unix_timestamp() + "\")", "position": "relative"
+       })
+      ;
+
+      canvas.find(".time")
+       .css({"position": "absolute", "top": im["graph_top"]+"px", "left": im["graph_left"]+"px",
+             "width": im["graph_width"]+"px", "height": im["graph_height"]+"px",
+             "overflow": "hidden"
+       })
+      ;
+
+    }, "graph");
+
+
+  });
+  cont.trigger("graph_update");
+  return this;
 };

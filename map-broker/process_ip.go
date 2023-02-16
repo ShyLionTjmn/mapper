@@ -1111,6 +1111,12 @@ func process_ip_data(wg *sync.WaitGroup, ip string, startup bool) {
             if int_h.EvA(key) {
               gf := gf_prefix+"."+key+".rrd"
               red_args = red_args.Add(key+"."+ifIndex, gf)
+            } else if key == "ifHCOutOctets" && int_h.EvA("ifOutOctets") {
+              gf := gf_prefix+"."+key+".rrd"
+              red_args = red_args.Add("ifOutOctets."+ifIndex, gf)
+            } else if key == "ifHCInOctets" && int_h.EvA("ifInOctets") {
+              gf := gf_prefix+"."+key+".rrd"
+              red_args = red_args.Add("ifInOctets."+ifIndex, gf)
             }
           }
           red.Do("PUBLISH", "graph_calc." + ip, fmt.Sprintf("%s is matched", ifName))

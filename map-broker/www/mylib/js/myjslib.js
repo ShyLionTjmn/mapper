@@ -416,7 +416,7 @@ function auth_check(res) {
   return true;
 };
 
-function run_query(query, successfunc) {
+function run_query(query, successfunc, datapoint=AJAX) {
   if(query === undefined) {
     if(successfunc !== undefined) {
       successfunc();
@@ -427,7 +427,7 @@ function run_query(query, successfunc) {
     debugLog("Query: "+jstr(query));
   };
   $.ajax({
-    url: AJAX,
+    url: datapoint,
     method: 'POST',
     dataType: "json",
     contentType: 'application/json',
