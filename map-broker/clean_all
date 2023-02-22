@@ -12,7 +12,7 @@ then
   exit
 fi
 
-RED_CMD="redis-cli -s /var/run/redis/redis.sock"
+RED_CMD="redis-cli -s /tmp/redis.sock"
 
 sudo systemctl stop map-scanner
 sudo systemctl stop map-broker

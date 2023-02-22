@@ -45,7 +45,7 @@ const IDLE_SLEEP=600
 
 const WWW_ROOT = "/var/www/mapper"
 
-const REDIS_SOCKET="/var/run/redis/redis.sock"
+const REDIS_SOCKET="/tmp/redis.sock"
 const REDIS_DB="0"
 const REDIS_ERR_SLEEP=5
 

@@ -74,25 +74,27 @@ func main() {
       switch(data.(M)["type"].(string)) {
       case "string":
         rcmd = "SET"
-        rargs.Add(data.(M)["data"])
+        rargs = rargs.Add(data.(M)["data"])
       case "hash":
         rcmd = "HSET"
         for _, arg := range data.(M)["data"].([][]uint8) {
-          rargs.Add(arg)
+          rargs = rargs.Add(arg)
+          //fmt.Println("\t", string(arg))
         }
       case "list":
         rcmd = "RPUSH"
         for _, arg := range data.(M)["data"].([][]uint8) {
-          rargs.Add(arg)
+          rargs = rargs.Add(arg)
         }
       default:
         fmt.Println("Unsupported type")
         continue
       }
       fmt.Println(data.(M)["type"])
+      //spew.Dump(rargs)
       if opt_y {
         if _, err = red.Do("DEL", key); err != nil { panic(err) }
-        if _, err = red.Do(rcmd, rargs); err != nil { panic(err) }
+        if _, err = red.Do(rcmd, rargs...); err != nil { panic(err) }
       }
     }
   }
