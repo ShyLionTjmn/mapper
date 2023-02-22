@@ -382,8 +382,8 @@ function createWindow(win_id, title, options) {
 
   let elm=document.getElementById(win_id);
 
-  let position = {"my": "center", "at": "center", "of": $(window)};
-  if(elm) {
+  let position = {"my": "center top", "at": "center top", "of": $(window)};
+  if(elm != null) {
     position = $(elm).dialog("option", "position");
     $(elm).dialog("close");
   };
@@ -391,6 +391,7 @@ function createWindow(win_id, title, options) {
   let content = $(DIV).addClass("content");
 
   let dlg = $(DIV, {id: win_id}).addClass("dialog_start")
+   .css({"z-index": windows_z})
    .title(title)
    .append( content )
    .appendTo( $("BODY") )
@@ -400,7 +401,7 @@ function createWindow(win_id, title, options) {
 
   let dialog_options = {
     modal: false,
-    maxHeight:1000,
+    maxHeight: $(window).height() - 10,
     maxWidth:1800,
     width: "auto",
     height: "auto",
@@ -409,7 +410,11 @@ function createWindow(win_id, title, options) {
     close: function() {
       $(this).dialog("destroy");
       $(this).remove();
-    }
+    },
+    open: function (event, ui) {
+      $('.ui-dialog').css('z-index', windows_z+1);
+      $('.ui-widget-overlay').css('z-index', windows_z);
+    },
   };
 
   if(options !== undefined) {
@@ -425,6 +430,7 @@ function createWindow(win_id, title, options) {
   widget.find(".ui-dialog-title").css({"font-size": "10", "font-weight": "normal"});
   widget.find(".ui-dialog-titlebar").css({"padding": "0.1em 0.3em"});
   widget.find(".ui-dialog-content").css({"padding": "0.2em 0.3em"});
+  widget.css({"border": "2px solid navy"});
 
   widget.find(":focus").blur();
 
@@ -1065,6 +1071,9 @@ function device_to_list(dev_id) {
        .css("white-space", "nowrap")
        .text(data["devs"][dev_id]["short_name"] != undefined ? data["devs"][dev_id]["short_name"] : dev_id)
      )
+     .click(function() {
+       device_win($(this).data("id"));
+     })
   );
 };
 
@@ -1092,25 +1101,431 @@ function device_dblclick(ui) {
   $(".inpopup").remove();
 };
 
-function device_win(dev) {
-  let dlg = createWindow("devwin_"+dev["id"], dev["short_name"]);
-  dlg.find(".content")
-   .css({"white-space": "pre"})
-   .text(JSON.stringify(dev, null, 2))
+function device_win(dev_id) {
+  run_query({"action": "get_device", "dev_id": dev_id}, function(res) {
+    if(res["ok"]["no_data"] !== undefined) {
+      show_dialog("Устройство отсутствует в данных.");
+      return; 
+    };
+
+    let dev = res["ok"]["dev"];
+
+    let dlg = createWindow("dev_win_"+dev_id, dev["short_name"]);
+    let content = dlg.find(".content");
+    dlg.data("dev_id", dev_id);
+    data["devs"][dev_id] = dev;
+
+    let last_seen=new Date(dev["last_seen"]*1000)
+    let diff=time()-dev["last_seen"];
+
+    let status_short = "Ok";
+    let status_long = "В работе";
+    let status_bg_color = "lightgreen";
+
+    if(dev["overall_status"] == "ok") {
+    } else if(dev["overall_status"] == "error") {
+      status_short = "ERR";
+      status_long = "Ошибка: "+dev["last_error"];
+      status_bg_color = "red";
+    } else if(dev["overall_status"] == "pause") {
+      status_short = "PAU";
+      status_long = "На паузе";
+      status_bg_color = "gray";
+    } else if(dev["overall_status"] == "warn") {
+      status_short = "WRN";
+      status_long = "Внимание: "+dev["last_error"];
+      status_bg_color = "orange";
+    } else {
+      status_short = dev["overall_status"];
+      status_long = dev["overall_status"] + ": "+dev["last_error"];
+      status_bg_color = "purple";
+    };
+
+    content
+     .css({"line-height": "150%"})
+     .append( $(DIV)
+       .append( $(LABEL).text(status_short).title(status_long).css({"background-color": status_bg_color, "border": "1px solid black", "margin-right": "0.5em"}) )
+       .append( $(LABEL).text("Посл. данные: "+DateTime(last_seen)+" ("+time_diff(diff)+" назад)") )
+       .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-info"])
+         .css({"float": "right", "margin-left": "1em"})
+         .data("data", jstr(dev))
+         .click(function() {
+           let dev_id = $(this).closest(".dialog_start").data("dev_id");
+           createWindow("dev_json_"+dev_id, "JSON: "+data["devs"][dev_id]["short_name"], {
+                        minWidth: 500,
+                        maxWidth: 1500,
+                        width: 500,
+                        maxHeight:  $(window).height() - 10,
+            })
+            .find(".content").css({"white-space": "pre"}).text( $(this).data("data") )
+            .parent().trigger("recenter")
+           ;
+         })
+       )
+     )
+     .append( $(DIV)
+       .append( $(LABEL).text("sysLoc: " + dev["sysLocation"]) )
+     )
+     .append( $(DIV)
+       .append( $(LABEL).text("Uptime: " + dev["sysUpTimeStr"]) )
+     )
+     .append( $(DIV)
+       .append( $(LABEL).text(" IP: " + dev["data_ip"] + " ") )
+       .append( $(A, {"target": "blank", "href": "ssh://"+dev["data_ip"]}).text("SSH")
+         .css({"margin-right": "0.5em"})
+       )
+       .append( $(A, {"target": "blank", "href": "telnet://"+dev["data_ip"]}).text("TELNET")
+         .css({"margin-right": "0.5em"})
+       )
+       .append( $(A, {"target": "blank", "href": "/ipdb/?action=link&ip="+dev["data_ip"]}).text("IPDB")
+       )
+     )
+     .append( $(DIV)
+       .append( $(LABEL).text("Тип: " + (dev["model_short"] != "Unknown" ? dev["model_short"] : dev["sysObjectID"]))
+         .title(dev["model_long"])
+       )
+       .append( dev["model_short"] != "Unknown" ? $(LABEL) : $(A, {"target": "blank", "href": "https://oidref.com/"+String(dev["sysObjectID"]).replace(/^\./, "")})
+         .css({"margin-left": "0.5em"})
+         .text("?")
+       )
+       .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-circle-b-info"])
+         .css({"margin-left": "0.5em"})
+         .click(function() { $(this).closest(".dialog_start").find(".sysdescr").toggle(); })
+       )
+     )
+     .append( $(DIV).addClass("sysdescr")
+       .hide()
+       .css({"border-radius": "5px", "background-color": "lightgray", "border": "1px solid black", "white-space": "pre", "padding": "0.3em",
+             "font-size": "smaller"
+       })
+       .text(dev["sysDescr"])
+     )
+    ;
+
+    let cpu_mem_div;
+    let cpu_mem_big_div;
+
+    if(dev["CPUs"] !== undefined) {
+      cpu_mem_div = $(DIV);
+
+      cpu_mem_big_div = $(DIV);
+
+      let src = "graph?type=cpu&max=100&small&dev_id="+dev["safe_dev_id"]+"&cpu_list="+keys(dev["CPUs"]).join(",");
+      src += "&" + unix_timestamp();
+
+      let img_title_a = [];
+
+      let gdata = {"type": "cpu", "max": 100, "dev_id": dev_id, "no_head": true, "cpu_list": keys(dev["CPUs"]).join(",")};
+
+      for(let cpui in dev["CPUs"]) {
+        src += "&cpu_name" + cpui + "=" + encodeURIComponent(dev["CPUs"][cpui]["name"]);
+        src += "&cpu_key" + cpui + "=" + encodeURIComponent(dev["CPUs"][cpui]["_graph_key"]);
+        img_title_a.push(dev["CPUs"][cpui]["name"]+": "+dev["CPUs"][cpui]["cpu1MinLoad"]+"%");
+
+        gdata["cpu_name" + cpui] = dev["CPUs"][cpui]["name"];
+        gdata["cpu_key" + cpui] = dev["CPUs"][cpui]["_graph_key"];
+      };
+
+      cpu_mem_div
+       .append( $(LABEL).text("CPUs: ") )
+       .append( $(IMG, {"src": src}).title("1 Min Load:\n"+img_title_a.join("\n"))
+         .css({"border": "1px solid gray"})
+         .click(function() {
+           let big = $(this).closest(".dialog_start").find(".cpu_big");
+           if(big.hasClass("collapsed")) {
+             big.removeClass("collapsed").css({"height": "auto"});
+           } else {
+             big.addClass("collapsed").css({"height": "0px"});
+           };
+         })
+       )
+      ;
+
+      cpu_mem_big_div
+       .append( $(DIV).addClass("cpu_big").css({"height": "0px", "overflow": "hidden"}).addClass("collapsed")
+         .graph(gdata)
+       )
+      ;
+    };
+
+    if(dev["memoryUsed"] !== undefined) {
+      if(cpu_mem_div === undefined) {
+        cpu_mem_div = $(DIV);
+        cpu_mem_big_div = $(DIV);
+      };
+
+      let src = "graph?type=mem&small&dev_id="+dev["safe_dev_id"];
+      if(dev["memorySize"] !== undefined) {
+        src += "&max=" + dev["memorySize"];
+      };
+
+      cpu_mem_div
+       .append( $(LABEL).text(" Mem: ") )
+       .append( $(IMG, {"src": src})
+         .title("Занято "+GMK(dev["memoryUsed"]) + (dev["memorySize"] !== undefined ? " из " + GMK(dev["memorySize"]) : "" )) 
+         .css({"border": "1px solid gray"})
+         .click(function() {
+           let big = $(this).closest(".dialog_start").find(".mem_big");
+           if(big.hasClass("collapsed")) {
+             big.removeClass("collapsed").css({"height": "auto"});
+           } else {
+             big.addClass("collapsed").css({"height": "0px"});
+           };
+         })
+       )
+      ;
+
+      let gdata = {"type": "mem", "dev_id": dev_id, "no_head": true};
+      if(dev["memorySize"] !== undefined) {
+        gdata["max"] = dev["memorySize"];
+      };
+
+      cpu_mem_big_div
+       .append( $(DIV).addClass("mem_big").css({"height": "0px", "overflow": "hidden"}).addClass("collapsed")
+         .graph(gdata)
+       )
+      ;
+    };
+
+    if(cpu_mem_div !== undefined) {
+      content.append( cpu_mem_div );
+      content.append( cpu_mem_big_div );
+    };
+
+    let tabs_div = $(DIV);
+    let tabs_content = $(DIV);
+
+    tabs_div
+     .append( $(LABEL).text("Interfaces").addClass(["button"])
+       .click(function() { $(this).closest(".dialog_start").find(".interfaces").toggle(); })
+     )
+    ;
+
+    let ifcs_div = $(DIV).addClass("interfaces").addClass("table")
+     .hide()
+    ;
+
+    for(let i in dev["interfaces_sorted"]) {
+      let ifName = dev["interfaces_sorted"][i];
+      let int_data = dev["interfaces"][ifName];
+
+      let if_row = $(DIV).addClass("tr")
+       .data("int", ifName)
+       .data("dev_id", dev_id)
+       .click(function() {
+         show_interface_window($(this).data("dev_id"), $(this).data("int"));
+       })
+      ;
+
+      if_row
+       .append( $(SPAN).addClass("td").text(ifName)
+         .css({"white-space": "nowrap"})
+       )
+      ;
+
+      if(int_data["_graph_prefix"] !== undefined) {
+        let gsrc = "graph?small&dev_id="+dev["safe_dev_id"]+"&int="+int_data["safe_if_name"];
+
+        let io_max = 10000000;
+        if(int_data["ifSpeed"] != undefined && int_data["ifSpeed"] >= 10000000 && int_data["ifSpeed"] != "4294967295") {
+          io_max = Number(int_data["ifSpeed"]);
+        } else if(int_data["ifHighSpeed"] != undefined && int_data["ifHighSpeed"] >= 10) {
+          io_max = Number(int_data["ifHighSpeed"]) * 1000000;
+        };
+
+        let pkts_max = Math.floor(io_max/15000);
+
+        if_row
+         .append( $(SPAN).addClass("td")
+           .css({"white-space": "nowrap"})
+           .append( $(IMG, {"src": gsrc+"&type=int_io&max="+io_max}).css({"border": "1px solid gray", "margin-right": "0.5em"}) )
+           .append( $(IMG, {"src": gsrc+"&type=int_pkts&max="+pkts_max}).css({"border": "1px solid gray", "margin-right": "0.5em"}) )
+         )
+        ;
+      } else {
+        if_row.append( $(SPAN).addClass("td") );
+      };
+
+      if_row
+       .append( $(SPAN).addClass("td")
+         .css({"white-space": "nowrap"})
+         .append( int_labels(ifName, dev) )
+       )
+      ;
+
+      if_row
+       .append( $(SPAN).addClass("td").text(int_data["ifAlias"])
+         .css({"white-space": "nowrap"})
+       )
+      ;
+
+      if_row.appendTo( ifcs_div );
+    };
+
+    ifcs_div.appendTo( tabs_content );
+
+    if(dev["invEntParent"] !== undefined) {
+      tabs_div
+       .append( $(LABEL).text("Inventory").addClass(["button"])
+         .click(function() { $(this).closest(".dialog_start").find(".inventory").toggle(); })
+       )
+      ;
+
+      let inventory = $(DIV).addClass("inventory")
+       .hide()
+      ;
+
+      for(let key in dev["invEntParent"]) {
+        if(dev["invEntParent"][key] == 0) {
+          inventory.append( inv_ent(dev_id, key, 0) );
+        };
+      };
+
+      inventory.appendTo( tabs_content );
+    };
+
+    content.append( tabs_div );
+    content.append( tabs_content );
+
+    dlg.trigger("recenter");
+  });
+};
+
+function inv_ent(dev_id, key, count) {
+  let ret = $(DIV);
+  if(count > 100) { error_at(); return ret; };
+
+  ret.css({"padding-left": count+"em"});
+
+  let self_div = $(DIV)
+   .css({"background-color": "azure", "padding": "0.05em 0.5em", "border": "1px solid gray", "display": "inline-block"})
+   .appendTo( ret )
   ;
-  dlg.trigger("recenter");
+
+  let name = data["devs"][dev_id]["invEntName"] !== undefined ? String(data["devs"][dev_id]["invEntName"][key]).trim() : "";
+  let descr = data["devs"][dev_id]["invEntDescr"] !== undefined ? String(data["devs"][dev_id]["invEntDescr"][key]).trim() : "";
+  let fru = data["devs"][dev_id]["invEntCRU"] !== undefined ? data["devs"][dev_id]["invEntCRU"][key] : undefined;
+  let fw_rev = data["devs"][dev_id]["invEntFwRev"] !== undefined ? String(data["devs"][dev_id]["invEntFwRev"][key]).trim() : "";
+  let hw_rev = data["devs"][dev_id]["invEntHwRev"] !== undefined ? String(data["devs"][dev_id]["invEntHwRev"][key]).trim() : "";
+  let sw_rev = data["devs"][dev_id]["invEntSwRev"] !== undefined ? String(data["devs"][dev_id]["invEntSwRev"][key]).trim() : "";
+  let mfg = data["devs"][dev_id]["invEntMfg"] !== undefined ? String(data["devs"][dev_id]["invEntMfg"][key]).trim() : "";
+  let model = data["devs"][dev_id]["invEntModel"] !== undefined ? String(data["devs"][dev_id]["invEntModel"][key]).trim() : "";
+  let serial = data["devs"][dev_id]["invEntSerial"] !== undefined ? String(data["devs"][dev_id]["invEntSerial"][key]).trim() : "";
+  let type = data["devs"][dev_id]["invEntType"] !== undefined ? data["devs"][dev_id]["invEntType"][key] : undefined;
+
+  let type_text = "Undef";
+
+  switch(type) {
+  case undefined:
+    type_text = "Undef";
+    break;
+  case 1:
+    type_text = "Other";
+    break;
+  case 2:
+    type_text = "Unknown";
+    break;
+  case 3:
+    type_text = "Chassis";
+    break;
+  case 4:
+    type_text = "Backplane";
+    break;
+  case 5:
+    type_text = "Container";
+    break;
+  case 6:
+    type_text = "PSU";
+    break;
+  case 7:
+    type_text = "FAN";
+    break;
+  case 8:
+    type_text = "Sensor";
+    break;
+  case 9:
+    type_text = "Module";
+    break;
+  case 10:
+    type_text = "Port";
+    break;
+  case 11:
+    type_text = "Stack";
+    break;
+  case 12:
+    type_text = "CPU";
+    break;
+  default:
+    type_text = type;
+  };
+
+  self_div
+   .append( $(DIV).text(name).title(descr) )
+  ;
+
+  if(descr != "") {
+    self_div
+     .append( $(DIV).text(descr) )
+    ;
+  };
+  self_div
+   .append( $(DIV)
+     .append( $(LABEL).text("Type: "+type_text) )
+     .append( $(LABEL).text(serial != "" ? " Serial: "+serial : "") )
+   )
+  ;
+
+  let revision_a = [];
+  if(hw_rev != "") { revision_a.push("HW Rev: "+hw_rev); };
+  if(fw_rev != "") { revision_a.push("FW Rev: "+fw_rev); };
+  if(sw_rev != "") { revision_a.push("SW Rev: "+sw_rev); };
+
+  if(revision_a.length > 0 ) {
+    self_div.append( $(DIV).text(revision_a.join(", ")) );
+  };
+
+  let model_a = [];
+
+  if(mfg != "") { model_a.push(mfg); };
+  if(model != "") { model_a.push(model); };
+
+  if(model_a.length > 0 ) {
+    self_div.append( $(DIV).text(model_a.join(" ")) );
+  };
+
+  let children = [];
+
+  for(let child_key in data["devs"][dev_id]["invEntParent"]) {
+    if(Number(data["devs"][dev_id]["invEntParent"][child_key]) == Number(key)) {
+      children.push(child_key);
+    };
+  };
+
+  if(children.length > 0) {
+    children.sort(function(a, b) { return data["devs"][dev_id]["invEntOrder"][a] - data["devs"][dev_id]["invEntOrder"][b]; });
+
+    let children_div = $(DIV);
+
+    for(let i in children) {
+      children_div.append( inv_ent(dev_id, children[i], count+1) );
+    };
+
+    children_div.appendTo(ret);
+  };
+
+  return ret;
 };
 
 function device_click(ui, e) {
   let id=ui.parent().attr('id');
 
-  if(e.shiftKey) {
-    device_win(data["devs"][id]);
+  if(!allow_select) {
+    device_win(id);
     return;
   };
 
   //device_clicked(data["devs"][id]);
-  if(data["devs"][id] != undefined && allow_select) {
+  if(data["devs"][id] != undefined && (allow_select || e.shiftKey)) {
     if(e.ctrlKey) {
       let i=dev_selected.indexOf(id);
       if(i < 0) {
@@ -1302,7 +1717,11 @@ function int_popup_label(int, dev_id) {
   let name_top=dev_name.position().top;
   let name_left=dev_name.position().left;
 
+  let src_int = data["devs"][dev_id]["interfaces"][int]["tunnelSrcIfName"];
   let over_name_text=int_st["short_name"];
+  if(src_int !== undefined) {
+    over_name_text += "\n"+src_int;
+  };
 
   let col=temp_data["devs"][dev_id]["interfaces"][int]["_col"];
   let row=temp_data["devs"][dev_id]["interfaces"][int]["_row"];
@@ -1321,16 +1740,17 @@ function int_popup_label(int, dev_id) {
    .css("position", "absolute")
    .css("left", name_left+"px")
    .css("top", name_top+"px")
-//   .css("width", name_width-2+"px")
    .css("height", name_height-2+"px")
-   .css("white-space", "nowrap")
-   .css("font-size", dev_name_size)
-   //.css("background-color", "yellow")
+   .css("white-space", "pre")
+   .css("line-height", src_int !== undefined ? "80%": "normal")
    .css("background-color", "#FFFFAA")
    .css("border", "1px solid black")
    .css("z-index", windows_z-1)
-   .append( $(LABEL).html("&bull;").css({"font-size": "larger", "color": int_st["bullet_color"]}) )
-   .append( $(LABEL).text(over_name_text) )
+   .css({"padding": "1px"})
+   .append( $(LABEL).html("&bull;").css({"font-size": src_int !== undefined ? "normal":"larger", "color": int_st["bullet_color"]}) )
+   .append( $(LABEL).text(over_name_text)
+     .css({"font-size": src_int !== undefined ? "smaller":"larger"})
+   )
   ;
 
   div.appendTo(dev_elm);
@@ -1400,6 +1820,21 @@ function int_popup_label(int, dev_id) {
      .appendTo(dev_elm);
   };
 
+  if(src_int !== undefined) {
+    let src_elm = document.getElementById(src_int+"@"+dev_id);
+    if(src_elm != null) {
+      $(src_elm).addClass("outlined").css({"outline": "3px solid fuchsia"});
+    };
+  } else {
+    for(let ifName in data["devs"][dev_id]["interfaces"]) {
+      if(data["devs"][dev_id]["interfaces"][ifName]["tunnelSrcIfName"] == int) {
+        let _elm = document.getElementById(ifName+"@"+dev_id);
+        if(_elm != null) {
+          $(_elm).addClass("outlined").css({"outline": "3px solid fuchsia"});
+        };
+      };
+    };
+  };
 };
 
 function kmg(speed,space) {
@@ -1451,6 +1886,13 @@ function int_metrics(int, dev) {
           labels["00_ifstatus"]["long_text"]="STP Blocked";
           labels["00_ifstatus"]["bg_color"]="magenta";
         };
+        if(dev["interfaces"][int]["eigrpIfPkts"] != undefined && dev["interfaces"][int]["eigrpIfPkts"] > 0 &&
+           dev["interfaces"][int]["eigrpIfPeerCount"] == 0
+        ) {
+          labels["00_ifstatus"]["short_text"]="Ei";
+          labels["00_ifstatus"]["long_text"]="No EIGRP neighbours";
+          labels["00_ifstatus"]["bg_color"]="orange";
+        };
       } else {
         labels["00_ifstatus"]["short_text"]="Un";
         labels["00_ifstatus"]["long_text"]="Unknown";
@@ -1482,7 +1924,7 @@ function int_metrics(int, dev) {
     } else if(dev["interfaces"][int]['ifHighSpeed'] != undefined) {
       labels["02_speed"]={};
       labels["02_speed"]["short_text"]=kmg(dev["interfaces"][int]['ifHighSpeed']*1000000)+"bps";
-      labels["02_speed"]["long_text"]="ifSpeed "+dev["interfaces"][int]['ifSpeed']*1000000;
+      labels["02_speed"]["long_text"]="ifSpeed "+dev["interfaces"][int]['ifHighSpeed']*1000000;
       labels["02_speed"]["bg_color"]="white";
     };
 
@@ -1494,6 +1936,10 @@ function int_metrics(int, dev) {
       if(dev["interfaces"][int]['portMode'] == 1) { //access
         labels["03_switchport"]["short_text"]="A&nbsp;"+dev["interfaces"][int]['portPvid'];
         labels["03_switchport"]["long_text"]="Access VLAN:&nbsp;"+dev["interfaces"][int]['portPvid'];
+        if(dev["interfaces"][int]['portVvid'] != undefined && dev["interfaces"][int]['portVvid'] != 4096) {
+          labels["03_switchport"]["short_text"] += ", V "+dev["interfaces"][int]['portVvid'];
+          labels["03_switchport"]["long_text"] += "\nVoice VLAN: "+dev["interfaces"][int]['portVvid'];
+        };
         labels["03_switchport"]["bg_color"]="#AAAAFF";
       } else if(dev["interfaces"][int]['portMode'] == 2 && dev["interfaces"][int]['portTrunkVlans'] != undefined) { //trunk
         labels["03_switchport"]["short_text"]="T&nbsp;"+dev["interfaces"][int]['portTrunkVlans']+"/"+dev["interfaces"][int]['portPvid'];
@@ -1667,6 +2113,7 @@ function interface_in(int, dev) {
 
 function interface_out() {
   $(".inpopup").remove();
+  $(".outlined").removeClass("outlined").css({"outline": "none"});
   $(".line_highlight").each(function() {
     let svg=$(this).find("svg");
     let line=svg.find("line");
@@ -1731,6 +2178,12 @@ function int_style(int,dev) {
         ret["label_bg_color"]="orange";
         ret["bullet_color"]="saddlebrown";
       };
+      if(dev["interfaces"][int]["eigrpIfPkts"] != undefined && dev["interfaces"][int]["eigrpIfPkts"] > 0 &&
+         dev["interfaces"][int]["eigrpIfPeerCount"] == 0
+      ) {
+        ret["label_bg_color"]="orange";
+        ret["bullet_color"]="saddlebrown";
+      };
     };
   };
   return ret;
@@ -1778,7 +2231,6 @@ function select_down(dev_id, int, excl, counter) {
           if(dev_selected.indexOf(nei_dev) >= 0 || excl.indexOf(nei_dev) >= 0) continue; //for(let link_id ...
           dev_selected.push(nei_dev);
           dev_select_border($(document.getElementById(nei_dev)), true);
-          //$(document.getElementById(nei_dev)).css("border", dev_sel_border);
           for(let nei_int_i in data["devs"][nei_dev]["interfaces_sorted"]) {
             let nei_int = data["devs"][nei_dev]["interfaces_sorted"][nei_int_i];
             select_down(nei_dev, nei_int, excl, counter + 1);
@@ -1982,16 +2434,16 @@ function add_device(dev_id) {
      grid: [grid, grid],
      zIndex: 2147483647
    })
-   .dblclick(function(e) {
-     e.stopPropagation();
-     if($(e.target).is(".devname")) {
-       device_dblclick($(e.target));
-     };
-   })
    .click(function(e) {
      e.stopPropagation();
      if($(e.target).is(".devname")) {
        device_click($(e.target), e);
+     };
+   })
+   .dblclick(function(e) {
+     e.stopPropagation();
+     if($(e.target).is(".devname")) {
+       device_dblclick($(e.target));
      };
    })
    .css("dummy", "dummy")
@@ -2167,9 +2619,7 @@ function add_device(dev_id) {
           };
         };
 
-        let int_div=$(LABEL, {
-           id: int+"@"+dev_id
-         })
+        let int_div=$(LABEL, { id: int+"@"+dev_id })
          .data("int", int)
          .data("dev", data["devs"][dev_id])
          .css("position", "absolute")
@@ -2195,10 +2645,20 @@ function add_device(dev_id) {
              interface_in($(this).data("int"), $(this).data("dev"))
            },
            interface_out
-         );
-         let int_st=int_style(int, data["devs"][dev_id]);
-         int_div.css("background-color", int_st["label_bg_color"]);
-         int_div.appendTo(device);
+         )
+        ;
+        if(/^Tu/.test(int) && data["devs"][dev_id]["interfaces"][int]["ips"] !== undefined) {
+          for(let ip in data["devs"][dev_id]["interfaces"][int]["ips"]) {
+            if(data["devs"][dev_id]["interfaces"][int]["ips"][ip]["masklen"] < 30) {
+              // is HUB
+              int_div.css({"font-weight": "bold"});
+              break;
+            };
+          };
+        };
+        let int_st=int_style(int, data["devs"][dev_id]);
+        int_div.css("background-color", int_st["label_bg_color"]);
+        int_div.appendTo(device);
       };
     };
   };
@@ -2207,7 +2667,7 @@ function add_device(dev_id) {
 function build_connections() {
   for(let dev_id in data["devs"]) {
     let from_div=document.getElementById(dev_id);
-    if(from_div != undefined && data["devs"][dev_id]["interfaces"] != undefined) {
+    if(from_div != null && data["devs"][dev_id]["interfaces"] != undefined) {
       for(let int_i in data["devs"][dev_id]["interfaces_sorted"]) {
         let int = data["devs"][dev_id]["interfaces_sorted"][int_i];
 
@@ -2295,7 +2755,7 @@ function build_connections() {
           let link_status = int_links[li]["status"];
 
           let to_div=document.getElementById(nei_dev);
-          if(to_div != undefined) {
+          if(to_div != null) {
 
             connections[link_id] = {};
             connections[link_id]["legs"] = [];
@@ -2431,7 +2891,7 @@ function build_connections() {
 function arrange_interfaces_dev2tp(dev_id, moved) {
 
   let from_elm=document.getElementById(dev_id);
-  if(from_elm == undefined) {
+  if(from_elm == null) {
     error_at("Undefined from element"); 
     return;
   };
@@ -2572,7 +3032,7 @@ function arrange_interfaces_dev2tp(dev_id, moved) {
             temp_data["devs"][dev_id]["slots"][nearest_slot]["func"]="dev2tp";
 
             let int_elm=document.getElementById(int+"@"+dev_id);
-            if(int_elm == undefined) {
+            if(int_elm == null) {
               error_at("Cannot find interface element "+int+"@"+dev_id);
               return;
             };
@@ -2607,7 +3067,7 @@ function arrange_interfaces_dev2tp(dev_id, moved) {
 function arrange_interfaces_dev2dev(dev_id, recursive, moved) {
 
   let from_elm=document.getElementById(dev_id);
-  if(from_elm == undefined) {
+  if(from_elm == null) {
     error_at("Undefined from element"); 
     return;
   };
@@ -2665,7 +3125,7 @@ function arrange_interfaces_dev2dev(dev_id, recursive, moved) {
           if(leg_count == 1) {
             //direct link without map_data["tps"]
             let to_elm=document.getElementById(nei_dev);
-            if(to_elm == undefined) {
+            if(to_elm == null) {
               error_at("Cannot find nei element");
               return;
             };
@@ -2784,7 +3244,7 @@ function arrange_interfaces_dev2dev(dev_id, recursive, moved) {
             temp_data["devs"][dev_id]["slots"][nearest_slot]["func"]="dev2dev_dev";
 
             let int_elm=document.getElementById(int+"@"+dev_id);
-            if(int_elm == undefined) {
+            if(int_elm == null) {
               error_at("Cannot find interface element "+int+"@"+dev_id);
               return;
             };
@@ -2832,7 +3292,7 @@ function arrange_interfaces_dev2dev(dev_id, recursive, moved) {
           temp_data["devs"][dev_id]["slots"][sl]["func"]="dev2dev_reloc";
 
           let int_elm=document.getElementById(int+"@"+dev_id);
-          if(int_elm == undefined) {
+          if(int_elm == null) {
             error_at("Cannot find interface element "+int+"@"+dev_id);
             return;
           };
@@ -2882,7 +3342,7 @@ function draw_connection(link_id) {
       let elm_d1=document.getElementById(d1);
       let elm_i1=document.getElementById(i1+"@"+d1);
 
-      if(elm_d1 == undefined || elm_i1 == undefined) {
+      if(elm_d1 == null || elm_i1 == null) {
         error_at("undefined elm_d1 or elm_i1");
         continue;
       };
@@ -2893,7 +3353,7 @@ function draw_connection(link_id) {
       let elm_d2=document.getElementById(d2);
       let elm_i2=document.getElementById(i2+"@"+d2);
 
-      if(elm_d2 == undefined || elm_i2 == undefined) {
+      if(elm_d2 == null || elm_i2 == null) {
         error_at("undefined elm_d2 or elm_i2");
         continue;
       };
@@ -2916,7 +3376,7 @@ function draw_connection(link_id) {
       let elm_d1=document.getElementById(d1);
       let elm_i1=document.getElementById(i1+"@"+d1);
 
-      if(elm_d1 == undefined || elm_i1 == undefined) {
+      if(elm_d1 == null || elm_i1 == null) {
         error_at("undefined elm_d1 or elm_i1");
         continue;
       };
@@ -3133,19 +3593,19 @@ function clear_link_objects(link_id) {
     for(let l in connections[link_id]["legs"]) {
       if(connections[link_id]["legs"][l]["drawn"]) {
         let elm_line=document.getElementById(connections[link_id]["legs"][l]["drawn"]);
-        if(elm_line != undefined) $( elm_line ).remove();
+        if(elm_line != null) $( elm_line ).remove();
         connections[link_id]["legs"][l]["drawn"]=false;
       };
       let new_tp_btn_id="new_tp_"+link_id+"@"+l;
       let elm_tp=document.getElementById(new_tp_btn_id);
-      if(elm_tp != undefined) $( elm_tp ).remove();
+      if(elm_tp != null) $( elm_tp ).remove();
     };
   };
 
   if(map_data["tps"][link_id] != undefined) {
     for(let tpii in map_data["tps"][link_id]) {
       let elm_tp=document.getElementById("tp_"+link_id+"@"+tpii);
-      if(elm_tp != undefined) $( elm_tp ).remove();
+      if(elm_tp != null) $( elm_tp ).remove();
     };
   };
 };
@@ -3325,18 +3785,18 @@ function new_tp(e) {
   for(let l in connections[link_id]["legs"]) {
     if(connections[link_id]["legs"][l]["drawn"]) {
       let elm_line=document.getElementById(connections[link_id]["legs"][l]["drawn"]);
-      if(elm_line != undefined) $( elm_line ).remove();
+      if(elm_line != null) $( elm_line ).remove();
       connections[link_id]["legs"][l]["drawn"]=false;
     };
     let new_tp_btn_id="new_tp_"+link_id+"@"+l;
     let elm_tp=document.getElementById(new_tp_btn_id);
-    if(elm_tp != undefined) $( elm_tp ).remove();
+    if(elm_tp != null) $( elm_tp ).remove();
   };
 
   if(map_data["tps"][link_id] != undefined) {
     for(let tpi in map_data["tps"][link_id]) {
       let elm_tp=document.getElementById("tp_"+tpi);
-      if(elm_tp != undefined) $( elm_tp ).remove();
+      if(elm_tp != null) $( elm_tp ).remove();
     };
   };
 
@@ -4049,112 +4509,6 @@ function selectLocation(e) {
   //dlg.trigger("recenter");
 };
 
-function show_interface_window(dev_id, int) {
-  run_query({"action": "get_interface", "dev_id": dev_id, "int": int}, function(res) {
-    if(res["ok"]["no_data"] !== undefined) {
-      show_dialog("Интерфейс отсутсвует в данных.");
-      return;
-    };
-    let int_info = res["ok"]["int"];
-    data["devs"][dev_id]["interfaces"][int] = res["ok"]["int"];
-
-    let dlg = createWindow("int_win_"+int+"@"+dev_id,
-      data["devs"][dev_id]["short_name"] + ": " + int
-    );
-
-    let im = int_metrics(int, data["devs"][dev_id]);
-
-    let content = dlg.find(".content");
-    content
-     .append( $(DIV)
-       .css({"white-space": "nowrap"})
-       .append( $(LABEL).css({"background-color": im["00_ifstatus"]["bg_color"], "border": "1px black solid"})
-         .text( im["00_ifstatus"]["short_text"] )
-         .title( im["00_ifstatus"]["long_text"] )
-         .css({"margin-right": "0.3em"})
-       )
-       .append( $(SPAN).text(int_info["ifDescr"] != "" ? int_info["ifDescr"] : int) )
-       .append( $(SPAN)
-         .css({"float": "right", "margin-left": "2em"})
-         .append( $(LABEL).text("BW: ") )
-         .append( $(SPAN).text(im["02_speed"]["short_text"]) )
-         .append( int_info["ifDelay"] == undefined ? $(LABEL) : $(LABEL).text(" DLY: ") )
-         .append( int_info["ifDelay"] == undefined ? $(LABEL) : $(SPAN).text(Math.floor(int_info["ifDelay"]/10))
-           .title("Cisco DLY: "+int_info["ifDelay"]+"\nConfig delay: "+Math.floor(int_info["ifDelay"]/10))
-         )
-         .append( !DEBUG ? $(LABEL) : $(LABEL).addClass(["button", "ui-icon", "ui-icon-info"])
-           .css({"margin-left": "0.3em"})
-           .data("json", jstr(int_info))
-           .data("int", int)
-           .data("dev_id", dev_id)
-           .click(function() {
-             let dev_id = $(this).data("dev_id");
-             let int = $(this).data("int");
-             createWindow("int_json_" + int + "@" + dev_id, "JSON: " + data["devs"][dev_id]["short_name"] + ": "+int, {
-                           minWidth: 500,
-                           maxWidth: 1500,
-                           width: 500,
-              })
-              .find(".content").css({"white-space": "pre"}).text( $(this).data("json") )
-              .parent().trigger("recenter")
-             ;
-           })
-         )
-       )
-     )
-     .append( $(DIV)
-       .css({"border": "1px solid lightgray", "padding-top": "0.1em", "padding-bottom": "0.1em", "margin-top": "0.2em", "margin-bottom": "0.2em"})
-       .append( $(SPAN).text(int_info["ifAlias"]) )
-     )
-    ;
-
-    if(int_info["ips"] !== undefined) {
-      let ips = $(DIV)
-       .css({"display": "inline-block", "padding-left": "1em"})
-      ;
-      let ips_a = keys(int_info["ips"]);
-      ips_a.sort(num_compare);
-      for(let ipi in ips_a) {
-        let ip = ips_a[ipi];
-        ips
-         .append( $(DIV)
-           .append( $(SPAN).text(ip+"/"+int_info["ips"][ip]["masklen"])
-             .css({"margin-right": "0.5em", "min-width": "8em", "display": "inline-block"})
-           )
-           .append( $(A, {"target": "blank", "href": "ssh://"+ip}).text("SSH")
-             .css({"margin-right": "0.5em"})
-           )
-           .append( $(A, {"target": "blank", "href": "telnet://"+ip}).text("TELNET")
-             .css({"margin-right": "0.5em"})
-           )
-           .append( $(A, {"target": "blank", "href": "/ipdb/?action=link&ip="+ip}).text("IPDB")
-           )
-         )
-        ;
-      };
-      content
-       .append( $(DIV)
-         .css({"white-space": "nowrap"})
-         .append( $(DIV).text("IP:")
-           .css({"display": "inline-block", "vertical-align": "top"})
-         )
-         .append( ips )
-       )
-      ;
-    };
-
-    content
-     .append( $(DIV)
-       .graph({"type": "int_io", "dev_id": dev_id, "int": int})
-     )
-     .append( $(DIV)
-       .graph({"type": "int_pkts", "dev_id": dev_id, "int": int, "hide": true})
-     )
-    ;
-
-  });
-};
-
 $.fn.graph = function(gdata) {
   let cont = $(this);
   cont.addClass("graph");
@@ -4187,8 +4541,9 @@ $.fn.graph = function(gdata) {
 
   let canvas = $(DIV).addClass("canvas");
   let controls = $(DIV).addClass("control");
+
   cont
-   .append( $(DIV)
+   .append( gdata["no_head"] === true ? $(LABEL) : $(DIV)
      .css({"padding-top": "0.3em", "padding-bottom": "0.3em"})
      .append( $(SPAN).text(head_text) )
      .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-arrowthickstop-1-n"])
@@ -4220,10 +4575,10 @@ $.fn.graph = function(gdata) {
   canvas
    .css({"display": "inline-block", "position": "relative" })
    .append( $(LABEL).addClass("len_ind").addClass("ns")
-     .css({"position": "absolute", "top": "0px", "left": "0px", "background-color": "#E0E0E080", "font-size": "small"})
+     .css({"position": "absolute", "top": "0px", "left": "0px", "background-color": "#E0E0E080", "font-size": "x-small", "line-height": "90%"})
    )
    .append( $(LABEL).addClass("ind").addClass("ns")
-     .css({"position": "absolute", "top": "0px", "right": "0px"})
+     .css({"position": "absolute", "top": "0px", "right": "0px", "background-color": "#E0E0E080", "font-size": "x-small", "line-height": "90%"})
      .hide()
    )
    .append( $(DIV).addClass("time").addClass("ns")
@@ -4408,6 +4763,7 @@ $.fn.graph = function(gdata) {
      })
      .on("mousedown", function(e) {
        e.stopPropagation();
+       if(e.which != 1) return;
        let elm_offset = $(this).offset();
        let x = e.pageX - elm_offset.left;
        $(this).data("md", true);
@@ -4647,6 +5003,7 @@ $.fn.graph = function(gdata) {
      })
    )
    .append( $(LABEL).addClass("min1em") )
+   .append( $(LABEL).text("Комп.:").title("Компактный вид, без статистики") )
    .append( $(INPUT, {"type": "checkbox", "checked": get_local("graph_compact", false)})
      .on("change", function() {
        let compact = $(this).is(":checked");
@@ -4687,6 +5044,10 @@ $.fn.graph = function(gdata) {
     let graph_WxH = get_local("graph_WxH", default_graph_size);
     let a = String(graph_WxH).split("x");
 
+    if(gdata["max"] !== undefined) {
+      query["max"] = gdata["max"];
+    };
+
     if(gdata["width"] !== undefined) {
       query["width"] = gdata["width"];
       query["height"] = gdata["height"];
@@ -4708,6 +5069,14 @@ $.fn.graph = function(gdata) {
        false
     ) {
       query["int"] = data["devs"][ gdata["dev_id"] ]["interfaces"][ gdata["int"] ]["safe_if_name"];
+    } else if(gdata["type"] == "cpu") {
+      query["cpu_list"] = gdata["cpu_list"];
+      let cpus = String(gdata["cpu_list"]).split(",");
+      for(let cpui in cpus) {
+        let cpu_idx = cpus[cpui];
+        query["cpu_name"+cpu_idx] = gdata["cpu_name"+cpu_idx];
+        query["cpu_key"+cpu_idx] = gdata["cpu_key"+cpu_idx];
+      };
     };
 
     run_query(query, function(res) {
@@ -4743,3 +5112,357 @@ $.fn.graph = function(gdata) {
   cont.trigger("graph_update");
   return this;
 };
+
+function show_interface_window(dev_id, int) {
+  run_query({"action": "get_interface", "dev_id": dev_id, "int": int}, function(res) {
+    if(res["ok"]["no_data"] !== undefined) {
+      show_dialog("Интерфейс отсутсвует в данных.");
+      return;
+    };
+    let int_info = res["ok"]["int"];
+    data["devs"][dev_id]["interfaces"][int] = res["ok"]["int"];
+
+    let dlg = createWindow("int_win_"+int+"@"+dev_id,
+      data["devs"][dev_id]["short_name"] + ": " + int
+    );
+
+    dlg.data("dev_id", dev_id);
+    dlg.data("int", int);
+
+    let im = int_metrics(int, data["devs"][dev_id]);
+
+    let content = dlg.find(".content");
+    content
+     .append( $(DIV)
+       .css({"white-space": "nowrap"})
+       .append( $(LABEL).css({"background-color": im["00_ifstatus"]["bg_color"], "border": "1px black solid"})
+         .text( im["00_ifstatus"]["short_text"] )
+         .title( im["00_ifstatus"]["long_text"] )
+         .css({"margin-right": "0.3em"})
+       )
+       .append( $(SPAN).text(int_info["ifDescr"] != "" ? int_info["ifDescr"] : int) )
+       .append( $(SPAN)
+         .css({"float": "right", "margin-left": "2em"})
+         .append( im["03_switchport"] == undefined ? $(LABEL) : $(LABEL).html(im["03_switchport"]["short_text"])
+           .title(String(im["03_switchport"]["long_text"]).replaceAll("&nbsp;", " "))
+           .css({"border": "1px solid black", "margin-right": "1em", "background-color": im["03_switchport"]["bg_color"]})
+         )
+         .append( int_info["routedVlan"] == undefined ? $(LABEL) : $(LABEL).text("VLAN: "+int_info["routedVlan"])
+           .css({"border": "1px solid black", "margin-right": "1em"})
+           .title( int_info["routedVlanParent"] == undefined ? "" : "Parent: "+int_info["routedVlanParent"])
+         )
+         .append( $(LABEL).text("BW: ") )
+         .append( $(SPAN).text(im["02_speed"]["short_text"]) )
+         .append( int_info["ifDelay"] == undefined ? $(LABEL) : $(LABEL).text(" DLY: ") )
+         .append( int_info["ifDelay"] == undefined ? $(LABEL) : $(SPAN).text(Math.floor(int_info["ifDelay"]/10))
+           .title("Cisco DLY: "+int_info["ifDelay"]+"\nConfig delay: "+Math.floor(int_info["ifDelay"]/10))
+         )
+         .append( !DEBUG ? $(LABEL) : $(LABEL).addClass(["button", "ui-icon", "ui-icon-info"])
+           .css({"margin-left": "0.3em"})
+           .data("json", jstr(int_info))
+           .data("int", int)
+           .data("dev_id", dev_id)
+           .click(function() {
+             let dev_id = $(this).data("dev_id");
+             let int = $(this).data("int");
+             createWindow("int_json_" + int + "@" + dev_id, "JSON: " + data["devs"][dev_id]["short_name"] + ": "+int, {
+                           minWidth: 500,
+                           maxWidth: 1500,
+                           width: 500,
+              })
+              .find(".content").css({"white-space": "pre"}).text( $(this).data("json") )
+              .parent().trigger("recenter")
+             ;
+           })
+         )
+       )
+     )
+    ;
+
+    if(int_info["tunnelEncap"]) {
+      let encap = "Unk";
+      let encap_title = "Unknown: "+int_info["tunnelEncap"];
+
+      let sec = "Unk";
+      let sec_title = "Unknown: "+int_info["tunnelSec"];
+
+      let src = "Unk";
+      let src_title = "Unknwon: "+int_info["tunnelSrc"];
+
+      let dst = "Unk";
+      let dst_title = "Unknwon: "+int_info["tunnelDst"];
+
+      switch(int_info["tunnelEncap"]) {
+      case 1:
+        encap = "Oth";
+        encap_title = "Encap: Other";
+        break;
+      case 2:
+        encap = "Dir";
+        encap_title = "Encap: Direct";
+        break;
+      case 3:
+        encap = "GRE";
+        encap_title = "Encap: GRE";
+        break;
+      case 4:
+        encap = "Min";
+        encap_title = "Encap: Minimal";
+        break;
+      case 5:
+        encap = "L2TP";
+        encap_title = "Encap: L2TP";
+        break;
+      case 6:
+        encap = "PPTP";
+        encap_title = "Encap: PPTP";
+        break;
+      case 7:
+        encap = "L2F";
+        encap_title = "Encap: L2F";
+        break;
+      case 8:
+        encap = "UDP";
+        encap_title = "Encap: UDP";
+        break;
+      case 9:
+        encap = "ATMP";
+        encap_title = "Encap: ATMP";
+        break;
+      };
+
+      switch(int_info["tunnelSec"]) {
+      case 1:
+        sec = "None";
+        sec_title = "Sec: None";
+        break;
+      case 2:
+        sec = "IPsec";
+        sec_title = "Sec: IPsec";
+        break;
+      case 3:
+        sec = "Other";
+        sec_title = "Sec: Other";
+        break;
+      };
+
+      if(int_info["tunnelSrcDecoded"] !== undefined) {
+        src = int_info["tunnelSrcDecoded"];
+        src_title = int_info["tunnelSrcDecoded"];
+
+        if(int_info["tunnelSrcIfName"] !== undefined) {
+          src_title += " ("+int_info["tunnelSrcIfName"]+")";
+        };
+      };
+
+      if(int_info["tunnelDstDecoded"] !== undefined) {
+        dst = int_info["tunnelDstDecoded"];
+        dst_title = int_info["tunnelDstDecoded"];
+      };
+
+      content
+       .append( $(DIV)
+         .css({"border-top": "1px solid lightgray", "padding-top": "0.1em", "padding-bottom": "0.1em", "margin-top": "0.2em", "margin-bottom": "0.2em"})
+         .append( $(LABEL).text(encap).title(encap_title)
+           .css({"border": "1px solid black", "margin-right": "0.5em", "padding-left": "0.2em", "padding-right": "0.2em"})
+         )
+         .append( $(LABEL).text(sec).title(sec_title)
+           .css({"border": "1px solid black", "margin-right": "0.5em", "padding-left": "0.2em", "padding-right": "0.2em"})
+         )
+         .append( $(LABEL).text("Src: ")
+         )
+         .append( $(LABEL).text(src).title(src_title)
+         )
+         .append( $(LABEL).addClass("min2em") )
+         .append( $(LABEL).text("Dst: ")
+         )
+         .append( $(LABEL).text(dst).title(dst_title)
+         )
+       )
+      ;
+
+    };
+
+    content
+     .append( $(DIV)
+       .css({"border": "1px solid lightgray", "padding-top": "0.1em", "padding-bottom": "0.1em", "margin-top": "0.2em", "margin-bottom": "0.2em"})
+       .append( $(SPAN).text(int_info["ifAlias"]) )
+     )
+    ;
+
+    if(int_info["ips"] !== undefined) {
+      let ips = $(DIV)
+       .css({"display": "inline-block", "padding-left": "1em"})
+      ;
+      let ips_a = keys(int_info["ips"]);
+      ips_a.sort(num_compare);
+      for(let ipi in ips_a) {
+        let ip = ips_a[ipi];
+        ips
+         .append( $(DIV)
+           .append( $(SPAN).text(ip+"/"+int_info["ips"][ip]["masklen"])
+             .css({"margin-right": "0.5em", "min-width": "8em", "display": "inline-block"})
+           )
+           .append( $(A, {"target": "blank", "href": "ssh://"+ip}).text("SSH")
+             .css({"margin-right": "0.5em"})
+           )
+           .append( $(A, {"target": "blank", "href": "telnet://"+ip}).text("TELNET")
+             .css({"margin-right": "0.5em"})
+           )
+           .append( $(A, {"target": "blank", "href": "/ipdb/?action=link&ip="+ip}).text("IPDB")
+           )
+         )
+        ;
+      };
+      content
+       .append( $(DIV)
+         .css({"white-space": "nowrap"})
+         .append( $(DIV).text("IP:")
+           .css({"display": "inline-block", "vertical-align": "top"})
+         )
+         .append( ips )
+       )
+      ;
+    };
+
+    content
+     .append( $(DIV)
+       .graph({"type": "int_io", "dev_id": dev_id, "int": int})
+     )
+     .append( $(DIV)
+       .graph({"type": "int_pkts", "dev_id": dev_id, "int": int, "hide": true})
+     )
+    ;
+
+    let tabs = $(DIV).addClass("tabs")
+     .css({"border-top": "1px solid lightgray", "margin-top": "0.3em"})
+     .appendTo(content)
+    ;
+    let tab_items = $(DIV).addClass("tab_items")
+     .css({"border-top": "1px solid lightgray", "margin-top": "0.3em"})
+     .appendTo(content)
+    ;
+
+    if(int_info["cdp_neighbours"] !== undefined) {
+      tabs
+       .append( $(LABEL).text("CDP").addClass("button")
+         .click(function() {
+           $(this).closest(".dialog_start").find(".cdp_neighbours").toggle();
+         })
+       )
+      ;
+
+      let neighbours = $(DIV).addClass("table").addClass("cdp_neighbours").hide()
+       .css({"border-top": "1px solid lightgray", "margin-top": "0.5em"})
+      ;
+      let tbody = $(DIV).addClass("tbody").appendTo(neighbours);
+
+      for(let i in int_info["cdp_neighbours"]) {
+        let ni = int_info["cdp_neighbours"][i];
+        let tr = $(DIV).addClass("tr")
+         .data("data", ni)
+         .append( $(SPAN).addClass("td")
+           .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-info"])
+             .css({"font-size": "x-small"})
+             .click(function() {
+               let ni = $(this).closest(".tr").data("data");
+               let js = jstr(ni);
+               let dev_id = $(this).closest(".dialog_start").data("dev_id");
+               let int = $(this).closest(".dialog_start").data("int");
+               let win_id = "nei_cdp_json_"+int+"@"+dev_id+"_"+ni["cdpRemIfName"]+"@"+ni["cdpRemDevId"];
+
+               createWindow(win_id, "JSON: CDPP neigh: "+dev_id+": "+int, {
+                            minWidth: 500,
+                            maxWidth: 1500,
+                            width: 500,
+                })
+                .find(".content").css({"white-space": "pre"}).text( js )
+                .parent().trigger("recenter")
+               ;
+             })
+           )
+         )
+         .append( $(SPAN).addClass("td").text(ni["cdpRemAddrDecoded"])
+           .title( ni["cdpRemCapsDecoded"] !== undefined ? ni["cdpRemCapsDecoded"] : "")
+         )
+         .append( $(SPAN).addClass("td").text(ni["cdpRemDevId"])
+           .title( ni["cdpRemSoftware"] !== undefined ? ni["cdpRemSoftware"] : "")
+         )
+         .append( $(SPAN).addClass("td").text(ni["cdpRemIfName"])
+           .title( ni["cdpRemPlatform"] !== undefined ? ni["cdpRemPlatform"] : "")
+         )
+        ;
+        tr.appendTo(tbody);
+      };
+
+      neighbours.appendTo(tab_items);
+    };
+
+    if(int_info["lldp_neighbours"] !== undefined) {
+      tabs
+       .append( $(LABEL).text("LLDP").addClass("button")
+         .click(function() {
+           $(this).closest(".dialog_start").find(".lldp_neighbours").toggle();
+         })
+       )
+      ;
+
+      let neighbours = $(DIV).addClass("table").addClass("lldp_neighbours").hide()
+       .css({"border-top": "1px solid lightgray", "margin-top": "0.5em"})
+      ;
+      let tbody = $(DIV).addClass("tbody").appendTo(neighbours);
+
+      for(let i in int_info["lldp_neighbours"]) {
+        let ni = int_info["lldp_neighbours"][i];
+
+        let ip = "no IP";
+
+        if(ni["RemMgmtAddr"] !== undefined) {
+          for(let i in ni["RemMgmtAddr"]) {
+            ip = ni["RemMgmtAddr"][i];
+            break;
+          };
+        };
+
+        let tr = $(DIV).addClass("tr")
+         .data("data", ni)
+         .append( $(SPAN).addClass("td")
+           .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-info"])
+             .css({"font-size": "x-small"})
+             .click(function() {
+               let ni = $(this).closest(".tr").data("data");
+               let js = jstr(ni);
+               let dev_id = $(this).closest(".dialog_start").data("dev_id");
+               let int = $(this).closest(".dialog_start").data("int");
+               let win_id = "nei_json_"+int+"@"+dev_id+"_"+ni["RemPortId"]+"@"+ni["RemChassisId"];
+
+               createWindow(win_id, "JSON: LLDP neigh: "+dev_id+": "+int, {
+                            minWidth: 500,
+                            maxWidth: 1500,
+                            width: 500,
+                })
+                .find(".content").css({"white-space": "pre"}).text( js )
+                .parent().trigger("recenter")
+               ;
+             })
+           )
+         )
+         .append( $(SPAN).addClass("td").text(ip)
+           .title( ni["RemSysCapsDecoded"] !== undefined ? ni["RemSysCapsDecoded"] : "")
+         )
+         .append( $(SPAN).addClass("td").text(ni["RemSysName"] !== undefined ? ni["RemSysName"] : "no name advertized")
+           .title( ni["RemSysDescr"] !== undefined ? ni["RemSysDescr"] : "")
+         )
+         .append( $(SPAN).addClass("td").text(ni["RemPortId"])
+           .title( ni["RemPortDescr"] !== undefined ? ni["RemPortDescr"] : "")
+         )
+        ;
+        tr.appendTo(tbody);
+      };
+
+      neighbours.appendTo(tab_items);
+    };
+
+  });
+};
+

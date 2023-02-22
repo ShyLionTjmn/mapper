@@ -58,6 +58,10 @@ var intGraphKeys = []string{"ifHCInOctets", "ifHCOutOctets", "ifInUnicastPkts", 
 var lldpKeySet = []string{"RemSysName", "RemChassisId", "RemChassisIdSubtype", "RemPortDescr", "RemPortId", "RemPortIdSubtype"}
 var cdpKeySet = []string{"cdpRemAddrDecoded", "cdpRemAddr", "cdpRemAddrType", "cdpRemCaps", "cdpRemCapsDecoded", "cdpRemDevId", "cdpRemIfName", "cdpRemPlatform"}
 
+var intCounterResetWatchKeys = []string{"ifInUnicastPkts", "ifOutUnicastPkts", "ifInMulticastPkts", "ifOutMulticastPkts",
+                                        "ifInBroadcastPkts", "ifOutBroadcastPkts", "ifInErrors", "ifInCRCErrors",
+                                       }
+
 type ByInt64 []int64
 
 func (a ByInt64) Len() int		{ return len(a) }
@@ -951,6 +955,12 @@ func process_ip_data(wg *sync.WaitGroup, ip string, startup bool) {
     dev["model_long"] = "Unknown"
   }
 
+  if dev.Vs("model_short") == "MIKROTIK" && dev.Evs("sysDescr") && strings.HasPrefix(dev.Vs("sysDescr"), "RouterOS ") &&
+     len(dev.Vs("sysDescr")) > len("RouterOS ") {
+    dev["model_short"] = dev.Vs("sysDescr")[len("RouterOS "):]
+    dev["model_long"] = "Mikrotik "+dev.Vs("sysDescr")[len("RouterOS "):]
+  }
+
   if !data.EvM("cdp2dev") {
     data["cdp2dev"] = make(M)
   }
@@ -964,6 +974,14 @@ func process_ip_data(wg *sync.WaitGroup, ip string, startup bool) {
     } else {
       data.VM("cdp2dev")[cdp_dev_id] = dev_id
     }
+  }
+
+  //dumb fortigate missing locChassisId
+
+  if !dev.Evs("locChassisId") && dev.Evs("interfaces", "ha1", "ifPhysAddr") &&
+     strings.HasPrefix(dev.Vs("model_short"), "FG ") {
+    dev["locChassisId"] = dev.Vs("interfaces", "ha1", "ifPhysAddr")
+    dev["locChassisIdSubtype"] = int64(4)
   }
 
   if startup {
@@ -1094,6 +1112,7 @@ func process_ip_data(wg *sync.WaitGroup, ip string, startup bool) {
       gf := esc_dev_id+"/memoryUsed.rrd"
       red_args = red_args.Add("memoryUsed.0", gf)
       dev["memoryUsed_graph_file"] = gf
+      dev["memoryUsed_graph_key"] = "memoryUsed.0"
       graph_items["memoryUsed"] = 1
     }
 
@@ -1222,6 +1241,31 @@ func process_ip_data(wg *sync.WaitGroup, ip string, startup bool) {
           logger.Event("if_new", ifName)
         } else {
           if ifName != "CPU port" {
+            for _, key := range intCounterResetWatchKeys {
+              new_c, new_ex := dev.Vie("interfaces", ifName, key);
+              old_c, old_ex := old.Vie("interfaces", ifName, key);
+              old_key_stop := old.Vs("_key_stop", key)
+              new_key_stop := dev.Vs("_key_stop", key)
+              if new_ex && old_ex && new_c < old_c {
+                logger.Event("if_key_reset", ifName, "key", key, "old_value", old.Vs("interfaces", ifName, key),
+                             "new_value", dev.Vs("interfaces", ifName, key),
+                             "old_key_stop", old_key_stop,
+                             "new_key_stop", new_key_stop,
+                )
+              } else {
+
+                new_cu, new_exu := dev.Vue("interfaces", ifName, key);
+                old_cu, old_exu := old.Vue("interfaces", ifName, key);
+                if new_exu && old_exu && new_cu < old_cu {
+                  logger.Event("if_key_reset", ifName, "key", key, "old_value", old.Vs("interfaces", ifName, key),
+                               "new_value", dev.Vs("interfaces", ifName, key),
+                             "old_key_stop", old_key_stop,
+                             "new_key_stop", new_key_stop,
+                  )
+                }
+              }
+            }
+
             for _, key := range intWatchKeys {
               if !old.EvA("interfaces", ifName, key) && dev.EvA("interfaces", ifName, key) {
                 logger.Event("if_key_new", ifName, "key", key)
@@ -1565,6 +1609,14 @@ func process_ip_data(wg *sync.WaitGroup, ip string, startup bool) {
           }
         }
         //delete(int_h, "ip_neighbours")
+      }
+    }
+  }
+
+  if !startup && dev.Vs("overall_status") == "ok" && dev.EvM("proc_graph") {
+    for key, _ := range dev.VM("proc_graph") {
+      if dev.Evs(key + "_graph_file") && dev.Evs(key + "_graph_key") && dev.EvA(key) {
+        red.Do("PUBLISH", "graph", ip + " " + dev.Vs("sysUpTime") + " " + dev.Vs(key + "_graph_key") + " " + dev.Vs(key))
       }
     }
   }

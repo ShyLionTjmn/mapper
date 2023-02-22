@@ -1308,6 +1308,8 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
       map_hash_key_time = shared_file + ".time"
     }
 
+    _ = map_hash_key_time
+
     var map_data []byte
     if map_data, err = redis.Bytes(red.Do("HGET", "maps", map_hash_key_data)); err != nil && err != redis.ErrNil {
       panic(err)
@@ -1332,7 +1334,7 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
       } else {
 
         // cleanup map
-
+/*
         save_back := false
 
         for dev_id, _ := range out_map.VM("loc") {
@@ -1370,7 +1372,7 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
           if _, err = red.Do("HSET", "maps", map_hash_key_data, out_buff.Bytes()); err != nil { panic(err) }
           if _, err = red.Do("HSET", "maps", map_hash_key_time, ts); err != nil { panic(err) }
         }
-
+*/
         out["map"] = out_map
       }
     }
@@ -1881,6 +1883,43 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
       out["fail"] = "no_data"
     } else {
       out["int"] = devs.VM(dev_id, "interfaces", ifName)
+
+      if port_index, var_ok := devs.Vse(dev_id, "interfaces", ifName, "lldp_portIndex"); var_ok {
+        neighbours := []M{}
+
+        for _, nei_h := range devs.VM(dev_id, "lldp_ports", port_index, "neighbours") {
+          neighbours = append(neighbours, nei_h.(M))
+        }
+
+        if len(neighbours) > 0 {
+          out.VM("int")["lldp_neighbours"] = neighbours
+        }
+      }
+
+      if port_index, var_ok := devs.Vse(dev_id, "interfaces", ifName, "cdp_portIndex"); var_ok {
+        neighbours := []M{}
+
+        for _, nei_h := range devs.VM(dev_id, "cdp_ports", port_index, "neighbours") {
+          neighbours = append(neighbours, nei_h.(M))
+        }
+
+        if len(neighbours) > 0 {
+          out.VM("int")["cdp_neighbours"] = neighbours
+        }
+      }
+    }
+  } else if action == "get_device" {
+    var dev_id string
+
+    if dev_id, err = get_p_string(q, "dev_id", nil); err != nil { panic(err) }
+
+    globalMutex.RLock()
+    defer globalMutex.RUnlock()
+
+    if !devs.EvM(dev_id) {
+      out["fail"] = "no_data"
+    } else {
+      out["dev"] = devs.VM(dev_id)
     }
   } else if action == "query" {
     out["_query"] = q

@@ -209,6 +209,235 @@ type Dev struct {
   Dev_ip string
 }
 
+func GetRawRed(red redis.Conn, dev_ip string) (M, error) {
+  var err error
+  if red == nil || red.Err() != nil || dev_ip == "" {
+    err = errors.New("GetRawRed: bad args")
+    return nil, err
+  }
+
+  lock_key := fmt.Sprintf("ip_lock.%s", dev_ip)
+  redm := redmutex.New(lock_key)
+
+  err = redm.Lock(red, time.Second, 10*time.Second)
+  if err != nil { return nil, err }
+
+  defer redm.Unlock(red)
+
+  queues_key := fmt.Sprintf("ip_queues.%s", dev_ip)
+
+  var queues map[string]string
+
+  queues, err = redis.StringMap(red.Do("HGETALL", queues_key))
+  if err != nil {
+    return nil, err
+  }
+
+  if len(queues) == 0 {
+    err = errors.New(fmt.Sprintf("No queues list for %s, cannot continue", dev_ip))
+    return nil, err
+  }
+
+  var queue_list []string
+
+  zero_queue_found := false
+
+  for qs, _ := range queues {
+    var qi int64
+    qi, err = strconv.ParseInt(qs, 10, 64)
+    if err != nil {
+      return nil, err
+    }
+    queue_list = append(queue_list, qs)
+    if qi == 0 {
+      zero_queue_found= true
+    }
+  }
+
+  if !zero_queue_found {
+    err = errors.New(fmt.Sprintf("No zero queue in ip_queues.%s key in redis, cannot continue", dev_ip))
+    return nil, err
+  }
+
+  var raw = make(M)
+
+  raw["_queues"] = queue_list
+
+  for _, queue := range queue_list {
+    var queue_keys map[string]string
+    var queue_data map[string]string
+
+    keys_key := fmt.Sprintf("ip_keys.%s.%s", queue, dev_ip)
+    data_key := fmt.Sprintf("ip_data.%s.%s", queue, dev_ip)
+    last_result_key := fmt.Sprintf("ip_last_result.%s.%s", queue, dev_ip)
+
+
+    queue_keys, err = redis.StringMap(red.Do("HGETALL", keys_key))
+    if err != nil {
+      return nil, err
+    }
+
+    if len(queue_keys) == 0 {
+      err = errors.New(fmt.Sprintf("No keys hash for queue %s", queue))
+      return nil, err
+    }
+
+    if len(queue_keys) < 3 {
+      err = errors.New(fmt.Sprintf("Too short keys hash for queue %s", queue))
+      return nil, err
+    }
+
+
+    queue_data, err = redis.StringMap(red.Do("HGETALL", data_key))
+    if err != nil {
+      return nil, err
+    }
+
+    if len(queue_data) == 0 {
+      err = errors.New(fmt.Sprintf("No data hash for queue %s", queue))
+      return nil, err
+    }
+
+    if len(queue_data) < 3 {
+      err = errors.New(fmt.Sprintf("Too short data hash for queue %s", queue))
+      return nil, err
+    }
+
+    var last_result string
+    last_result, err = redis.String(red.Do("GET", last_result_key))
+    if err != nil {
+      return nil, err
+    }
+
+
+    lr_h := raw.MkM("_last_result")
+    lr_h[queue] = last_result
+
+    for keyAndIndex, value := range queue_data {
+      if len(keyAndIndex) == 0 {
+        err = errors.New(fmt.Sprintf("Zero length key in queue %s", queue))
+        return nil, err
+      }
+      pointPos := strings.Index(keyAndIndex, ".")
+      var key string = ""
+      var index string = ""
+      if pointPos < 0 {
+        key = keyAndIndex
+      } else {
+        key = keyAndIndex[:pointPos]
+        index = keyAndIndex[pointPos+1:]
+        if len(index) == 0 {
+          err = errors.New(fmt.Sprintf("Zero index in key %s, queue %s", key, queue))
+          return nil, err
+        }
+        _, e := raw[key]
+        if !e {
+          raw[key] = make(M)
+        }
+      }
+
+      key_str, e := queue_keys[key]
+      if !e {
+        err = errors.New(fmt.Sprintf("ip_data and ip_keys mismatch on key %s", key))
+        return nil, err
+      }
+
+      m := keys_regex.FindStringSubmatch(key_str)
+      if m == nil {
+        err = errors.New(fmt.Sprintf("bad key info on key %s", key))
+        return nil, err
+      }
+
+      key_start, _err := strconv.ParseInt(m[1], 10, 64)
+      if _err != nil {
+        return nil, _err
+      }
+
+      key_stop, _err := strconv.ParseInt(m[2], 10, 64)
+      if _err != nil {
+        return nil, _err
+      }
+
+      if keyAndIndex[0] != '_' {
+        raw.MkM("_key_start")[key] = key_start
+        raw.MkM("_key_stop")[key] = key_stop
+        raw.MkM("_key_duration")[key] = key_stop - key_start
+        raw.MkM("_key_queue")[key] = queue
+      }
+
+      var v interface{}
+
+      switch m[4] {
+      case "int":
+        v, err = strconv.ParseInt(value, 10, 64)
+        if err != nil { return nil, err }
+      case "uns":
+        v, err = strconv.ParseUint(value, 10, 64)
+        if err != nil { return nil, err }
+      case "str","hex","oid":
+        v = value
+      default:
+        err = errors.New(fmt.Sprintf("Unhandled type for key %s", key))
+        return nil, err
+      }
+
+      if m[5] != "" {
+        ko_h := raw.MkM("_keys_options", key)
+        key_options := strings.Split(m[5], ",")
+        for _, ko_str := range key_options {
+          opt_val_pair := strings.Split(ko_str, " ")
+          if len(opt_val_pair) == 1 {
+            ko_h[opt_val_pair[0]]=""
+          } else {
+            ko_h[opt_val_pair[0]]=strings.Join(opt_val_pair[1:], " ")
+          }
+        }
+      }
+
+      if keyAndIndex[0] == '_' {
+        queue_h := raw.MkM(keyAndIndex)
+        queue_h[queue] = v
+      } else {
+
+        if pointPos < 0 {
+          raw[keyAndIndex] = v
+        } else {
+          raw[key].(M)[index] = v
+        }
+      }
+    }
+  }
+
+  if !raw.EvM("_added") {
+    err = errors.New("No _added key in data")
+    return nil, err
+  }
+
+  var last_added interface{}
+
+  for _, queue := range queue_list {
+    if !raw.EvA("_added", queue) {
+      err = errors.New("No _added key in data")
+      return nil, err
+    }
+
+    if last_added != nil {
+      if reflect.TypeOf(last_added) != reflect.TypeOf(raw.VM("_added")[queue]) {
+        err = errors.New("_added key value type mismatch")
+        return nil, err
+      }
+      if last_added != raw.VM("_added")[queue] {
+        err = ErrorQueuesMismatch
+        return nil, err
+      }
+    } else {
+      last_added = raw.VM("_added")[queue]
+    }
+  }
+
+  return raw, nil
+}
+
 func (d *Dev) Decode(raw M) error {
   d.Warnings = make([]string, 0)
   var err error
@@ -1297,6 +1526,49 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
         }
       }
     }
+  } else if raw.EvM("hwL2IfPortType") && raw.EvM("hwL2IfPortIfIndex") {
+    for port_id, _ := range raw.VM("hwL2IfPortIfIndex") {
+      ifIndex := raw.Vs("hwL2IfPortIfIndex", port_id)
+      if ifName, ex := dev.Vse("ifName", ifIndex); ex {
+        pvid := int64(0)
+        if raw.Evi("hwL2IfPVID", port_id) {
+          pvid = raw.Vi("hwL2IfPVID", port_id)
+        }
+        dev.VM("interfaces", ifName)["portPvid"] = pvid
+        p_type := raw.Vi("hwL2IfPortType", port_id)
+        if raw.Evi("hwL2IfPortActiveType", port_id) {
+          p_type = raw.Vi("hwL2IfPortActiveType", port_id)
+        }
+        switch p_type {
+        case 1:
+          // huawei trunk mode
+          dev.VM("interfaces", ifName)["portMode"] = uint64(2)
+          list := "0"
+          if raw.Evs("hwL2IfTrunkVlansLow", port_id) && raw.Evs("hwL2IfTrunkVlansHigh", port_id) {
+            list = vlans_list(raw.Vs("hwL2IfTrunkVlansLow", port_id) + raw.Vs("hwL2IfTrunkVlansHigh", port_id))
+          }
+          dev.VM("interfaces", ifName)["portTrunkVlans"] = list
+        case 2:
+          // huawei access mode
+          dev.VM("interfaces", ifName)["portMode"] = uint64(1)
+        case 3:
+          // huawei hybrid mode
+          dev.VM("interfaces", ifName)["portMode"] = uint64(3)
+          list := "0"
+          if raw.Evs("hwL2IfHybridTagLow", port_id) && raw.Evs("hwL2IfHybridTagHigh", port_id) {
+            list = vlans_list(raw.Vs("hwL2IfHybridTagLow", port_id) + raw.Vs("hwL2IfHybridTagHigh", port_id))
+          }
+          dev.VM("interfaces", ifName)["portHybridTag"] = list
+          list = "0"
+          if raw.Evs("hwL2IfHybridUntagLow", port_id) && raw.Evs("hwL2IfHybridUntagHigh", port_id) {
+            list = vlans_list(raw.Vs("hwL2IfHybridUntagLow", port_id) + raw.Vs("hwL2IfHybridUntagHigh", port_id))
+          }
+          dev.VM("interfaces", ifName)["portHybridUntag"] = list
+        default:
+          dev.VM("interfaces", ifName)["portMode"] = uint64(p_type)
+        }
+      }
+    }
   } //dot1q
 
 
@@ -1534,234 +1806,117 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
     }
   }
 
-  return nil
-}
+  if raw.EvM("tunnelEncap") {
+    for if_index, _ := range raw.VM("tunnelEncap") {
+      if raw.Evi("tunnelSec", if_index) &&
+         raw.Evi("tunnelAddrType", if_index) &&
+         raw.Evs("tunnelSrc", if_index) &&
+         raw.Evs("tunnelDst", if_index) &&
+         dev.Evs("ifName", if_index) &&
+      true {
+        dev.VM("interfaces", dev.Vs("ifName", if_index))["tunnelEncap"] = raw.Vi("tunnelEncap", if_index)
+        dev.VM("interfaces", dev.Vs("ifName", if_index))["tunnelSec"] = raw.Vi("tunnelSec", if_index)
+        dev.VM("interfaces", dev.Vs("ifName", if_index))["tunnelAddrType"] = raw.Vi("tunnelAddrType", if_index)
+        dev.VM("interfaces", dev.Vs("ifName", if_index))["tunnelSrc"] = raw.Vs("tunnelSrc", if_index)
+        dev.VM("interfaces", dev.Vs("ifName", if_index))["tunnelDst"] = raw.Vs("tunnelDst", if_index)
 
-func GetRawRed(red redis.Conn, dev_ip string) (M, error) {
-  var err error
-  if red == nil || red.Err() != nil || dev_ip == "" {
-    err = errors.New("GetRawRed: bad args")
-    return nil, err
-  }
+        if raw.Vi("tunnelAddrType", if_index) == 1 { //ipv4
+          src_str := raw.Vs("tunnelSrc", if_index)
+          dst_str := raw.Vs("tunnelDst", if_index)
+          if len(src_str) == 8 {
+            addr_u, perr := strconv.ParseUint(src_str, 16, 32)
+            if perr == nil {
+              addr := V4long2ip(uint32(addr_u))
+              dev.VM("interfaces", dev.Vs("ifName", if_index))["tunnelSrcDecoded"] = addr
 
-  lock_key := fmt.Sprintf("ip_lock.%s", dev_ip)
-  redm := redmutex.New(lock_key)
-
-  err = redm.Lock(red, time.Second, 10*time.Second)
-  if err != nil { return nil, err }
-
-  defer redm.Unlock(red)
-
-  queues_key := fmt.Sprintf("ip_queues.%s", dev_ip)
-
-  var queues map[string]string
-
-  queues, err = redis.StringMap(red.Do("HGETALL", queues_key))
-  if err != nil {
-    return nil, err
-  }
-
-  if len(queues) == 0 {
-    err = errors.New(fmt.Sprintf("No queues list for %s, cannot continue", dev_ip))
-    return nil, err
-  }
-
-  var queue_list []string
-
-  zero_queue_found := false
-
-  for qs, _ := range queues {
-    var qi int64
-    qi, err = strconv.ParseInt(qs, 10, 64)
-    if err != nil {
-      return nil, err
-    }
-    queue_list = append(queue_list, qs)
-    if qi == 0 {
-      zero_queue_found= true
-    }
-  }
-
-  if !zero_queue_found {
-    err = errors.New(fmt.Sprintf("No zero queue in ip_queues.%s key in redis, cannot continue", dev_ip))
-    return nil, err
-  }
-
-  var raw = make(M)
-
-  raw["_queues"] = queue_list
-
-  for _, queue := range queue_list {
-    var queue_keys map[string]string
-    var queue_data map[string]string
-
-    keys_key := fmt.Sprintf("ip_keys.%s.%s", queue, dev_ip)
-    data_key := fmt.Sprintf("ip_data.%s.%s", queue, dev_ip)
-    last_result_key := fmt.Sprintf("ip_last_result.%s.%s", queue, dev_ip)
-
-
-    queue_keys, err = redis.StringMap(red.Do("HGETALL", keys_key))
-    if err != nil {
-      return nil, err
-    }
-
-    if len(queue_keys) == 0 {
-      err = errors.New(fmt.Sprintf("No keys hash for queue %s", queue))
-      return nil, err
-    }
-
-    if len(queue_keys) < 3 {
-      err = errors.New(fmt.Sprintf("Too short keys hash for queue %s", queue))
-      return nil, err
-    }
-
-
-    queue_data, err = redis.StringMap(red.Do("HGETALL", data_key))
-    if err != nil {
-      return nil, err
-    }
-
-    if len(queue_data) == 0 {
-      err = errors.New(fmt.Sprintf("No data hash for queue %s", queue))
-      return nil, err
-    }
-
-    if len(queue_data) < 3 {
-      err = errors.New(fmt.Sprintf("Too short data hash for queue %s", queue))
-      return nil, err
-    }
-
-    var last_result string
-    last_result, err = redis.String(red.Do("GET", last_result_key))
-    if err != nil {
-      return nil, err
-    }
-
-
-    lr_h := raw.MkM("_last_result")
-    lr_h[queue] = last_result
-
-    for keyAndIndex, value := range queue_data {
-      if len(keyAndIndex) == 0 {
-        err = errors.New(fmt.Sprintf("Zero length key in queue %s", queue))
-        return nil, err
-      }
-      pointPos := strings.Index(keyAndIndex, ".")
-      var key string = ""
-      var index string = ""
-      if pointPos < 0 {
-        key = keyAndIndex
-      } else {
-        key = keyAndIndex[:pointPos]
-        index = keyAndIndex[pointPos+1:]
-        if len(index) == 0 {
-          err = errors.New(fmt.Sprintf("Zero index in key %s, queue %s", key, queue))
-          return nil, err
-        }
-        _, e := raw[key]
-        if !e {
-          raw[key] = make(M)
-        }
-      }
-
-      key_str, e := queue_keys[key]
-      if !e {
-        err = errors.New(fmt.Sprintf("ip_data and ip_keys mismatch on key %s", key))
-        return nil, err
-      }
-
-      m := keys_regex.FindStringSubmatch(key_str)
-      if m == nil {
-        err = errors.New(fmt.Sprintf("bad key info on key %s", key))
-        return nil, err
-      }
-
-      key_start, _err := strconv.ParseInt(m[1], 10, 64)
-      if _err != nil {
-        return nil, _err
-      }
-
-      key_stop, _err := strconv.ParseInt(m[2], 10, 64)
-      if _err != nil {
-        return nil, _err
-      }
-
-      if keyAndIndex[0] != '_' {
-        raw.MkM("_key_start")[key] = key_start
-        raw.MkM("_key_stop")[key] = key_stop
-        raw.MkM("_key_duration")[key] = key_stop - key_start
-        raw.MkM("_key_queue")[key] = queue
-      }
-
-      var v interface{}
-
-      switch m[4] {
-      case "int":
-        v, err = strconv.ParseInt(value, 10, 64)
-        if err != nil { return nil, err }
-      case "uns":
-        v, err = strconv.ParseUint(value, 10, 64)
-        if err != nil { return nil, err }
-      case "str","hex","oid":
-        v = value
-      default:
-        err = errors.New(fmt.Sprintf("Unhandled type for key %s", key))
-        return nil, err
-      }
-
-      if m[5] != "" {
-        ko_h := raw.MkM("_keys_options", key)
-        key_options := strings.Split(m[5], ",")
-        for _, ko_str := range key_options {
-          opt_val_pair := strings.Split(ko_str, " ")
-          if len(opt_val_pair) == 1 {
-            ko_h[opt_val_pair[0]]=""
-          } else {
-            ko_h[opt_val_pair[0]]=strings.Join(opt_val_pair[1:], " ")
+              for ifName, _ := range dev.VM("interfaces") {
+                if dev.EvM("interfaces", ifName, "ips", addr) {
+                  dev.VM("interfaces", dev.Vs("ifName", if_index))["tunnelSrcIfName"] = ifName
+                }
+              }
+            }
+          }
+          if len(dst_str) == 8 {
+            addr_u, perr := strconv.ParseUint(dst_str, 16, 32)
+            if perr == nil {
+              addr := V4long2ip(uint32(addr_u))
+              dev.VM("interfaces", dev.Vs("ifName", if_index))["tunnelDstDecoded"] = addr
+              for ifName, _ := range dev.VM("interfaces") {
+                if dev.EvM("interfaces", ifName, "ips", addr) {
+                  dev.VM("interfaces", dev.Vs("ifName", if_index))["tunnelDstIfName"] = ifName
+                }
+              }
+            }
           }
         }
       }
+    }
+  }
 
-      if keyAndIndex[0] == '_' {
-        queue_h := raw.MkM(keyAndIndex)
-        queue_h[queue] = v
-      } else {
-
-        if pointPos < 0 {
-          raw[keyAndIndex] = v
-        } else {
-          raw[key].(M)[index] = v
+  if raw.EvM("routedIfVlan") {
+    for key, _ := range raw.VM("routedIfVlan") {
+      a := strings.Split(key, ".")
+      if len(a) == 2 {
+        if_index := raw.Vs("routedIfVlan", key)
+        if dev.Evs("ifName", if_index) {
+          dev.VM("interfaces", dev.Vs("ifName", if_index))["routedVlan"] = a[0]
+          if dev.Evs("ifName", a[1]) {
+            dev.VM("interfaces", dev.Vs("ifName", if_index))["routedVlanParent"] = dev.Vs("ifName", a[1])
+          }
         }
       }
     }
   }
 
-  if !raw.EvM("_added") {
-    err = errors.New("No _added key in data")
-    return nil, err
-  }
-
-  var last_added interface{}
-
-  for _, queue := range queue_list {
-    if !raw.EvA("_added", queue) {
-      err = errors.New("No _added key in data")
-      return nil, err
-    }
-
-    if last_added != nil {
-      if reflect.TypeOf(last_added) != reflect.TypeOf(raw.VM("_added")[queue]) {
-        err = errors.New("_added key value type mismatch")
-        return nil, err
+  if raw.EvM("ciscoPortTrunkVlans") {
+    for key, _ := range raw.VM("ciscoPortTrunkVlans") {
+      if ifName, var_ok := dev.Vse("ifName", key); var_ok {
+        dev.VM("interfaces", ifName)["portTrunkVlans"] = vlans_list(raw.Vs("ciscoPortTrunkVlans", key))
       }
-      if last_added != raw.VM("_added")[queue] {
-        err = ErrorQueuesMismatch
-        return nil, err
-      }
-    } else {
-      last_added = raw.VM("_added")[queue]
     }
   }
 
-  return raw, nil
+
+  if raw.EvM("ciscoPortIsTrunk") {
+    for key, _ := range raw.VM("ciscoPortIsTrunk") {
+      if ifName, var_ok := dev.Vse("ifName", key); var_ok {
+        if raw.Vi("ciscoPortIsTrunk", key) == 1 {
+          dev.VM("interfaces", ifName)["portMode"] = uint64(2) //trunk
+          if raw.EvA("ciscoPortTrunkPvid", key) {
+            dev.VM("interfaces", ifName)["portPvid"] = raw.VA("ciscoPortTrunkPvid", key)
+          }
+        } else {
+          dev.VM("interfaces", ifName)["portMode"] = uint64(1) //access
+          if raw.EvA("ciscoPortAccessVlan", key) {
+            dev.VM("interfaces", ifName)["portPvid"] = raw.VA("ciscoPortAccessVlan", key)
+          }
+          if raw.EvA("ciscoPortVoiceVlan", key) {
+            dev.VM("interfaces", ifName)["portVvid"] = raw.VA("ciscoPortVoiceVlan", key)
+          }
+        }
+      }
+    }
+  }
+
+  if !raw.EvA("memorySize") && raw.EvM("ciscoMemPoolUsed") && raw.EvM("ciscoMemPoolFree") {
+    total_mem := uint64(0)
+    total_used := uint64(0)
+    for key, _ := range raw.VM("ciscoMemPoolUsed") {
+      mem_used, used_ex := raw.Vue("ciscoMemPoolUsed", key)
+      mem_free, free_ex := raw.Vue("ciscoMemPoolFree", key)
+      if used_ex && free_ex {
+        total_mem += (mem_used + mem_free)
+        total_used += mem_used
+      }
+    }
+
+    if total_mem > 0 {
+      dev["memorySize"] = total_mem
+      dev["memoryUsed"] = total_used
+
+      dev.MkM("proc_graph")["memoryUsed"] = 1
+    }
+  }
+
+  return nil
 }
