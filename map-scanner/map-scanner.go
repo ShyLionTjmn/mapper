@@ -50,10 +50,7 @@ const DB_ERROR_TIME= 5
 const ERROR_SLEEP=15
 const IDLE_SLEEP=600
 
-const OIDS_FILE="/etc/mapper/oids"
 
-const REDIS_SOCKET="/var/run/redis/redis.sock"
-const REDIS_DB="0"
 
 var red_db string=REDIS_DB
 

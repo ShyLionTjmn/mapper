@@ -28,13 +28,8 @@ import (
 
 const DB_REFRESH_TIME= 10
 
-const REDIS_SOCKET="/var/run/redis/redis.sock"
-const REDIS_DB="0"
-const REDIS_ERR_SLEEP=5
 const IP_GRAPHS_REFRESH=90
 
-const RRD_ROOT="/var/lib/rrdcached/db/mapper"
-const RRD_SOCKET="/var/run/rrdcached.sock"
 
 const MAX_INTERPOLATE_INTERVALS=10
 

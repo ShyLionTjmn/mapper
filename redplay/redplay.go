@@ -9,8 +9,6 @@ import (
   . "github.com/ShyLionTjmn/mapper/mapaux"
 )
 
-const REDIS_SOCKET="/tmp/redis.sock"
-const REDIS_DB="0"
 
 func init() {
   gob.Register(M{})

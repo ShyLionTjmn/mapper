@@ -10,8 +10,6 @@ import (
 
 )
 
-const REDIS_SOCKET="/var/run/redis/redis.sock"
-const REDIS_DB="0"
 
 var red_db string=REDIS_DB
 

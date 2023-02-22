@@ -18,10 +18,6 @@ import (
 )
 
 //graph
-const RRD_ROOT="/var/lib/rrdcached/db/mapper"
-const RRD_SOCKET = "/var/run/rrdcached.sock"
-const RRD_TOOL = "/usr/bin/rrdtool"
-const PNG_CACHE = "/var/mapper/png_cache"
 
 var cpu_colors = [...]string{"#000000", "#FF0000", "#00FF00", "#0000FF", "#FFFF00", "#FF00FF", "#00FFFF", "#888888"}
 

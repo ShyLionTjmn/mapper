@@ -683,7 +683,7 @@ func http_server(stop chan string, wg *sync.WaitGroup) {
   http.HandleFunc("/ajax", handleAjax)
   http.HandleFunc("/graph", handleGraph)
 
-  listener, listen_err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", 8181))
+  listener, listen_err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", BROKER_PORT))
   if listen_err != nil {
     panic("Listening error: "+listen_err.Error())
   }

@@ -43,13 +43,7 @@ const IPDB_REFRESH=60
 const ERROR_SLEEP=15
 const IDLE_SLEEP=600
 
-const WWW_ROOT = "/var/www/mapper"
-
-const REDIS_SOCKET="/tmp/redis.sock"
-const REDIS_DB="0"
-const REDIS_ERR_SLEEP=5
-
-// set in local.go // TODO move to config file
+// set in mapaux/local.go // TODO move to config file
 //const MYSQL_DSN="DP_USER:DB_PASS@unix(/var/run/mysqld/mysqld.sock)/ipdb_db_name"
 
 var red_db string=REDIS_DB
@@ -75,9 +69,6 @@ var alert_fields []string
 var ip_neighbours_rule string
 var ip_neighbours_fields []string
 var ip_neighbours_ignored map[string]struct{}
-
-const SITES_ROOT_API_NAME = "location"
-const PROJECTS_ROOT_API_NAME = "is"
 
 var ip2site = make(map[string]string)
 var net2site = make(map[string]string)
