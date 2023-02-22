@@ -1869,6 +1869,9 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
 
     out["data"] = data
     out["refs"] = dev_refs
+    out["macs"]=devs_macs
+    out["arp"]=devs_arp
+
   } else if action == "get_interface" {
     var dev_id string
     var ifName string
@@ -1962,4 +1965,3 @@ pre_marshal := time.Now()
     panic(err)
   }
 }
-
