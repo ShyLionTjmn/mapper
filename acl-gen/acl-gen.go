@@ -148,14 +148,19 @@ func main() {
   oobs, err := Return_query_A(db, query)
   if err != nil { panic(err) }
 
+  database := M{}
+
   for _, oob_row := range oobs {
     for _, tag_id := range strings.Split(oob_row.Vs("tags"), ",") {
       if tags.EvM(tag_id) {
-        fmt.Println(oob_row.ToJsonStr(true))
-        fmt.Println(oob_row.Vs("ip"),"/",oob_row.Vs("mask"), ": ", tags.Vs(tag_id, "tag_name"))
+        //fmt.Println(oob_row.Vs("ip"),"/",oob_row.Vs("mask"), ": ", tags.Vs(tag_id, "tag_name"))
+        database.MkM(tags.Vs(tag_id, "tag_name"))[ oob_row.Vs("ip") ] = oob_row.Vu("mask")
       }
     }
   }
+
+  //fmt.Println(database.ToJsonStr(true))
+
 
   for _, id := range devs_list {
     fmt.Printf("% -20s  % -15s  % -20s: work\n",
