@@ -650,7 +650,7 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
       ifName := ifName_i.(string)
       ifIndex, err = strconv.ParseInt(ifIndex_str, 10, 64)
       if err != nil { return err }
-      if dev.Evs("interfaces", ifName) {
+      if dev.EvA("interfaces", ifName) {
         //err = errors.New(fmt.Sprintf("Duplicate ifName %s", ifName))
         fmt.Fprintf(os.Stderr, "Duplicate ifName %s\n", ifName)
         continue
@@ -1529,7 +1529,7 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
   } else if raw.EvM("hwL2IfPortType") && raw.EvM("hwL2IfPortIfIndex") {
     for port_id, _ := range raw.VM("hwL2IfPortIfIndex") {
       ifIndex := raw.Vs("hwL2IfPortIfIndex", port_id)
-      if ifName, ex := dev.Vse("ifName", ifIndex); ex {
+      if ifName, ex := dev.Vse("ifName", ifIndex); ex && dev.EvM("interfaces", ifName) {
         pvid := int64(0)
         if raw.Evi("hwL2IfPVID", port_id) {
           pvid = raw.Vi("hwL2IfPVID", port_id)
@@ -1813,6 +1813,7 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
          raw.Evs("tunnelSrc", if_index) &&
          raw.Evs("tunnelDst", if_index) &&
          dev.Evs("ifName", if_index) &&
+         dev.EvM("interfaces", dev.Vs("ifName", if_index)) &&
       true {
         dev.VM("interfaces", dev.Vs("ifName", if_index))["tunnelEncap"] = raw.Vi("tunnelEncap", if_index)
         dev.VM("interfaces", dev.Vs("ifName", if_index))["tunnelSec"] = raw.Vi("tunnelSec", if_index)
@@ -1858,7 +1859,7 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
       a := strings.Split(key, ".")
       if len(a) == 2 {
         if_index := raw.Vs("routedIfVlan", key)
-        if dev.Evs("ifName", if_index) {
+        if dev.Evs("ifName", if_index) && dev.EvM("interfaces", dev.Vs("ifName", if_index)) {
           dev.VM("interfaces", dev.Vs("ifName", if_index))["routedVlan"] = a[0]
           if dev.Evs("ifName", a[1]) {
             dev.VM("interfaces", dev.Vs("ifName", if_index))["routedVlanParent"] = dev.Vs("ifName", a[1])
@@ -1870,7 +1871,7 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
 
   if raw.EvM("ciscoPortTrunkVlans") {
     for key, _ := range raw.VM("ciscoPortTrunkVlans") {
-      if ifName, var_ok := dev.Vse("ifName", key); var_ok {
+      if ifName, var_ok := dev.Vse("ifName", key); var_ok && dev.EvM("interfaces", ifName) {
         dev.VM("interfaces", ifName)["portTrunkVlans"] = vlans_list(raw.Vs("ciscoPortTrunkVlans", key))
       }
     }
@@ -1879,7 +1880,7 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
 
   if raw.EvM("ciscoPortIsTrunk") {
     for key, _ := range raw.VM("ciscoPortIsTrunk") {
-      if ifName, var_ok := dev.Vse("ifName", key); var_ok {
+      if ifName, var_ok := dev.Vse("ifName", key); var_ok && dev.EvM("interfaces", ifName) {
         if raw.Vi("ciscoPortIsTrunk", key) == 1 {
           dev.VM("interfaces", ifName)["portMode"] = uint64(2) //trunk
           if raw.EvA("ciscoPortTrunkPvid", key) {

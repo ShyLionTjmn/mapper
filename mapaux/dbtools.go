@@ -1,4 +1,4 @@
-package main
+package mapaux
 
 import(
   "database/sql"
@@ -9,7 +9,6 @@ import(
   "errors"
   "strconv"
   "encoding/hex"
-  . "github.com/ShyLionTjmn/mapper/mapaux"
 )
 
 func init() {
@@ -103,7 +102,7 @@ func decode_var(ct *sql.ColumnType, val interface{}) (interface{}, error) {
   return ret, nil
 }
 
-func return_query(db interface{}, query string, index string, args ...interface{}) (interface{}, error) {
+func Return_query(db interface{}, query string, index string, args ...interface{}) (interface{}, error) {
   var ret interface{}
   if index == "" {
     ret = make([]M, 0)
@@ -186,25 +185,25 @@ func return_query(db interface{}, query string, index string, args ...interface{
   return ret, nil
 }
 
-func return_query_M(db interface{}, query string, index string, args ...interface{}) (M, error) {
-  m, err := return_query(db, query, index, args...)
+func Return_query_M(db interface{}, query string, index string, args ...interface{}) (M, error) {
+  m, err := Return_query(db, query, index, args...)
   if err != nil { return nil, err }
   var ret M
   var ok bool
-  if ret, ok = m.(M); !ok { return nil, errors.New("return_query_M: Bad type returned by return_query") }
+  if ret, ok = m.(M); !ok { return nil, errors.New("Return_query_M: Bad type returned by return_query") }
   return ret, nil
 }
 
-func return_query_A(db interface{}, query string, args ...interface{}) ([]M, error) {
-  m, err := return_query(db, query, "", args...)
+func Return_query_A(db interface{}, query string, args ...interface{}) ([]M, error) {
+  m, err := Return_query(db, query, "", args...)
   if err != nil { return nil, err }
   var ret []M
   var ok bool
-  if ret, ok = m.([]M); !ok { return nil, errors.New("return_query_A: Bad type returned by return_query") }
+  if ret, ok = m.([]M); !ok { return nil, errors.New("Return_query_A: Bad type returned by return_query") }
   return ret, nil
 }
 
-func db_exec(db interface{}, query string, args ...interface{}) (sql.Result, error) {
+func Db_exec(db interface{}, query string, args ...interface{}) (sql.Result, error) {
   switch db.(type) {
   case *sql.DB:
     return db.(*sql.DB).Exec(query, args...)
@@ -215,7 +214,7 @@ func db_exec(db interface{}, query string, args ...interface{}) (sql.Result, err
   }
 }
 
-func return_arrays(db interface{}, query string, args ...interface{}) ([][]interface{}, error) {
+func Return_arrays(db interface{}, query string, args ...interface{}) ([][]interface{}, error) {
   ret := make([][]interface{}, 0)
 
   var rows *sql.Rows
@@ -265,8 +264,8 @@ func return_arrays(db interface{}, query string, args ...interface{}) ([][]inter
   return ret, nil
 }
 
-func must_return_one_M(db interface{}, query string, args ...interface{}) (M, error) {
-  a, err := return_query_A(db, query, args...)
+func Must_return_one_M(db interface{}, query string, args ...interface{}) (M, error) {
+  a, err := Return_query_A(db, query, args...)
   if err != nil { return nil, err }
 
   if len(a) == 0 {
@@ -279,8 +278,8 @@ func must_return_one_M(db interface{}, query string, args ...interface{}) (M, er
   return a[0], nil
 }
 
-func must_return_one_uint(db interface{}, query string, args ...interface{}) (uint64, error) {
-  a, err := return_arrays(db, query, args...)
+func Must_return_one_uint(db interface{}, query string, args ...interface{}) (uint64, error) {
+  a, err := Return_arrays(db, query, args...)
   if err != nil { return 0, err }
 
   if len(a) == 0 {

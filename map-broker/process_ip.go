@@ -1559,6 +1559,7 @@ func process_ip_data(wg *sync.WaitGroup, ip string, startup bool) {
       int_h := int_m.(M)
       if nei_m, ok := int_h.VMe("ip_neighbours"); ok {
         if !startup && ip_neighbours_rule != "" {
+          //red.Do("PUBLISH", "ip_nei_debug."+ip, "Checking interface " + ifName + "\n" + int_h.ToJsonStr(true))
           m := make(map[string]string)
           for _, field := range ip_neighbours_fields {
             if _, found := m[field]; !found && dev.EvA(field) {
@@ -1567,7 +1568,9 @@ func process_ip_data(wg *sync.WaitGroup, ip string, startup bool) {
               m[field] = AlertRuleFieldValue(dev.VA("interfaces", ifName, field))
             }
           }
+
           for nei_ip, _ := range nei_m {
+            //red.Do("PUBLISH", "ip_nei_debug."+ip, "Checking neighbour "+nei_ip)
             _, used := all_ips[nei_ip]
             _, ignore := ip_neighbours_ignored[nei_ip]
             if !used && !ignore && !data.EvM("dev_list", nei_ip) {
@@ -1586,10 +1589,7 @@ func process_ip_data(wg *sync.WaitGroup, ip string, startup bool) {
                     fmt.Println("IP neighbour:", ifName, nei_ip, "ADD")
                   }
                   if opt_n {
-                    _, red_check_err := redis.String(red.Do("HGET", "dev_list", nei_ip))
-                    if red_check_err == redis.ErrNil {
-                      _, red_check_err = red.Do("HSET", "dev_list", nei_ip, now_unix_str+":run")
-                    }
+                    red.Do("HSETNX", "dev_list", nei_ip, now_unix_str+":run")
                   }
                 } else {
                   if opt_v > 2 {

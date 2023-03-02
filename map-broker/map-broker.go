@@ -44,7 +44,7 @@ const ERROR_SLEEP=15
 const IDLE_SLEEP=600
 
 // set in mapaux/local.go // TODO move to config file
-//const MYSQL_DSN="DP_USER:DB_PASS@unix(/var/run/mysqld/mysqld.sock)/ipdb_db_name"
+//const IPDB_DSN="DP_USER:DB_PASS@unix(/var/run/mysqld/mysqld.sock)/ipdb_db_name"
 
 var red_db string=REDIS_DB
 
@@ -93,6 +93,7 @@ var opt_l bool
 var opt_n bool
 var opt_d bool
 var opt_w string //www root
+var opt_u string //unix socket
 
 const TRY_OPEN_FILES uint64=65536
 var max_open_files uint64
@@ -120,6 +121,7 @@ func init() {
   flag.BoolVar(&opt_d, "d", false, "debug")
   flag.IntVar(&opt_v, "v", 0, "set verbosity level")
   flag.StringVar(&opt_w, "w", WWW_ROOT, "www root")
+  flag.StringVar(&opt_u, "u", BROKER_UNIX_SOCKET, "Broker Unix socket")
 
   flag.Parse()
 
@@ -536,14 +538,14 @@ MAIN_LOOP:
         var u64 uint64
         var var_ok bool
 
-        if db, err = sql.Open("mysql", MYSQL_DSN); err != nil { return err }
+        if db, err = sql.Open("mysql", IPDB_DSN); err != nil { return err }
         defer db.Close()
 
         query = "SELECT * FROM tags ORDER BY tag_sort"
         var rows []M
         new_tags_indexes := make(map[string]int)
 
-        if rows, err = return_query_A(db, query); err != nil { return err }
+        if rows, err = Return_query_A(db, query); err != nil { return err }
         new_tags := make([]M, len(rows))
 
         new_sites_root := ""
@@ -565,10 +567,10 @@ MAIN_LOOP:
               }
               return errors.New("no tag_api_name: tag_id: "+tag_id)
             } //unlikely
-            if tag_api_name == SITES_ROOT_API_NAME {
+            if tag_api_name == IPDB_SITES_ROOT_API_NAME {
               new_sites_root = tag_id
             }
-            if tag_api_name == PROJECTS_ROOT_API_NAME {
+            if tag_api_name == IPDB_PROJECTS_ROOT_API_NAME {
               new_projects_root = tag_id
             }
           }
@@ -627,7 +629,7 @@ MAIN_LOOP:
         }
 
         query = "SELECT v4net_addr, v4net_mask, v4net_tags FROM v4nets WHERE v4net_tags != ''"
-        if rows, err = return_query_A(db, query); err != nil { return err }
+        if rows, err = Return_query_A(db, query); err != nil { return err }
 
         for _, row := range rows {
           if u64, var_ok = row.Uint64("v4net_addr"); !var_ok { return errors.New("no v4net_addr") }
@@ -664,7 +666,7 @@ MAIN_LOOP:
                 " INNER JOIN ics ON nc_fk_ic_id=ic_id)"+
                 " INNER JOIN i4vs ON iv_fk_ic_id=nc_fk_ic_id AND iv_fk_v4ip_id=v4ip_id"+
                 " WHERE iv_value != '' AND (ic_type='tag' OR ic_type='multitag')"
-        if rows, err = return_query_A(db, query); err != nil { return err }
+        if rows, err = Return_query_A(db, query); err != nil { return err }
 
         for _, row := range rows {
           if u64, var_ok = row.Uint64("v4ip_addr"); !var_ok { return errors.New("no v4ip_addr") }
@@ -761,7 +763,7 @@ MAIN_LOOP:
 
     if redis_loaded && !http_launched {
       if opt_v > 0 {
-        fmt.Println("Starting http listener")
+        fmt.Println("Starting listeners")
       }
       _stop_ch := make(chan string, 1)
       stop_channels = append(stop_channels, _stop_ch)
@@ -769,6 +771,11 @@ MAIN_LOOP:
       wg.Add(1)
       http_launched = true
       go http_server(_stop_ch, &wg)
+
+      sock_stop_ch := make(chan string, 1)
+      stop_channels = append(stop_channels, sock_stop_ch)
+      wg.Add(1)
+      go socket_listener(sock_stop_ch, &wg)
     }
 
     if redis_loaded && queue_data_sub_launched && http_launched {
