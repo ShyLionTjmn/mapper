@@ -9,6 +9,9 @@ import (
   "io/fs"
   "bufio"
   "strings"
+  "os/signal"
+  "syscall"
+  "sync"
   "encoding/gob"
   . "github.com/ShyLionTjmn/mapper/mapaux"
 
@@ -20,6 +23,9 @@ import (
 
 const CONFIGS_DIR = "/data/configs/"
 const DB_DIR = "/data/apps_db/acl-gen/"
+
+var devs M
+var database M
 
 func init() {
   gob.Register(M{})
@@ -43,8 +49,6 @@ func main() {
     panic(err)
   }
   dec := gob.NewDecoder(conn)
-
-  var devs M
 
   err = dec.Decode(&devs)
 
@@ -148,7 +152,7 @@ func main() {
   oobs, err := Return_query_A(db, query)
   if err != nil { panic(err) }
 
-  database := M{}
+  database = M{}
 
   for _, oob_row := range oobs {
     for _, tag_id := range strings.Split(oob_row.Vs("tags"), ",") {
@@ -161,12 +165,63 @@ func main() {
 
   //fmt.Println(database.ToJsonStr(true))
 
+  var wg sync.WaitGroup
+  stop_ch := make(StopCloseChan)
+
+  sig_ch := make(chan os.Signal, 1)
+  signal.Notify(sig_ch, syscall.SIGHUP)
+  signal.Notify(sig_ch, syscall.SIGINT)
+  signal.Notify(sig_ch, syscall.SIGTERM)
+  signal.Notify(sig_ch, syscall.SIGQUIT)
 
   for _, id := range devs_list {
-    fmt.Printf("% -20s  % -15s  % -20s: work\n",
-      devs.Vs(id, "short_name"),
-      devs.Vs(id, "data_ip"),
-      devs.Vs(id, "model_short"),
-    )
+    wg.Add(1)
+    go work_router(id, stop_ch, &wg)
+  }
+
+  wait_ch := make(chan struct{})
+  go func() {
+    wg.Wait()
+    close(wait_ch)
+    fmt.Println("main: Wait finished")
+  } ()
+
+  MAIN_LOOP:  for {
+    select {
+    case <-wait_ch:
+      //all goroutines finished normally
+      fmt.Println("main: Normal finish")
+      break MAIN_LOOP
+    case s := <-sig_ch:
+      if s != syscall.SIGHUP && s != syscall.SIGUSR1 {
+        fmt.Println("main: User exit signalled, terminating workers")
+        close(stop_ch)
+        break MAIN_LOOP
+      }
+    }
+  }
+
+  if WaitTimeout(&wg, 5 * time.Second) {
+    fmt.Println("main: Tired of wating. Just quitting")
+  }
+}
+
+func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup) {
+  defer wg.Done()
+
+  fmt.Printf("% -20s  % -15s  % -20s: work\n",
+    devs.Vs(id, "short_name"),
+    devs.Vs(id, "data_ip"),
+    devs.Vs(id, "model_short"),
+  )
+
+  test_timer := time.NewTimer(10 * time.Second)
+
+  select {
+  case <-stop_ch:
+    test_timer.Stop()
+    fmt.Println(devs.Vs(id, "short_name") + ": interrupted by user")
+  case <- test_timer.C:
+    fmt.Println(devs.Vs(id, "short_name") + ": stop by timer")
   }
 }
