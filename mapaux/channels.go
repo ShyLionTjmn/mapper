@@ -1,8 +1,14 @@
 package mapaux
 
+import (
+  "errors"
+)
+
 type StopCloseChan chan struct{}
 
-func IsClosed(ch StopCloseChan) bool {
+var ErrStopped = errors.New("StopCloseChan stopped")
+
+func IsStopped(ch StopCloseChan) bool {
 	select {
 	case <-ch:
 		return true
