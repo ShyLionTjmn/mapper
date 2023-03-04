@@ -9,6 +9,70 @@ var data = {};
 var map_data = { "loc": {}, "tps": {}, "colors": {}, "options": {} };
 var temp_data = { "devs": {}, "p2p_links": {} };
 
+var protocols = {
+  "1": "ICMP",
+  "2": "IGMP",
+  "6": "TCP",
+  "8": "EGP",
+  "9": "IGP",
+  "17": "UDP",
+  "47": "GRE",
+  "50": "ESP",
+  "51": "AH",
+  "88": "EIGRP",
+  "89": "OSPF",
+  "94": "IPIP",
+  "115": "L2TP",
+};
+
+var ports = {
+  "0": "None",
+  "20": "FTPd",
+  "21": "FTPc",
+  "22": "SSH",
+  "23": "Telnet",
+  "25": "SMTP",
+  "53": "DNS",
+  "67": "BOOTPs",
+  "68": "BOOTPc",
+  "69": "TFTP",
+  "80": "HTTP",
+  "88": "KRBRS",
+  "110": "POP3",
+  "123": "NTP",
+  "137": "NetBIOS-ns",
+  "138": "NetBIOS-dt",
+  "139": "NetBIOS-ss",
+  "143": "IMAP",
+  "161": "SNMP",
+  "162": "SNMPtr",
+  "389": "LDAP",
+  "443": "HTTPS",
+  "445": "MS-DS",
+  "500": "ISAKMP",
+  "514": "Syslog",
+  "515": "PRN",
+  "554": "RTSP",
+  "636": "LDAPS",
+  "873": "RSYNC",
+  "993": "IMAPS",
+  "995": "POP3S",
+  "1352": "Lotus",
+  "1433": "MSSQLs",
+  "1434": "MSSQLm",
+  "1560": "1C",
+  "1701": "L2TP",
+  "1812": "RADAUTH",
+  "1813": "RADACCT",
+  "2049": "NFS",
+  "3306": "MySQL",
+  "3128": "Squid",
+  "3389": "MSRDP",
+  "4500": "Ipsec",
+  "5650": "RMS",
+  "6568": "Anydesk",
+};
+
 var site;
 var proj;
 var file_key = "";
@@ -65,6 +129,146 @@ var userinfo = {};
 
 var default_graph_size = "500x150";
 var graph_sizes_list = ["500x70", default_graph_size, "800x100", "800x200", "1000x150", "1000x300", "1600x180", "1600x350"];
+
+function format_mac(mac, view="canonic") {
+  let m = String(mac).match(/^([0-9a-fA-F]{2})[:\.\-]?([0-9a-fA-F]{2})[:\.\-]?([0-9a-fA-F]{2})[:\.\-]?([0-9a-fA-F]{2})[:\.\-]?([0-9a-fA-F]{2})[:\.\-]?([0-9a-fA-F]{2})$/);
+  if(m === null) return mac;
+
+  switch(view) {
+  case "canonic":
+  case "u6c":
+      return(m[1].toUpperCase()+":"+m[2].toUpperCase()+":"+m[3].toUpperCase()+":"+m[4].toUpperCase()+":"+m[5].toUpperCase()+":"+m[6].toUpperCase());
+  case "snr":
+  case "l6h":
+      return(m[1].toLowerCase()+"-"+m[2].toLowerCase()+"-"+m[3].toLowerCase()+"-"+m[4].toLowerCase()+"-"+m[5].toLowerCase()+"-"+m[6].toLowerCase());
+  case "cisco":
+  case "l3d":
+      return(m[1].toLowerCase()+m[2].toLowerCase()+"."+m[3].toLowerCase()+m[4].toLowerCase()+"."+m[5].toLowerCase()+m[6].toLowerCase());
+  case "huawei":
+  case "l3h":
+      return(m[1].toLowerCase()+m[2].toLowerCase()+"-"+m[3].toLowerCase()+m[4].toLowerCase()+"-"+m[5].toLowerCase()+m[6].toLowerCase());
+  };
+  return mac;
+};
+
+$.fn.ip_info = function(ip) {
+  $(this).data("ip_info.ip", ip);
+  $(this).tooltip({
+    classes: { "ui-tooltip": "ui-corner-all ui-widget-shadow wsp tooltip" },
+    items: $(this),
+    content: function() {
+      let ip = $(this).data("ip_info.ip");
+
+      run_query({"action": "ip_info", "ip": ip}, function(res) {
+        let elm = $("." + $.escapeSelector("ip_tooltip_"+ip));
+        if(elm.length == 0) return;
+
+        elm.empty();
+
+        if(keys(res["ok"]).length == 0) {
+          elm.text("Ничего не найдено");
+          return;
+        };
+
+        let table = $(TABLE);
+
+        table
+         .append( $(TR)
+           .append( $(TD).text("IP:") )
+           .append( $(TD).text(ip) )
+         )
+        ;
+
+        if(res["ok"]["hostname"] !== undefined) {
+          table
+           .append( $(TR)
+             .append( $(TD).text("IPDB:") )
+             .append( $(TD).text(res["ok"]["hostname"]) )
+           )
+          ;
+        };
+
+        if(res["ok"]["net"] !== undefined) {
+          table
+           .append( $(TR)
+             .append( $(TD).text("IPDB NET:") )
+             .append( $(TD).text(res["ok"]["net"]) )
+           )
+          ;
+        };
+
+        if(res["ok"]["dns"] !== undefined) {
+          table
+           .append( $(TR)
+             .append( $(TD).text("DNS:") )
+             .append( $(TD).text(res["ok"]["dns"]) )
+           )
+          ;
+        };
+
+        if(res["ok"]["arp"] !== undefined) {
+          let vendor = if_undef(res["ok"]["arp"]["mac_vendor"], "");
+          table
+           .append( $(TR)
+             .append( $(TD).text("MAC:") )
+             .append( $(TD)
+               .text(format_mac(res["ok"]["arp"]["mac_addr"]) + "  " + vendor)
+             )
+           )
+          ;
+        };
+
+
+        if(res["ok"]["whois"] !== undefined) {
+          table
+           .append( $(TR)
+             .append( $(TD).text("WHOIS:") )
+             .append( $(TD).text("Нажмите для информации...") )
+           )
+           .append( $(TR)
+             .append( $(TD, {"colspan": 2}).text(whois(res["ok"]["whois"]))
+               .css({"white-space": "pre", "font-family": "monospace"})
+             )
+           )
+          ;
+        };
+
+        elm.append(table);
+
+         let a = 1;
+
+      })
+
+      return $(DIV).addClass("ip_tooltip_"+ip).text("Загрузка...")
+       //.css({"background-color": "white"})
+      ;
+    }
+  });
+
+  return this;
+};
+
+function whois(src) {
+  let lines = String(src).split("\n");
+  let out = [];
+
+  let block = false;
+
+  for(let l in lines) {
+    let line = lines[l];
+    let matches = [];
+    if(matches = line.match(/(?:inetnum|netrange):\s*(\d+\.\d+\.\d+\.\d+)\s*-\s*(\d+\.\d+\.\d+\.\d+)/i)) {
+      out.push(line);
+      block = true;
+    } else if(line.match(/(?:netname|country|org|organization):/i) && block) {
+      out.push(line);
+    } else if(line.match(/^\s*$/)) {
+      block = false
+    };
+  };
+
+  return out.join("\n");
+};
 
 function hex2ip(hex) {
   return v4long2ip(Number("0x"+hex));
@@ -946,11 +1150,6 @@ function data_loaded(new_data) {
   for(let link_id in connections) {
     draw_connection(link_id);
   };
-
-  //DEBUG
-  if(site == "12") {
-    show_interface_window("lldp:08798c7d0081", "100GE1/0/8");
-  };
 };
 
 function resort_dev_list() {
@@ -1379,7 +1578,7 @@ function device_win(dev_id) {
        .data("int", ifName)
        .data("dev_id", dev_id)
        .click(function() {
-         show_interface_window($(this).data("dev_id"), $(this).data("int"));
+         interface_win($(this).data("dev_id"), $(this).data("int"));
        })
       ;
 
@@ -1477,7 +1676,7 @@ function device_win(dev_id) {
       for(let key in dev["topTalkersInIf"]) {
         let full = true;
         let attrs = ["topTalkersBytes", "topTalkersDstIp", "topTalkersDstPort", "topTalkersFirst", "topTalkersLast",
-                     "topTalkersOutIf", "topTalkersProto", "topTalkersSrcIp", "topTalkersSrcPort",
+                     "topTalkersOutIf", "topTalkersProto", "topTalkersSrcIp", "topTalkersSrcPort", "topTalkersPkts",
         ];
         for(let i in attrs) {
           if(dev[attrs[i]][key] === undefined) { full = false; break; };
@@ -1500,13 +1699,16 @@ function device_win(dev_id) {
         let divider = (duration <= 0)?1:duration;
         let speed_num = (Number(dev["topTalkersBytes"][key])*8)/divider;
         let speed = kmg(Math.round(speed_num)) + "bps";
+        let pps_num = (Number(dev["topTalkersPkts"][key]))/divider;
+        let pps = kmg(Math.round(pps_num)) + "pps";
 
         records.push(
           { "InIf": dev["topTalkersInIf"][key], "SrcIP": hex2ip(dev["topTalkersSrcIp"][key]), "SrcPort": dev["topTalkersSrcPort"][key],
             "OutIf": dev["topTalkersOutIf"][key], "DstIP": hex2ip(dev["topTalkersDstIp"][key]), "DstPort": dev["topTalkersDstPort"][key],
             "Proto": dev["topTalkersProto"][key], "Duration": duration, "Speed": speed, "SpeedNum": speed_num,
             "Bytes": dev["topTalkersBytes"][key], "divider": divider, "duration": duration, "rec_key": rec_key,
-            "First": dev["topTalkersFirst"][key], "Last": dev["topTalkersLast"][key]
+            "First": dev["topTalkersFirst"][key], "Last": dev["topTalkersLast"][key],
+            "Pkts": dev["topTalkersPkts"][key], "Pps": pps, "PpsNum": pps_num,
           }
         );
 
@@ -1518,9 +1720,6 @@ function device_win(dev_id) {
       table
        .data("sort", "Bytes")
        .append( $(DIV).addClass("thead")
-         .append( $(SPAN).addClass("th")
-           .text("Proto")
-         )
          .append( $(SPAN).addClass("th")
            .append( $(SPAN).text("InIf") )
            .append( $(LABEL).addClass(["ui-icon", "ui-icon-triangle-1-s"])
@@ -1541,12 +1740,10 @@ function device_win(dev_id) {
            .text("SrcPrt")
          )
          .append( $(SPAN).addClass("th")
-           .append( $(SPAN).text("OutIf") )
-           .append( $(LABEL).addClass(["ui-icon", "ui-icon-triangle-1-n"])
-             .css({"color": "gray"})
-           )
-           .data("sort", false)
-           .data("sort_field", "OutIf")
+           .text("Proto")
+         )
+         .append( $(SPAN).addClass("th")
+           .text("DstPrt")
          )
          .append( $(SPAN).addClass("th")
            .append( $(SPAN).text("DstIP") )
@@ -1557,7 +1754,12 @@ function device_win(dev_id) {
            .data("sort_field", "DstIP")
          )
          .append( $(SPAN).addClass("th")
-           .text("DstPrt")
+           .append( $(SPAN).text("OutIf") )
+           .append( $(LABEL).addClass(["ui-icon", "ui-icon-triangle-1-n"])
+             .css({"color": "gray"})
+           )
+           .data("sort", false)
+           .data("sort_field", "OutIf")
          )
          .append( $(SPAN).addClass("th")
            .append( $(SPAN).text("Bytes") )
@@ -1574,6 +1776,14 @@ function device_win(dev_id) {
            )
            .data("sort", false)
            .data("sort_field", "SpeedNum")
+         )
+         .append( $(SPAN).addClass("th")
+           .append( $(SPAN).text("Pps") )
+           .append( $(LABEL).addClass(["ui-icon", "ui-icon-triangle-1-s"])
+             .css({"color": "gray"})
+           )
+           .data("sort", false)
+           .data("sort_field", "PpsNum")
          )
        )
       ;
@@ -1597,7 +1807,7 @@ function device_win(dev_id) {
          rows.sort(function(a, b) {
             let a_data = $(a).data("data");
             let b_data = $(b).data("data");
-            if(order == "Bytes" || order == "SpeedNum") {
+            if(order == "Bytes" || order == "SpeedNum" || order == "PpsNum") {
               return Number(b_data[order]) - Number(a_data[order]);
             } else {
               let c = num_compare(String(a_data[order]), String(b_data[order]));
@@ -1627,9 +1837,143 @@ function device_win(dev_id) {
 
       for(let i in records) {
         let rec = records[i];
+
+
+        let proto_elm = $(SPAN).text( rec["Proto"] );
+        if(protocols[String(rec["Proto"])] != undefined) {
+          proto_elm.text(protocols[String(rec["Proto"])])
+           .css({"border": "1px solid lightgray", "background-color": "#EEFFEE"})
+           .title(String(rec["Proto"]))
+          ;
+        };
+
+        let src_port_elm = $(SPAN).text( rec["SrcPort"] );
+        if((rec["Proto"] == 6 || rec["Proto"] == 17) &&
+           ports[String(rec["SrcPort"])] != undefined) {
+          src_port_elm.text(ports[String(rec["SrcPort"])])
+           .css({"border": "1px solid lightgray", "background-color": "#EEFFEE"})
+           .title(String(rec["SrcPort"]))
+          ;
+        };
+
+        let dst_port_elm = $(SPAN).text( rec["DstPort"] );
+        if((rec["Proto"] == 6 || rec["Proto"] == 17) &&
+           ports[String(rec["DstPort"])] != undefined) {
+          dst_port_elm.text(ports[String(rec["DstPort"])])
+           .css({"border": "1px solid lightgray", "background-color": "#EEFFEE"})
+           .title(String(rec["DstPort"]))
+          ;
+        };
+
+        if(rec["Proto"] != 6 && rec["Proto"] != 17) {
+          src_port_elm.css({"color": "lightgray"});
+          dst_port_elm.css({"color": "lightgray"});
+        };
+
+        let inif_elm = $(LABEL);
+        let ifName = undefined;
+
+        if(rec["InIf"] == 0) {
+          for(let int in data["devs"][dev_id]["interfaces"]) {
+            if(data["devs"][dev_id]["interfaces"][int]["ips"] != undefined &&
+               data["devs"][dev_id]["interfaces"][int]["ips"][ rec["SrcIP"] ] !=  undefined
+            ) {
+              ifName = int;
+              break;
+            };
+          };
+        };
+        
+        if(ifName === undefined && rec["InIf"] == 0) {
+          inif_elm.text("Local").css({"color": "lightgray"});
+        } else {
+          if(ifName === undefined) ifName = data["devs"][dev_id]["ifName"][String(rec["InIf"])];
+          if(ifName === undefined) {
+            inif_elm.text("Unkn: "+rec["InIf"]).css({"color": "orange"});
+          } else if(data["devs"][dev_id]["interfaces"][ifName] === undefined) {
+            inif_elm.text(ifName).css({"color": "orange"});
+          } else {
+            let title = "";
+            if(data["devs"][dev_id]["interfaces"][ifName]["ifAlias"] !== undefined) {
+              title = data["devs"][dev_id]["interfaces"][ifName]["ifAlias"];
+            };
+
+            inif_elm.text(ifName + (rec["InIf"] == 0?"*":""))
+             .css({"border": "1px solid lightgray", "background-color": "#EEFFEE"})
+             .title(title)
+             .data("int", ifName)
+             .click(function() {
+               let int = $(this).data("int");
+               let dev_id = $(this).closest(".dialog_start").data("dev_id");
+               interface_win(dev_id, int);
+             })
+             .hover(
+               function (e) {
+                 e.stopPropagation();
+                 let int = $(this).data("int");
+                 let dev_id = $(this).closest(".dialog_start").data("dev_id");
+                 interface_in(int, data["devs"][dev_id])
+               },
+               interface_out
+             )
+            ;
+          };
+        };
+
+        let outif_elm = $(LABEL);
+        ifName = undefined;
+        if(rec["OutIf"] == 0) {
+          for(let int in data["devs"][dev_id]["interfaces"]) {
+            if(data["devs"][dev_id]["interfaces"][int]["ips"] != undefined &&
+               data["devs"][dev_id]["interfaces"][int]["ips"][ rec["DstIP"] ] !=  undefined
+            ) {
+              ifName = int;
+              break;
+            };
+          };
+        };
+
+        if(ifName === undefined && rec["OutIf"] == 0) {
+          outif_elm.text("Local").css({"color": "lightgray"});
+        } else {
+
+          if(ifName === undefined) ifName = data["devs"][dev_id]["ifName"][String(rec["OutIf"])];
+          if(ifName === undefined) {
+            outif_elm.text("Unkn: "+rec["OutIf"]).css({"color": "orange"});
+          } else if(data["devs"][dev_id]["interfaces"][ifName] === undefined) {
+            outif_elm.text(ifName).css({"color": "orange"});
+          } else {
+            let title = "";
+            if(data["devs"][dev_id]["interfaces"][ifName]["ifAlias"] !== undefined) {
+              title = data["devs"][dev_id]["interfaces"][ifName]["ifAlias"];
+            };
+
+            outif_elm.text(ifName + (rec["OutIf"] == 0?"*":""))
+             .css({"border": "1px solid lightgray", "background-color": "#EEFFEE"})
+             .title(title)
+             .data("int", ifName)
+             .click(function() {
+               let int = $(this).data("int");
+               let dev_id = $(this).closest(".dialog_start").data("dev_id");
+               interface_win(dev_id, int);
+             })
+             .hover(
+               function (e) {
+                 e.stopPropagation();
+                 let int = $(this).data("int");
+                 let dev_id = $(this).closest(".dialog_start").data("dev_id");
+                 interface_in(int, data["devs"][dev_id])
+               },
+               interface_out
+             )
+            ;
+          };
+        };
+
         let tr = $(DIV).addClass("tr")
          .data("data", rec)
-         .click(function() {
+         .click(function(e) {
+           if(!e.ctrlKey) return;
            let this_data = $(this).data("data");
            let dev_id = $(this).closest(".dialog_start").data("dev_id");
            createWindow("flow_json_"+this_data["rec_key"] + "@" + dev_id, "FLOW JSON: "+data["devs"][dev_id]["short_name"], {
@@ -1643,25 +1987,27 @@ function device_win(dev_id) {
            ;
          })
          .append( $(SPAN).addClass("td")
-           .text( rec["Proto"] )
-         )
-         .append( $(SPAN).addClass("td")
-           .text( rec["InIf"] )
+           .append( inif_elm )
          )
          .append( $(SPAN).addClass("td")
            .text( rec["SrcIP"] )
+           .ip_info( rec["SrcIP"] )
          )
          .append( $(SPAN).addClass("td")
-           .text( rec["SrcPort"] )
+           .append( src_port_elm )
          )
          .append( $(SPAN).addClass("td")
-           .text( rec["OutIf"] )
+           .append( proto_elm )
+         )
+         .append( $(SPAN).addClass("td")
+           .append( dst_port_elm )
          )
          .append( $(SPAN).addClass("td")
            .text( rec["DstIP"] )
+           .ip_info( rec["DstIP"] )
          )
          .append( $(SPAN).addClass("td")
-           .text( rec["DstPort"] )
+           .append( outif_elm )
          )
          .append( $(SPAN).addClass("td")
            .text( kmg(rec["Bytes"]) )
@@ -1669,6 +2015,10 @@ function device_win(dev_id) {
          .append( $(SPAN).addClass("td")
            .text( rec["Speed"] )
            .title( wdhm(rec["duration"]) )
+         )
+         .append( $(SPAN).addClass("td")
+           .text( rec["Pps"] )
+           .title( rec["Pkts"]+" pkts" )
          )
          .appendTo( tbody )
         ;
@@ -2330,7 +2680,7 @@ function interface_in(int, dev) {
    .css("font-size", dev_name_size)
    .css("white-space", "nowrap")
    .css("padding", "0.5em")
-   .css({"top": "1em", "left": "3em", "right": "1em", "height": "auto"})
+   .css({"top": "1em", "left": "3em", /*"right": "1em",*/ "height": "auto"})
    .html(int_info_text)
    .append( $(LABEL).text(int_descr) )
   ;
@@ -2507,7 +2857,7 @@ function interface_click(int, dev, e) {
       virtLinksWin();
     };
   } else {
-    show_interface_window(dev_id, int);
+    interface_win(dev_id, int);
   };
 };
 
@@ -2664,7 +3014,9 @@ function add_device(dev_id) {
   y=Math.floor(y/grid)*grid;
 
   let name_color="darkorange";
-
+  let name_bg = "white";
+  let bcolor = "green";
+/*
   if(data["devs"][dev_id]["overall_status"] == "warn") {
     name_color="orange";
   } else if(data["devs"][dev_id]["overall_status"] == "error") {
@@ -2673,6 +3025,25 @@ function add_device(dev_id) {
     name_color="grey";
   } else if(data["devs"][dev_id]["overall_status"] == "ok") {
     name_color="black";
+  };
+*/
+
+  if(data["devs"][dev_id]["overall_status"] == "warn") {
+    name_color="black";
+    name_bg = "orange";
+    bcolor =  "orange";
+  } else if(data["devs"][dev_id]["overall_status"] == "error") {
+    name_color="black";
+    name_bg = "#FFE0E0";
+    bcolor =  "#800000";
+  } else if(data["devs"][dev_id]["overall_status"] == "paused") {
+    name_color="black";
+    name_bg = "#E0E0E0";
+    bcolor =  "#808080";
+  } else if(data["devs"][dev_id]["overall_status"] == "ok") {
+    name_color="black";
+    name_bg = "#F8FFF8";
+    bcolor =  "green";
   };
 
   let dev_name_text=data["devs"][dev_id]["short_name"] != undefined ? data["devs"][dev_id]["short_name"] : "no data";
@@ -2689,7 +3060,7 @@ function add_device(dev_id) {
    .css("top", int_size+"px")
    .css("left", int_size+"px")
    .css("white-space", "nowrap")
-   .css("background", "white")
+   .css("background", name_bg)
    .css("font-size", dev_name_size)
    .css("text-align", "center")
    .css("color", name_color)
@@ -2703,9 +3074,9 @@ function add_device(dev_id) {
   ;
 
   if(data["devs"][dev_id]["isGroup"] != undefined) {
-    dev_name.css("border", "1px green dashed")
+    dev_name.css("border", "1px "+bcolor+" dashed")
   } else {
-    dev_name.css("border", "1px green solid")
+    dev_name.css("border", "1px "+bcolor+" solid")
   };
 
 
@@ -5410,7 +5781,7 @@ $.fn.graph = function(gdata) {
   return this;
 };
 
-function show_interface_window(dev_id, int) {
+function interface_win(dev_id, int) {
   run_query({"action": "get_interface", "dev_id": dev_id, "int": int}, function(res) {
     if(res["ok"]["no_data"] !== undefined) {
       show_dialog("Интерфейс отсутсвует в данных.");

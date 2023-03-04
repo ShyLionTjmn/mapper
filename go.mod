@@ -9,10 +9,11 @@ require (
 	github.com/gomodule/redigo v1.8.9
 	github.com/gosnmp/gosnmp v1.35.0
 	github.com/jimlawless/whereami v0.0.0-20221005024011-c4ed4c6119d7
+	github.com/likexian/whois v1.14.5
 	github.com/marcsauter/single v0.0.0-20201009143647-9f8d81240be2
 	github.com/multiplay/go-rrd v0.0.0-20171201124026-4a70b1d94ccb
 	golang.org/x/crypto v0.6.0
-	golang.org/x/net v0.6.0
+	golang.org/x/net v0.7.0
 )
 
 require (

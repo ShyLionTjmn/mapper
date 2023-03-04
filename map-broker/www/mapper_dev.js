@@ -130,6 +130,146 @@ var userinfo = {};
 var default_graph_size = "500x150";
 var graph_sizes_list = ["500x70", default_graph_size, "800x100", "800x200", "1000x150", "1000x300", "1600x180", "1600x350"];
 
+function format_mac(mac, view="canonic") {
+  let m = String(mac).match(/^([0-9a-fA-F]{2})[:\.\-]?([0-9a-fA-F]{2})[:\.\-]?([0-9a-fA-F]{2})[:\.\-]?([0-9a-fA-F]{2})[:\.\-]?([0-9a-fA-F]{2})[:\.\-]?([0-9a-fA-F]{2})$/);
+  if(m === null) return mac;
+
+  switch(view) {
+  case "canonic":
+  case "u6c":
+      return(m[1].toUpperCase()+":"+m[2].toUpperCase()+":"+m[3].toUpperCase()+":"+m[4].toUpperCase()+":"+m[5].toUpperCase()+":"+m[6].toUpperCase());
+  case "snr":
+  case "l6h":
+      return(m[1].toLowerCase()+"-"+m[2].toLowerCase()+"-"+m[3].toLowerCase()+"-"+m[4].toLowerCase()+"-"+m[5].toLowerCase()+"-"+m[6].toLowerCase());
+  case "cisco":
+  case "l3d":
+      return(m[1].toLowerCase()+m[2].toLowerCase()+"."+m[3].toLowerCase()+m[4].toLowerCase()+"."+m[5].toLowerCase()+m[6].toLowerCase());
+  case "huawei":
+  case "l3h":
+      return(m[1].toLowerCase()+m[2].toLowerCase()+"-"+m[3].toLowerCase()+m[4].toLowerCase()+"-"+m[5].toLowerCase()+m[6].toLowerCase());
+  };
+  return mac;
+};
+
+$.fn.ip_info = function(ip) {
+  $(this).data("ip_info.ip", ip);
+  $(this).tooltip({
+    classes: { "ui-tooltip": "ui-corner-all ui-widget-shadow wsp tooltip" },
+    items: $(this),
+    content: function() {
+      let ip = $(this).data("ip_info.ip");
+
+      run_query({"action": "ip_info", "ip": ip}, function(res) {
+        let elm = $("." + $.escapeSelector("ip_tooltip_"+ip));
+        if(elm.length == 0) return;
+
+        elm.empty();
+
+        if(keys(res["ok"]).length == 0) {
+          elm.text("Ничего не найдено");
+          return;
+        };
+
+        let table = $(TABLE);
+
+        table
+         .append( $(TR)
+           .append( $(TD).text("IP:") )
+           .append( $(TD).text(ip) )
+         )
+        ;
+
+        if(res["ok"]["hostname"] !== undefined) {
+          table
+           .append( $(TR)
+             .append( $(TD).text("IPDB:") )
+             .append( $(TD).text(res["ok"]["hostname"]) )
+           )
+          ;
+        };
+
+        if(res["ok"]["net"] !== undefined) {
+          table
+           .append( $(TR)
+             .append( $(TD).text("IPDB NET:") )
+             .append( $(TD).text(res["ok"]["net"]) )
+           )
+          ;
+        };
+
+        if(res["ok"]["dns"] !== undefined) {
+          table
+           .append( $(TR)
+             .append( $(TD).text("DNS:") )
+             .append( $(TD).text(res["ok"]["dns"]) )
+           )
+          ;
+        };
+
+        if(res["ok"]["arp"] !== undefined) {
+          let vendor = if_undef(res["ok"]["arp"]["mac_vendor"], "");
+          table
+           .append( $(TR)
+             .append( $(TD).text("MAC:") )
+             .append( $(TD)
+               .text(format_mac(res["ok"]["arp"]["mac_addr"]) + "  " + vendor)
+             )
+           )
+          ;
+        };
+
+
+        if(res["ok"]["whois"] !== undefined) {
+          table
+           .append( $(TR)
+             .append( $(TD).text("WHOIS:") )
+             .append( $(TD).text("Нажмите для информации...") )
+           )
+           .append( $(TR)
+             .append( $(TD, {"colspan": 2}).text(whois(res["ok"]["whois"]))
+               .css({"white-space": "pre", "font-family": "monospace"})
+             )
+           )
+          ;
+        };
+
+        elm.append(table);
+
+         let a = 1;
+
+      })
+
+      return $(DIV).addClass("ip_tooltip_"+ip).text("Загрузка...")
+       //.css({"background-color": "white"})
+      ;
+    }
+  });
+
+  return this;
+};
+
+function whois(src) {
+  let lines = String(src).split("\n");
+  let out = [];
+
+  let block = false;
+
+  for(let l in lines) {
+    let line = lines[l];
+    let matches = [];
+    if(matches = line.match(/(?:inetnum|netrange):\s*(\d+\.\d+\.\d+\.\d+)\s*-\s*(\d+\.\d+\.\d+\.\d+)/i)) {
+      out.push(line);
+      block = true;
+    } else if(line.match(/(?:netname|country|org|organization):/i) && block) {
+      out.push(line);
+    } else if(line.match(/^\s*$/)) {
+      block = false
+    };
+  };
+
+  return out.join("\n");
+};
+
 function hex2ip(hex) {
   return v4long2ip(Number("0x"+hex));
 };
@@ -1851,6 +1991,7 @@ function device_win(dev_id) {
          )
          .append( $(SPAN).addClass("td")
            .text( rec["SrcIP"] )
+           .ip_info( rec["SrcIP"] )
          )
          .append( $(SPAN).addClass("td")
            .append( src_port_elm )
@@ -1863,6 +2004,7 @@ function device_win(dev_id) {
          )
          .append( $(SPAN).addClass("td")
            .text( rec["DstIP"] )
+           .ip_info( rec["DstIP"] )
          )
          .append( $(SPAN).addClass("td")
            .append( outif_elm )

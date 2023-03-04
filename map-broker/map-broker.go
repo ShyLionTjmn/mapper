@@ -70,8 +70,10 @@ var ip_neighbours_rule string
 var ip_neighbours_fields []string
 var ip_neighbours_ignored map[string]struct{}
 
+var ip2name = make(map[string]string)
 var ip2site = make(map[string]string)
-var net2site = make(map[string]string)
+var net2site = M{}
+var net2name = M{}
 var ip2projects = make(map[string][]string)
 var net2projects = make(map[string][]string)
 var tags = make([]M, 0)
@@ -552,7 +554,8 @@ MAIN_LOOP:
         new_projects_root := ""
 
         new_ip2site := make(map[string]string)
-        new_net2site := make(map[string]string)
+        new_net2site := M{}
+        new_net2name := M{}
         new_ip2projects := make(map[string][]string)
         new_net2projects := make(map[string][]string)
 
@@ -628,18 +631,26 @@ MAIN_LOOP:
           return b
         }
 
-        query = "SELECT v4net_addr, v4net_mask, v4net_tags FROM v4nets WHERE v4net_tags != ''"
+        query = "SELECT v4net_addr, v4net_last, v4net_mask, v4net_tags, v4net_name FROM v4nets"
         if rows, err = Return_query_A(db, query); err != nil { return err }
 
         for _, row := range rows {
           if u64, var_ok = row.Uint64("v4net_addr"); !var_ok { return errors.New("no v4net_addr") }
           if u64 > math.MaxUint32 { return errors.New("bad ip") }
           net_addr := V4long2ip(uint32(u64))
+          first := uint32(u64)
+
+          if u64, var_ok = row.Uint64("v4net_last"); !var_ok { return errors.New("no v4net_last") }
+          if u64 > math.MaxUint32 { return errors.New("bad last ip") }
+          last := uint32(u64)
 
           if u64, var_ok = row.Uint64("v4net_mask"); !var_ok { return errors.New("no v4net_mask") }
           if u64 > 32 { return errors.New("bad mask") }
+          mask := uint32(u64)
 
           net := fmt.Sprintf("%s/%d", net_addr, u64)
+
+          new_net2name[net] = M{"name": row.Vs("v4net_name"), "mask": mask, "first": first, "last": last}
 
           net_tags, _ := row.String("v4net_tags")
 
@@ -648,7 +659,7 @@ MAIN_LOOP:
             if _, ex := new_tags_indexes[tag_id]; !ex { continue }
 
             if new_sites_root != "" && tag_has_root(tag_id, new_sites_root, 0) {
-              new_net2site[net] = tag_id
+              new_net2site[net] = M{"tag_id": tag_id, "first": first, "last": last}
             }
 
             if new_projects_root != "" && tag_has_root(tag_id, new_projects_root, 0) {
@@ -692,9 +703,31 @@ MAIN_LOOP:
           }
         }
 
+        new_ip2name := make(map[string]string)
+
+        query = "SELECT v4ip_addr, iv_value FROM"+
+                " (((v4ips INNER JOIN v4nets ON v4ip_fk_v4net_id=v4net_id)"+
+                " INNER JOIN n4cs ON nc_fk_v4net_id=v4net_id)"+
+                " INNER JOIN ics ON nc_fk_ic_id=ic_id)"+
+                " INNER JOIN i4vs ON iv_fk_ic_id=nc_fk_ic_id AND iv_fk_v4ip_id=v4ip_id"+
+                " WHERE ic_api_name = 'hostname'"
+        if rows, err = Return_query_A(db, query); err != nil { return err }
+
+        for _, row := range rows {
+          if u64, var_ok = row.Uint64("v4ip_addr"); !var_ok { return errors.New("no v4ip_addr") }
+          if u64 > math.MaxUint32 { return errors.New("bad ip") }
+          ip := V4long2ip(uint32(u64))
+
+          hostname := strings.TrimSpace(row.Vs("iv_value"))
+          new_ip2name[ip] = hostname
+        }
+
+
         globalMutex.Lock()
+        ip2name = new_ip2name
         ip2site = new_ip2site
         net2site = new_net2site
+        net2name = new_net2name
         ip2projects = new_ip2projects
         net2projects = new_net2projects
         tags = new_tags

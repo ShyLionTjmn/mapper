@@ -513,3 +513,8 @@ function getUrlParameter(sParam, defval) {
       return defval;
     };
 };
+
+function if_undef(value, def) {
+  if(value === undefined) return def;
+  return value;
+};

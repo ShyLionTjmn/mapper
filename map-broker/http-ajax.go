@@ -1197,7 +1197,7 @@ GFDEV: for dev_id, dev_m := range devs {
           //check site by data_ip net
           if !site_match {
             for _, net := range dev_nets {
-              if tag_id, ex := net2site[net]; ex && tag_has_root(tag_id, req_site, 0) {
+              if net2site.EvM(net) && tag_has_root(net2site.Vs(net, "tag_id"), req_site, 0) {
                 site_match = true
                 site_match_by = net
                 break
@@ -1875,6 +1875,7 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
     out["refs"] = dev_refs
     out["macs"]=devs_macs
     out["arp"]=devs_arp
+    out["net2site"] = net2site
 
   } else if action == "get_interface" {
     var dev_id string
@@ -1944,6 +1945,11 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
     } else {
       out["corp"] = corp
     }
+  } else if action == "ip_info" {
+    var ip string
+    if ip, err = get_p_string(q, "ip", nil); err != nil { panic(err) }
+
+    if out, err = ip_info(ip, red); err != nil { panic(err) }
 
   } else if action == "query" {
     out["_query"] = q
