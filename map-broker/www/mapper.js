@@ -47,6 +47,8 @@ var windows = {};
 var windows_z = 100000;
 var g_win_stack_xy = 40;
 
+var win_parts = {};
+
 var connections = {};
 
 var dev_border="1px lightgray dotted";
@@ -63,6 +65,22 @@ var userinfo = {};
 
 var default_graph_size = "500x150";
 var graph_sizes_list = ["500x70", default_graph_size, "800x100", "800x200", "1000x150", "1000x300", "1600x180", "1600x350"];
+
+function hex2ip(hex) {
+  return v4long2ip(Number("0x"+hex));
+};
+
+function get_win_part(win_id, key, def) {
+  if(win_parts[win_id] !== undefined && win_parts[win_id][key] !== undefined) {
+    return win_parts[win_id][key];
+  };
+  return def;
+};
+
+function set_win_part(win_id, key, value) {
+  if(win_parts[win_id] == undefined) win_parts[win_id] = {};
+  win_parts[win_id][key] = value;
+};
 
 function shift_stack_xy() {
   g_win_stack_xy += 20;
@@ -419,7 +437,9 @@ function createWindow(win_id, title, options) {
 
   if(options !== undefined) {
     for(let opt in options) {
-      dialog_options[opt] = options[opt];
+      if(!/^_/.test(opt)) {
+        dialog_options[opt] = options[opt];
+      };
     };
   };
 
@@ -433,6 +453,10 @@ function createWindow(win_id, title, options) {
   widget.css({"border": "2px solid navy"});
 
   widget.find(":focus").blur();
+
+  if(options !== undefined && options["_close"] !== undefined) {
+    widget.find("BUTTON.ui-dialog-titlebar-close").off().click(options["_close"]);
+  };
 
   dlg.on("recenter", function() {
     $(this).dialog("option", "position", $(this).dialog("option", "position"));
@@ -1119,7 +1143,34 @@ function device_win(dev_id) {
 
     let dev = res["ok"]["dev"];
 
-    let dlg = createWindow("dev_win_"+dev_id, dev["short_name"]);
+    let dlg_options = {
+      _close: function() {
+        let dlg = $(this).closest(".ui-dialog").find(".dialog_start");
+        let dev_id = dlg.data("dev_id");
+
+        delete(win_parts["dev_win_" + dev_id]);
+
+        dlg.dialog("close");
+      },
+    };
+
+
+    let dlg = createWindow("dev_win_"+dev_id, dev["short_name"], dlg_options);
+
+    dlg.dialog("widget").find(".ui-dialog-titlebar")
+     .append( $(BUTTON).addClass(["ui-button", "ui-corner-all", "ui-widget", "ui-button-icon-only", "ui-dialog-titlebar-close"])
+       .css({"right": "4em", "height": "20px", "font-size": "x-small"})
+       .append( $(SPAN).addClass(["ui-button-icon", "ui-icon", "ui-icon-reload"])
+       )
+       .append( $(SPAN).addClass(["ui-button-icon-space"]) )
+       .click(function() {
+         let dlg = $(this).closest(".ui-dialog").find(".dialog_start");
+         let dev_id = dlg.data("dev_id");
+         set_win_part("dev_win_" + dev_id, "scroll", dlg.scrollTop());
+         device_win(dev_id);
+       })
+     )
+    ;
     let content = dlg.find(".content");
     dlg.data("dev_id", dev_id);
     data["devs"][dev_id] = dev;
@@ -1215,7 +1266,7 @@ function device_win(dev_id) {
     let cpu_mem_big_div;
 
     if(dev["CPUs"] !== undefined) {
-      cpu_mem_div = $(DIV);
+      cpu_mem_div = $(DIV).css({"min-height": "34px", "height": "34px"});
 
       cpu_mem_big_div = $(DIV);
 
@@ -1259,7 +1310,7 @@ function device_win(dev_id) {
 
     if(dev["memoryUsed"] !== undefined) {
       if(cpu_mem_div === undefined) {
-        cpu_mem_div = $(DIV);
+        cpu_mem_div = $(DIV).css({"min-height": "34px", "height": "34px"});
         cpu_mem_big_div = $(DIV);
       };
 
@@ -1306,12 +1357,17 @@ function device_win(dev_id) {
 
     tabs_div
      .append( $(LABEL).text("Interfaces").addClass(["button"])
-       .click(function() { $(this).closest(".dialog_start").find(".interfaces").toggle(); })
+       .click(function() {
+         let dev_id = $(this).closest(".dialog_start").data("dev_id");
+         let state = !get_win_part("dev_win_" + dev_id, "interfaces", false);
+         $(this).closest(".dialog_start").find(".interfaces").toggle(state);
+         set_win_part("dev_win_" + dev_id, "interfaces", state);
+       })
      )
     ;
 
     let ifcs_div = $(DIV).addClass("interfaces").addClass("table")
-     .hide()
+     .toggle(get_win_part("dev_win_" + dev_id, "interfaces", false))
     ;
 
     for(let i in dev["interfaces_sorted"]) {
@@ -1319,6 +1375,7 @@ function device_win(dev_id) {
       let int_data = dev["interfaces"][ifName];
 
       let if_row = $(DIV).addClass("tr")
+       .css({"min-height": "34px", "height": "34px"})
        .data("int", ifName)
        .data("dev_id", dev_id)
        .click(function() {
@@ -1376,12 +1433,17 @@ function device_win(dev_id) {
     if(dev["invEntParent"] !== undefined) {
       tabs_div
        .append( $(LABEL).text("Inventory").addClass(["button"])
-         .click(function() { $(this).closest(".dialog_start").find(".inventory").toggle(); })
+         .click(function() {
+           let dev_id = $(this).closest(".dialog_start").data("dev_id");
+           let state = !get_win_part("dev_win_" + dev_id, "inventory", false);
+           $(this).closest(".dialog_start").find(".inventory").toggle(state);
+           set_win_part("dev_win_" + dev_id, "inventory", state);
+         })
        )
       ;
 
       let inventory = $(DIV).addClass("inventory")
-       .hide()
+       .toggle(get_win_part("dev_win_" + dev_id, "inventory", false))
       ;
 
       for(let key in dev["invEntParent"]) {
@@ -1393,10 +1455,236 @@ function device_win(dev_id) {
       inventory.appendTo( tabs_content );
     };
 
+    if(dev["topTalkersUp"] !== undefined) {
+      tabs_div
+       .append( $(LABEL).text("TopTalkers").addClass(["button"])
+         .click(function() {
+           let dev_id = $(this).closest(".dialog_start").data("dev_id");
+           let state = !get_win_part("dev_win_" + dev_id, "toptalkers", false);
+           $(this).closest(".dialog_start").find(".toptalkers").toggle(state);
+           set_win_part("dev_win_" + dev_id, "toptalkers", state);
+         })
+       )
+      ;
+
+      let section = $(DIV).addClass("toptalkers")
+       .toggle(get_win_part("dev_win_" + dev_id, "toptalkers", false))
+      ;
+
+      let dupes = {};
+      let records = [];
+
+      for(let key in dev["topTalkersInIf"]) {
+        let full = true;
+        let attrs = ["topTalkersBytes", "topTalkersDstIp", "topTalkersDstPort", "topTalkersFirst", "topTalkersLast",
+                     "topTalkersOutIf", "topTalkersProto", "topTalkersSrcIp", "topTalkersSrcPort",
+        ];
+        for(let i in attrs) {
+          if(dev[attrs[i]][key] === undefined) { full = false; break; };
+        };
+        if(!full) { continue };
+        let rec_key = String(dev["topTalkersSrcIp"][key]) +
+                      String(dev["topTalkersSrcPort"][key]) +
+                      String(dev["topTalkersDstIp"][key]) +
+                      String(dev["topTalkersDstPort"][key]) +
+                      String(dev["topTalkersInIf"][key]) +
+                      String(dev["topTalkersOutIf"][key]) +
+                      String(dev["topTalkersProto"][key])
+        ;
+
+        if(dupes[rec_key] !== undefined) { continue; };
+
+        dupes[rec_key] = 1;
+
+        let duration = Math.round((Number(dev["topTalkersLast"][key]) - Number(dev["topTalkersFirst"][key]))/100);
+        let divider = (duration <= 0)?1:duration;
+        let speed_num = (Number(dev["topTalkersBytes"][key])*8)/divider;
+        let speed = kmg(Math.round(speed_num)) + "bps";
+
+        records.push(
+          { "InIf": dev["topTalkersInIf"][key], "SrcIP": hex2ip(dev["topTalkersSrcIp"][key]), "SrcPort": dev["topTalkersSrcPort"][key],
+            "OutIf": dev["topTalkersOutIf"][key], "DstIP": hex2ip(dev["topTalkersDstIp"][key]), "DstPort": dev["topTalkersDstPort"][key],
+            "Proto": dev["topTalkersProto"][key], "Duration": duration, "Speed": speed, "SpeedNum": speed_num,
+            "Bytes": dev["topTalkersBytes"][key], "divider": divider, "duration": duration, "rec_key": rec_key,
+            "First": dev["topTalkersFirst"][key], "Last": dev["topTalkersLast"][key]
+          }
+        );
+
+
+      };
+
+      let table = $(DIV).addClass("table").appendTo(section);
+
+      table
+       .data("sort", "Bytes")
+       .append( $(DIV).addClass("thead")
+         .append( $(SPAN).addClass("th")
+           .text("Proto")
+         )
+         .append( $(SPAN).addClass("th")
+           .append( $(SPAN).text("InIf") )
+           .append( $(LABEL).addClass(["ui-icon", "ui-icon-triangle-1-s"])
+             .css({"color": "gray"})
+           )
+           .data("sort", false)
+           .data("sort_field", "InIf")
+         )
+         .append( $(SPAN).addClass("th")
+           .append( $(SPAN).text("SrcIP") )
+           .append( $(LABEL).addClass(["ui-icon", "ui-icon-triangle-1-s"])
+             .css({"color": "gray"})
+           )
+           .data("sort", false)
+           .data("sort_field", "SrcIP")
+         )
+         .append( $(SPAN).addClass("th")
+           .text("SrcPrt")
+         )
+         .append( $(SPAN).addClass("th")
+           .append( $(SPAN).text("OutIf") )
+           .append( $(LABEL).addClass(["ui-icon", "ui-icon-triangle-1-n"])
+             .css({"color": "gray"})
+           )
+           .data("sort", false)
+           .data("sort_field", "OutIf")
+         )
+         .append( $(SPAN).addClass("th")
+           .append( $(SPAN).text("DstIP") )
+           .append( $(LABEL).addClass(["ui-icon", "ui-icon-triangle-1-n"])
+             .css({"color": "gray"})
+           )
+           .data("sort", false)
+           .data("sort_field", "DstIP")
+         )
+         .append( $(SPAN).addClass("th")
+           .text("DstPrt")
+         )
+         .append( $(SPAN).addClass("th")
+           .append( $(SPAN).text("Bytes") )
+           .append( $(LABEL).addClass(["ui-icon", "ui-icon-triangle-1-s"])
+             .css({"color": "gray"})
+           )
+           .data("sort", false)
+           .data("sort_field", "Bytes")
+         )
+         .append( $(SPAN).addClass("th")
+           .append( $(SPAN).text("Speed") )
+           .append( $(LABEL).addClass(["ui-icon", "ui-icon-triangle-1-s"])
+             .css({"color": "gray"})
+           )
+           .data("sort", false)
+           .data("sort_field", "SpeedNum")
+         )
+       )
+      ;
+
+      table.find(".thead").find(".th")
+       .click(function() {
+         let field = $(this).data("sort_field");
+         if(field === undefined) return;
+
+         let state = $(this).data("sort");
+         if(state) return;
+         $(this).data("sort", !state);
+         $(this).closest(".table").data("sort", field).trigger("resort");
+       })
+      ;
+
+      table
+       .on("resort", function() {
+         let order = $(this).data("sort");
+         let rows = $(this).find(".tbody").find(".tr").detach();
+         rows.sort(function(a, b) {
+            let a_data = $(a).data("data");
+            let b_data = $(b).data("data");
+            if(order == "Bytes" || order == "SpeedNum") {
+              return Number(b_data[order]) - Number(a_data[order]);
+            } else {
+              let c = num_compare(String(a_data[order]), String(b_data[order]));
+              if(c != 0) return c;
+              return Number(b_data["Bytes"]) - Number(a_data["Bytes"]);
+            };
+          })
+         ;
+         rows.appendTo($(this).find(".tbody"));
+         $(this).find(".thead").find(".th").each(function() {
+           let this_field = $(this).data("sort_field");
+           if(this_field !== undefined) {
+             let lbl = $(this).find("LABEL");
+             if(this_field == order) {
+               lbl.css({"color": "blue"});
+               $(this).data("sort", true);
+             } else {
+               lbl.css({"color": "gray"});
+               $(this).data("sort", false);
+             };
+           };
+         });
+       })
+      ;
+
+      let tbody = $(DIV).addClass("tbody").appendTo(table);
+
+      for(let i in records) {
+        let rec = records[i];
+        let tr = $(DIV).addClass("tr")
+         .data("data", rec)
+         .click(function() {
+           let this_data = $(this).data("data");
+           let dev_id = $(this).closest(".dialog_start").data("dev_id");
+           createWindow("flow_json_"+this_data["rec_key"] + "@" + dev_id, "FLOW JSON: "+data["devs"][dev_id]["short_name"], {
+                        minWidth: 500,
+                        maxWidth: 1500,
+                        width: 500,
+                        maxHeight:  $(window).height() - 10,
+            })
+            .find(".content").css({"white-space": "pre"}).text( jstr(this_data))
+            .parent().trigger("recenter")
+           ;
+         })
+         .append( $(SPAN).addClass("td")
+           .text( rec["Proto"] )
+         )
+         .append( $(SPAN).addClass("td")
+           .text( rec["InIf"] )
+         )
+         .append( $(SPAN).addClass("td")
+           .text( rec["SrcIP"] )
+         )
+         .append( $(SPAN).addClass("td")
+           .text( rec["SrcPort"] )
+         )
+         .append( $(SPAN).addClass("td")
+           .text( rec["OutIf"] )
+         )
+         .append( $(SPAN).addClass("td")
+           .text( rec["DstIP"] )
+         )
+         .append( $(SPAN).addClass("td")
+           .text( rec["DstPort"] )
+         )
+         .append( $(SPAN).addClass("td")
+           .text( kmg(rec["Bytes"]) )
+         )
+         .append( $(SPAN).addClass("td")
+           .text( rec["Speed"] )
+           .title( wdhm(rec["duration"]) )
+         )
+         .appendTo( tbody )
+        ;
+      };
+
+      table.trigger("resort");
+
+      section.appendTo( tabs_content );
+    };
+
     content.append( tabs_div );
     content.append( tabs_content );
 
     dlg.trigger("recenter");
+
+    dlg.scrollTop(get_win_part("dev_win_" + dev_id, "scroll", 0));
   });
 };
 

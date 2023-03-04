@@ -48,6 +48,9 @@ func (m M) Evu(k ... string) bool {
   case int8:
     if v < 0 { return false }
     return len(k) == 1
+  case string:
+    _, err := strconv.ParseUint(v, 10, 64)
+    return err == nil && len(k) == 1
   default:
     return false
   }
@@ -68,6 +71,9 @@ func (m M) Evi(k ... string) bool {
   case uint:
     if uint64(v) > INT64_MAXu { return false }
     return len(k) == 1
+  case string:
+    _, err := strconv.ParseInt(v, 10, 64)
+    return err == nil && len(k) == 1
   default:
     return false
   }
@@ -175,7 +181,7 @@ func (m M) Vi(k ... string) int64 {
     return int64(v)
   case string:
     if len(k) != 1 { return INT64_ERR }
-    ret, err := strconv.ParseInt(m[k[0]].(string), 10, 64)
+    ret, err := strconv.ParseInt(v, 10, 64)
     if err != nil { return INT64_ERR }
     return ret
   default:
@@ -223,7 +229,7 @@ func (m M) Vu(k ... string) uint64 {
     return uint64(v)
   case string:
     if len(k) != 1 { return UINT64_ERR }
-    ret, err := strconv.ParseUint(m[k[0]].(string), 10, 64)
+    ret, err := strconv.ParseUint(v, 10, 64)
     if err != nil { return UINT64_ERR }
     return ret
   default:

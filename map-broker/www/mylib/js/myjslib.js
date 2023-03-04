@@ -22,6 +22,7 @@ const LEGEND="<LEGEND/>";
 const CANVAS="<CANVAS/>";
 const UL="<UL/>";
 const LI="<LI/>";
+const BUTTON="<BUTTON/>";
 
 function GMK(bytes) {
   let measure="";

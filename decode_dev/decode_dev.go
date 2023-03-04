@@ -1657,7 +1657,9 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
       }
 
       cdpIfEnabled, var_ok := raw.Vie("locCdpIfEnabled", cdp_index)
-      if !var_ok { continue }
+      if !var_ok {
+        continue
+      }
 
       cdp_ports[cdp_index] = M{
         "locCdpIfName": cdpIfName,
