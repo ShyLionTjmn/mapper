@@ -61,7 +61,7 @@ func ip_info(ip string, red redis.Conn) (M, error) {
 
   if !skip_whois_reg.MatchString(ip) {
     if entry, ok := whois_cache[ip]; ok {
-      if !entry.is_error || now.Sub(entry.time) <= RETRY_WHOIS_AGE {
+      if !entry.is_error {
         res["whois"] = entry.value
         res["whois_source"] = "cache"
       }
@@ -80,7 +80,7 @@ func ip_info(ip string, red redis.Conn) (M, error) {
   }
 
   if entry, ok := dns_cache[ip]; ok {
-    if !entry.is_error || now.Sub(entry.time) <= RETRY_DNS_AGE {
+    if !entry.is_error {
       res["dns"] = entry.value
       res["dns_source"] = "cache"
     }
@@ -176,7 +176,6 @@ ARP: for id, _ := range devs_arp {
           to_ch = response
         } else {
           whois_cache[ip] = CacheEntry{ time: time.Now(), value: "error: " + err.Error(), is_error: true }
-          to_ch = "error: " + err.Error()
         }
         globalMutex.Unlock()
 
@@ -196,7 +195,6 @@ ARP: for id, _ := range devs_arp {
           to_ch = strings.Join(response, "\n")
         } else {
           dns_cache[ip] = CacheEntry{ time: time.Now(), value: "error: " + err.Error(), is_error: true }
-          to_ch = "error: " + err.Error()
         }
         globalMutex.Unlock()
 
@@ -206,11 +204,17 @@ ARP: for id, _ := range devs_arp {
 
 UP: for {
       select {
-      case res["whois"] = <-whois_ch:
-        res["whois_source"] = "lookup"
+      case ws := <-whois_ch:
+        if ws != "" {
+          res["whois"] = ws
+          res["whois_source"] = "lookup"
+        }
         continue UP
-      case res["dns"] = <-dns_ch:
-        res["dns_source"] = "lookup"
+      case ds := <-dns_ch:
+        if ds != "" {
+          res["dns"] = ds
+          res["dns_source"] = "lookup"
+        }
         continue UP
       case <-all_timer.C:
         break UP
