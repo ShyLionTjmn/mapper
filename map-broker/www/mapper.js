@@ -6116,7 +6116,7 @@ function interface_win(dev_id, int) {
                let int = $(this).closest(".dialog_start").data("int");
                let win_id = "nei_cdp_json_"+int+"@"+dev_id+"_"+ni["cdpRemIfName"]+"@"+ni["cdpRemDevId"];
 
-               createWindow(win_id, "JSON: CDPP neigh: "+dev_id+": "+int, {
+               createWindow(win_id, "JSON: CDP neigh: "+dev_id+": "+int, {
                             minWidth: 500,
                             maxWidth: 1500,
                             width: 500,
