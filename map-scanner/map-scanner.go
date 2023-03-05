@@ -129,6 +129,7 @@ const (
   ioIfNot=1 << iota
   ioAuto=1 << iota
   ioMul=1 << iota
+  ioPerVlanIndex=1 << iota
 )
 
 var optionArg = map[int]bool{
@@ -138,6 +139,7 @@ var optionArg = map[int]bool{
   ioMac:	true,
   ioAuto:	false,
   ioMul:	true,
+  ioPerVlanIndex: true,
 }
 
 var const2option = map[int]string {
@@ -147,6 +149,7 @@ var const2option = map[int]string {
   ioMac:	"mac",
   ioAuto:	"auto",
   ioMul:	"mul",
+  ioPerVlanIndex: "perVlanIndex",
 }
 
 var option2const = make(map[string]int)
@@ -226,13 +229,19 @@ func match_sOID(sOID string, match_str string, match_type int) bool {
   }
 }
 
-func debugPub(red redis.Conn, ws *t_workStruct, debug string, key string, message string) {
+func debugPub(red redis.Conn, ws *t_workStruct, debug string, key string, message ...interface{}) {
   if red == nil || red.Err() != nil { return }
   if debug == "" { return }
   if key != "" && (strings.Index(debug, key) >= 0 || debug == "*") {
     //if
-    red.Do("PUBLISH", "debug", fmt.Sprint(time.Now().Format("2006.01.02 15:04:05.000 "), ws.dev_ip, " ", ws.queue, " ", key, " ", message))
-    red.Do("PUBLISH", "debug_mapper", fmt.Sprint(time.Now().Format("2006.01.02 15:04:05.000 "), ws.dev_ip, " ", ws.queue, " ", key, " ", message))
+    red.Do("PUBLISH", "debug", fmt.Sprint(time.Now().Format("2006.01.02 15:04:05.000 "),
+           ws.dev_ip, " ", ws.queue, " ", key, " ",
+           message),
+    )
+    red.Do("PUBLISH", "debug_mapper", fmt.Sprint(time.Now().Format("2006.01.02 15:04:05.000 "),
+           ws.dev_ip, " ", ws.queue, " ", key, " ",
+           message),
+    )
   }
 }
 
@@ -291,7 +300,7 @@ func worker(ws *t_workStruct) {
 
   var val string
 
-  var queue_keys map[string]bool
+  var queue_keys map[string]interface{}
 
   var graph_keys map[string]string
   var graph_keys_time int64
@@ -397,7 +406,7 @@ WORKER_CYCLE:
       debugPub(red, ws, debug, "sysObjectID", "new!")
       sysObjectID = val
 
-      queue_keys = make(map[string]bool)
+      queue_keys = make(map[string]interface{})
 
       var keys_count int
       var ip_oids = redis.Args{}.Add(oids_key)
@@ -406,11 +415,15 @@ WORKER_CYCLE:
         match := match_sOID(sysObjectID, ws.job[jgi].Match_str, ws.job[jgi].Match_type)
         unmatch := !match_sOID(sysObjectID, ws.job[jgi].Unmatch_str, ws.job[jgi].Unmatch_type)
         ws.job[jgi].Matched = match && unmatch
-        debugPub(red, ws, debug, "oids", fmt.Sprint("match_sOID: ", sysObjectID, " ", ws.job[jgi].Match_str, " ", ws.job[jgi].Match_type, " ", "res:", " ", match))
+        debugPub(red, ws, debug, "oids", fmt.Sprint("match_sOID: ", sysObjectID, " ",
+                                                    ws.job[jgi].Match_str, " ", ws.job[jgi].Match_type,
+                                                    " ", "res:", " ", match),
+        )
         debugPub(red, ws, debug, "oids", "&&")
-        debugPub(red, ws, debug, "oids", fmt.Sprint("!match_sOID:", " ", sysObjectID, " ", sysObjectID, " ", ws.job[jgi].Unmatch_str, " ", ws.job[jgi].Unmatch_type, " ", "res:", " ", unmatch))
+        debugPub(red, ws, debug, "oids", fmt.Sprint("!match_sOID:", " ", sysObjectID, " ",
+                                                     ws.job[jgi].Unmatch_str, " ", ws.job[jgi].Unmatch_type,
+                                                     " ", "res:", " ", unmatch))
         debugPub(red, ws, debug, "oids", fmt.Sprint("res:", " ", ws.job[jgi].Matched))
-//fmt.Println("match sOID", sysObjectID, "result:", ws.job[jgi].Matched, ws.dev_ip, ws.queue)
         if ws.job[jgi].Matched {
           for ii := 0; ii < len(ws.job[jgi].Items); ii++ {
             ws.job[jgi].Items[ii].Value = nil
@@ -506,7 +519,9 @@ ITEM:     for ii := 0; ii < len(ws.job[jgi].Items); ii++ {
               last_report_time = item_start
               report_time := item_start.Unix()
               var queue_report string
-              var key_info = fmt.Sprintf("key: %s, oid: %s, item: %d", ws.job[jgi].Items[ii].Key, ws.job[jgi].Items[ii].Oid, ws.job[jgi].Items[ii].Line)
+              var key_info = fmt.Sprintf("key: %s, oid: %s, item: %d", ws.job[jgi].Items[ii].Key,
+                                         ws.job[jgi].Items[ii].Oid, ws.job[jgi].Items[ii].Line,
+              )
               switch ws.job[jgi].Items[ii].Item_type {
               case itOne:
                 queue_report = fmt.Sprintf("%d:%d:run:get data, %s", report_time, report_time, key_info)
@@ -526,16 +541,70 @@ ITEM:     for ii := 0; ii < len(ws.job[jgi].Items); ii++ {
               key_value, err = getOne(client, ws.job[jgi].Items[ii].Oid, ws.job[jgi].Items[ii].Value_type)
 
             case itTable:
-              var key_info = fmt.Sprintf("key: %s, oid: %s, item: %d", ws.job[jgi].Items[ii].Key, ws.job[jgi].Items[ii].Oid, ws.job[jgi].Items[ii].Line)
-              key_value, err = getTableFunc(client, ws.job[jgi].Items[ii].Oid, ws.job[jgi].Items[ii].Value_type, func() {
-                debugPub(red, ws, debug, ws.job[jgi].Items[ii].Key, "beat")
-                if last_report_time.Add(time.Second).Before(time.Now()) {
-                  last_report_time = time.Now()
-                  report_time := last_report_time.Unix()
-                  queue_report := fmt.Sprintf("%d:%d:run:get table data, %s", report_time, report_time, key_info)
-                  red.Do("HSET", queues_key, fmt.Sprint(ws.queue), queue_report)
+              var key_info = fmt.Sprintf("key: %s, oid: %s, item: %d", ws.job[jgi].Items[ii].Key,
+                                         ws.job[jgi].Items[ii].Oid, ws.job[jgi].Items[ii].Line,
+              )
+
+
+              if (ws.job[jgi].Items[ii].Options & ioPerVlanIndex) == 0 {
+                //debugPub(red, ws, debug, "perVlan", "option not set")
+                key_value, err = getTableFunc(client, ws.job[jgi].Items[ii].Oid, ws.job[jgi].Items[ii].Value_type, func() {
+                  debugPub(red, ws, debug, ws.job[jgi].Items[ii].Key, "beat")
+                  if last_report_time.Add(time.Second).Before(time.Now()) {
+                    last_report_time = time.Now()
+                    report_time := last_report_time.Unix()
+                    queue_report := fmt.Sprintf("%d:%d:run:get table data, %s", report_time, report_time, key_info)
+                    red.Do("HSET", queues_key, fmt.Sprint(ws.queue), queue_report)
+                  }
+                })
+
+              } else {
+                debugPub(red, ws, debug, "perVlan", "option set")
+                perVlanField := ws.job[jgi].Items[ii].Opt_values[ioPerVlanIndex]
+                debugPub(red, ws, debug, "perVlan", "index field:", perVlanField)
+                perVlanField_i, perVlanField_ex := queue_keys[perVlanField]
+
+                debugPub(red, ws, debug, "perVlan", "index field exists:", perVlanField_ex)
+
+                if perVlanField != "" && perVlanField_ex {
+                  key_value = make(map[string]string)
+VLANS:            for vlan_id, _ := range perVlanField_i.(map[string]string) {
+                    client.Community = "public@"+vlan_id
+
+                    debugPub(red, ws, debug, "perVlan", "walking vlan:", vlan_id)
+                    var temp_key_value map[string]string
+                    temp_key_value, err = getTableFunc(client, ws.job[jgi].Items[ii].Oid,
+                                                  ws.job[jgi].Items[ii].Value_type, func() {
+                      debugPub(red, ws, debug, ws.job[jgi].Items[ii].Key, "beat")
+                      if last_report_time.Add(time.Second).Before(time.Now()) {
+                        last_report_time = time.Now()
+                        report_time := last_report_time.Unix()
+                        queue_report := fmt.Sprintf("%d:%d:run:get table data, %s", report_time, report_time, key_info)
+                        red.Do("HSET", queues_key, fmt.Sprint(ws.queue), queue_report)
+                      }
+                    })
+
+                    if err == nil {
+                      debugPub(red, ws, debug, "perVlan", "walking vlan:", vlan_id, "Done")
+                      for temp_key, temp_value := range temp_key_value {
+                        key_value.(map[string]string)[ vlan_id + "." + temp_key ] = temp_value
+                      }
+                    } else if err.Error() != "NoSuchInstance" {
+                      debugPub(red, ws, debug, "perVlan", "walking vlan:", vlan_id, "Error:", err)
+                      err = errors.New("NoSuchInstance")
+                      break VLANS
+                    } else { // err.Error() == "NoSuchInstance"
+                      debugPub(red, ws, debug, "perVlan", "walking vlan:", vlan_id, "Error:", err)
+                      debugPub(red, ws, debug, "perVlan", "continue to nex vlan")
+                      err = nil
+                    }
+                  } // VLANS
+                  client.Community = "public"
+                } else {
+                  err = errors.New("NoSuchInstance")
                 }
-              })
+                debugPub(red, ws, debug, "perVlan", "finished", "error:", err)
+              }
             }
             debugPub(red, ws, debug, ws.job[jgi].Items[ii].Key, fmt.Sprint("get err:", " ", err))
             if err != nil {
@@ -615,7 +684,7 @@ ITEM:     for ii := 0; ii < len(ws.job[jgi].Items); ii++ {
             ws.job[jgi].Items[ii].Item_start = item_start.Unix()*1000+int64(item_start.Nanosecond()/1000000)
             ws.job[jgi].Items[ii].Item_stop = now.Unix()*1000+int64(now.Nanosecond()/1000000)
 
-            queue_keys[ ws.job[jgi].Items[ii].Key ] = true
+            queue_keys[ ws.job[jgi].Items[ii].Key ] = ws.job[jgi].Items[ii].Value
 //fmt.Println("got value", key_value, ws.dev_ip, ws.queue)
             debugPub(red, ws, debug, ws.job[jgi].Items[ii].Key, "done OK")
           }

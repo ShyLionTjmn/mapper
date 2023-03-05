@@ -14,12 +14,24 @@ import (
   "crypto/md5"
   "io"
   "encoding/hex"
+  . "github.com/ShyLionTjmn/mapper/mapaux"
 )
 
 var read_oids_file_define_regex *regexp.Regexp
 var read_oids_file_match_regex *regexp.Regexp
 var read_oids_file_item_regex *regexp.Regexp
 var read_oids_file_var_regex *regexp.Regexp
+
+func init() {
+  read_oids_file_define_regex = regexp.MustCompile(`^define\s+(\S+)\s+((?:\.\d+)+)$`)
+  read_oids_file_match_regex = regexp.MustCompile(`^(=|~|\^|\*)(\S*)(?:\s+(=|~|\^)(\S+))?$`)
+  read_oids_file_item_regex = regexp.MustCompile(``+
+    `^(table|one)\s+(hex|str|int|uns)\s+([a-zA-Z0-9_\-]+)\s+`+
+    `((?:\.\d+)+)(?:\s+([^,\s]+(?:,[^,\s]+)*)(?:\s+([^,\s]+(?:,[^,\s]+)*))?)?$`,
+  )
+  read_oids_file_var_regex = regexp.MustCompile(`{[^}]*}`)
+
+}
 
 func read_oids_file() (map[int][]t_scanJobGroup, string, error) {
   ret := make(map[int][]t_scanJobGroup)
@@ -58,16 +70,14 @@ func read_oids_file() (map[int][]t_scanJobGroup, string, error) {
     io.WriteString(md5_hasher, line)
 
     if strings.Index(line, "define") == 0 {
-      if read_oids_file_define_regex == nil {
-        read_oids_file_define_regex, err = regexp.Compile(`^define\s+(\S+)\s+((?:\.\d+)+)$`)
-        if err != nil { return nil, "", err }
-      }
       m := read_oids_file_define_regex.FindStringSubmatch(line)
       if m != nil {
         defines["{"+m[1]+"}"]=m[2]
       }
     } else if strings.Index(line, "queue") == 0 {
-      if current_jg.Match_type == -1 { return nil, "", errors.New(fmt.Sprintf("No job group to set queue in OIDs file at %d", current_line_num)) }
+      if current_jg.Match_type == -1 {
+        return nil, "", errors.New(fmt.Sprintf("No job group to set queue in OIDs file at %d", current_line_num))
+      }
       str := strings.Trim(line[len("queue"):]," \t")
       current_queue, err = strconv.Atoi(str)
       if err != nil { return nil, "", errors.New(fmt.Sprintf("%s, in OIDs file at %d", err.Error(), current_line_num)) }
@@ -95,7 +105,10 @@ func read_oids_file() (map[int][]t_scanJobGroup, string, error) {
       u64, err = strconv.ParseUint(str, 10, 8)
       current_jg.MaxRepetitions = uint32(u64)
       if err != nil { return nil, "", errors.New(fmt.Sprintf("%s, in OIDs file at %d", err.Error(), current_line_num)) }
-    } else if line == "end" || string(line[0]) == "*" || string(line[0]) == "~" || string(line[0]) == "=" || string(line[0]) == "^" {
+    } else if line == "end" || string(line[0]) == "*" ||
+              string(line[0]) == "~" || string(line[0]) == "=" ||
+              string(line[0]) == "^" ||
+    false {
       if !first_jg {
         if current_jg.Match_type == -1 {
           return nil, "", errors.New(fmt.Sprintf("OIDs file empty or invalid, read %d lines", current_line_num))
@@ -106,7 +119,8 @@ func read_oids_file() (map[int][]t_scanJobGroup, string, error) {
           return nil, "", errors.New(fmt.Sprintf("Empty job group in OIDs file before %d", current_line_num))
         }
         current_jg=t_scanJobGroup{ Refresh: 60, Match_type: -1, Unmatch_type: mtNone, Items: []t_scanJobItem{},
-                                   Timeout: DEFAULT_SNMP_TIMEOUT, Retries: DEFAULT_SNMP_RETRIES, MaxRepetitions: DEFAULT_SNMP_MAX_REPETITIONS,
+                                   Timeout: DEFAULT_SNMP_TIMEOUT, Retries: DEFAULT_SNMP_RETRIES,
+                                   MaxRepetitions: DEFAULT_SNMP_MAX_REPETITIONS,
                                    NonRepeaters: DEFAULT_SNMP_NON_REPEATERS,
         }
         current_queue = 0
@@ -124,15 +138,6 @@ func read_oids_file() (map[int][]t_scanJobGroup, string, error) {
       current_jg.Line = current_line_num
 
       first_jg = false
-      if read_oids_file_match_regex == nil {
-        read_oids_file_match_regex, err = regexp.Compile(`^(=|~|\^|\*)(\S*)(?:\s+(=|~|\^)(\S+))?$`)
-        if err != nil { return nil, "", err }
-      }
-
-      if read_oids_file_var_regex == nil {
-        read_oids_file_var_regex, err = regexp.Compile(`{[^}]*}`)
-        if err != nil { return nil, "", err }
-      }
 
       var missing_vars []string
 
@@ -147,9 +152,12 @@ func read_oids_file() (map[int][]t_scanJobGroup, string, error) {
 
       if match_op == "~" {
         missing_vars = make([]string, 0)
-        match_str = read_oids_file_var_regex.ReplaceAllStringFunc(match_str, func(a string) string {
-          replacement, found := defines[a]; if !found { missing_vars = append(missing_vars, a); return "" } else { return regexp.QuoteMeta(replacement) }
-        })
+        match_str = read_oids_file_var_regex.ReplaceAllStringFunc(match_str,
+          func(a string) string {
+            replacement, found := defines[a]
+            if !found { missing_vars = append(missing_vars, a); return "" } else { return regexp.QuoteMeta(replacement) }
+          },
+        )
 
         if len(missing_vars) > 0 {
           return nil, "", errors.New(fmt.Sprintf("Missing vars %v in OIDs file at %d", missing_vars, current_line_num))
@@ -164,9 +172,12 @@ func read_oids_file() (map[int][]t_scanJobGroup, string, error) {
         current_jg.Match_str = match_str
       } else if match_op == "^" || match_op == "=" {
         missing_vars = make([]string, 0)
-        match_str = read_oids_file_var_regex.ReplaceAllStringFunc(match_str, func(a string) string {
-          replacement, found := defines[a]; if !found { missing_vars = append(missing_vars, a); return "" } else { return replacement }
-        })
+        match_str = read_oids_file_var_regex.ReplaceAllStringFunc(match_str,
+          func(a string) string {
+            replacement, found := defines[a]
+            if !found { missing_vars = append(missing_vars, a); return "" } else { return replacement }
+          },
+        )
 
         if len(missing_vars) > 0 {
           return nil, "", errors.New(fmt.Sprintf("Missing vars %v in OIDs file at %d", missing_vars, current_line_num))
@@ -190,9 +201,12 @@ func read_oids_file() (map[int][]t_scanJobGroup, string, error) {
 
       if unmatch_op == "~" {
         missing_vars = make([]string, 0)
-        unmatch_str = read_oids_file_var_regex.ReplaceAllStringFunc(unmatch_str, func(a string) string {
-          replacement, found := defines[a]; if !found { missing_vars = append(missing_vars, a); return "" } else { return regexp.QuoteMeta(replacement) }
-        })
+        unmatch_str = read_oids_file_var_regex.ReplaceAllStringFunc(unmatch_str,
+          func(a string) string {
+            replacement, found := defines[a]
+            if !found { missing_vars = append(missing_vars, a); return "" } else { return regexp.QuoteMeta(replacement) }
+          },
+        )
 
         if len(missing_vars) > 0 {
           return nil, "", errors.New(fmt.Sprintf("Missing vars %v in OIDs file at %d", missing_vars, current_line_num))
@@ -207,9 +221,12 @@ func read_oids_file() (map[int][]t_scanJobGroup, string, error) {
         current_jg.Unmatch_str = unmatch_str
       } else if unmatch_op == "^" || unmatch_op == "=" {
         missing_vars = make([]string, 0)
-        unmatch_str = read_oids_file_var_regex.ReplaceAllStringFunc(unmatch_str, func(a string) string {
-          replacement, found := defines[a]; if !found { missing_vars = append(missing_vars, a); return "" } else { return replacement }
-        })
+        unmatch_str = read_oids_file_var_regex.ReplaceAllStringFunc(unmatch_str,
+          func(a string) string {
+            replacement, found := defines[a]
+            if !found { missing_vars = append(missing_vars, a); return "" } else { return replacement }
+          },
+        )
 
         if len(missing_vars) > 0 {
           return nil, "", errors.New(fmt.Sprintf("Missing vars %v in OIDs file at %d", missing_vars, current_line_num))
@@ -228,10 +245,6 @@ func read_oids_file() (map[int][]t_scanJobGroup, string, error) {
         return nil, "", errors.New("Programm error: unknown unmatch type \""+unmatch_op+"\"")
       }
     } else if  strings.Index(line, "table") == 0 || strings.Index(line, "one") == 0 {
-      if read_oids_file_item_regex == nil {
-        read_oids_file_item_regex, err = regexp.Compile(`^(table|one)\s+(hex|str|int|uns)\s+([a-zA-Z0-9_\-]+)\s+((?:\.\d+)+)(?:\s+([^,\s]+(?:,[^,\s]+)*)(?:\s+([^,\s]+(?:,[^,\s]+)*))?)?$`)
-        if err != nil { return nil, "", err }
-      }
 
       m := read_oids_file_item_regex.FindStringSubmatch(line)
       if m == nil { return nil, "", errors.New(fmt.Sprintf("Item syntax error in OIDs file at %d", current_line_num)) }
@@ -270,21 +283,29 @@ func read_oids_file() (map[int][]t_scanJobGroup, string, error) {
         for _, option := range item_options {
           opt_const, opt_valid := option2const[option]
           if !opt_valid {
-            return nil, "", errors.New(fmt.Sprintf("Unknown item option \"%s\" in OIDs file at %d", option, current_line_num))
+            return nil, "", errors.New(fmt.Sprintf("Unknown item option \"%s\" in OIDs file at %d",
+                                                   option, current_line_num),
+            )
           }
           if (item.Options & opt_const) != 0 {
-            return nil, "", errors.New(fmt.Sprintf("Duplicate item option \"%s\" in OIDs file at %d", option, current_line_num))
+            return nil, "", errors.New(fmt.Sprintf("Duplicate item option \"%s\" in OIDs file at %d",
+                                                   option, current_line_num),
+            )
           }
           item.Options = item.Options | opt_const
 
           opt_has_arg, opt_valid := optionArg[opt_const]
           if !opt_valid {
-            return nil, "", errors.New(fmt.Sprintf("Unknown item option \"%s\" arg in OIDs file at %d", option, current_line_num))
+            return nil, "", errors.New(fmt.Sprintf("Unknown item option \"%s\" arg in OIDs file at %d",
+                                                   option, current_line_num),
+            )
           }
 
           if opt_has_arg {
             if len(options_values) == 0 || options_values[0] == "" {
-              return nil, "", errors.New(fmt.Sprintf("Item option \"%s\" arg missing in OIDs file at %d", option, current_line_num))
+              return nil, "", errors.New(fmt.Sprintf("Item option \"%s\" arg missing in OIDs file at %d",
+                                                     option, current_line_num),
+              )
             }
             item.Opt_values[opt_const], options_values = options_values[0], options_values[1:]
           }

@@ -518,3 +518,20 @@ function if_undef(value, def) {
   if(value === undefined) return def;
   return value;
 };
+
+function copy_to_clipboard(copy_data, donefunc = undefined) {
+  try {
+     navigator.clipboard.writeText(copy_data).then(
+       function() {
+         /* clipboard successfully set */
+         if(donefunc !== undefined) donefunc();
+       },
+       function() {
+         /* clipboard write failed */
+         window.alert('Opps! Your browser does not support the Clipboard API')
+       }
+     );
+   } catch(e) {
+     alert(e);
+  };
+};

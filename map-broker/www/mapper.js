@@ -1403,8 +1403,23 @@ function device_win(dev_id) {
     content
      .css({"line-height": "150%"})
      .append( $(DIV)
-       .append( $(LABEL).text(status_short).title(status_long).css({"background-color": status_bg_color, "border": "1px solid black", "margin-right": "0.5em"}) )
+       .append( $(LABEL).text(status_short).title(status_long)
+         .css({"background-color": status_bg_color, "border": "1px solid black", "margin-right": "0.5em"})
+       )
        .append( $(LABEL).text("Посл. данные: "+DateTime(last_seen)+" ("+time_diff(diff)+" назад)") )
+       .append( !DEBUG ? $(LABEL) : $(LABEL).addClass(["button", "ui-icon", "ui-icon-copy"])
+         .title("Скопировать ID в буфер")
+         .data("to_copy", dev_id)
+         .click(function() {
+           let flash = $(this).closest("DIV");
+           copy_to_clipboard( $(this).data("to_copy"),
+             function() {
+               flash.animateHighlight("lightgreen", 200);
+             }
+           );
+         })
+         .css({"float": "right", "margin-left": "1em"})
+       )
        .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-info"])
          .css({"float": "right", "margin-left": "1em"})
          .data("data", jstr(dev))
@@ -1429,7 +1444,7 @@ function device_win(dev_id) {
        .append( $(LABEL).text("Uptime: " + dev["sysUpTimeStr"]) )
      )
      .append( $(DIV)
-       .append( $(LABEL).text(" IP: " + dev["data_ip"] + " ") )
+       .append( $(LABEL).text(" IP: " + dev["data_ip"] + " ").ip_info(dev["data_ip"]) )
        .append( $(A, {"target": "blank", "href": "ssh://"+dev["data_ip"]}).text("SSH")
          .css({"margin-right": "0.5em"})
        )
@@ -1437,6 +1452,19 @@ function device_win(dev_id) {
          .css({"margin-right": "0.5em"})
        )
        .append( $(A, {"target": "blank", "href": "/ipdb/?action=link&ip="+dev["data_ip"]}).text("IPDB")
+       )
+       .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-copy"])
+         .title("Скопировать IP в буфер")
+         .data("to_copy", dev["data_ip"])
+         .click(function() {
+           let flash = $(this).closest("DIV");
+           copy_to_clipboard( $(this).data("to_copy"),
+             function() {
+               flash.animateHighlight("lightgreen", 200);
+             }
+           );
+         })
+         .css({"margin-left": "1em"})
        )
      )
      .append( $(DIV)
@@ -2624,6 +2652,41 @@ function int_metrics(int, dev) {
       } else {
         labels["04_lldp"]["bg_color"]="#FF8888";
       };
+    };
+
+    if(dev["interfaces"][int]["macs_count"] != undefined) {
+      labels["05_macs"]={};
+      labels["05_macs"]["short_text"] = String(dev["interfaces"][int]["macs_count"])+"m";
+      labels["05_macs"]["long_text"] = String(dev["interfaces"][int]["macs_count"])+" MACs";
+      if(dev["interfaces"][int]['portMode'] === 1 && dev["interfaces"][int]["macs_count"] > 2) {
+        labels["05_macs"]["bg_color"]="#FF8888";
+      } else {
+        labels["05_macs"]["bg_color"]="#FFCCFF";
+        labels["05_macs"]["bg_color"]="white";
+      };
+    };
+
+    if(dev["interfaces"][int]["lag_parent"] != undefined) {
+      labels["06_lag"]={};
+      labels["06_lag"]["short_text"] = "LAG";
+      labels["06_lag"]["long_text"] = "LAG member port of " + dev["interfaces"][int]["lag_parent"];
+      labels["06_lag"]["bg_color"]="tan";
+    } else if(dev["interfaces"][int]["lag_members"] != undefined) {
+      labels["06_lag"]={};
+      labels["06_lag"]["short_text"] = "LAG";
+      labels["06_lag"]["long_text"] = "LAG parent for " + dev["interfaces"][int]["lag_members"].join(", ");
+      labels["06_lag"]["bg_color"]="lime";
+    } else if(dev["interfaces"][int]["pagp_parent"] != undefined) {
+      labels["07_pagp"]={};
+      labels["07_pagp"]["short_text"] = "PAGP";
+      labels["07_pagp"]["long_text"] = "PAGP member port of " + dev["interfaces"][int]["pagp_parent"] +
+        " Mode: " + dev["interfaces"][int]["pagp_mode"];
+      labels["07_pagp"]["bg_color"]="tan";
+    } else if(dev["interfaces"][int]["pagp_members"] != undefined) {
+      labels["07_pagp"]={};
+      labels["07_pagp"]["short_text"] = "PAGP";
+      labels["07_pagp"]["long_text"] = "PAGP parent for " + dev["interfaces"][int]["pagp_members"].join(", ");
+      labels["07_pagp"]["bg_color"]="lime";
     };
   };
   return labels;
@@ -5969,6 +6032,7 @@ function interface_win(dev_id, int) {
         ips
          .append( $(DIV)
            .append( $(SPAN).text(ip+"/"+int_info["ips"][ip]["masklen"])
+             .ip_info(ip)
              .css({"margin-right": "0.5em", "min-width": "8em", "display": "inline-block"})
            )
            .append( $(A, {"target": "blank", "href": "ssh://"+ip}).text("SSH")
@@ -5978,6 +6042,19 @@ function interface_win(dev_id, int) {
              .css({"margin-right": "0.5em"})
            )
            .append( $(A, {"target": "blank", "href": "/ipdb/?action=link&ip="+ip}).text("IPDB")
+           )
+           .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-copy"])
+             .title("Скопировать IP в буфер")
+             .data("to_copy", ip)
+             .click(function() {
+               let flash = $(this).closest("DIV");
+               copy_to_clipboard( $(this).data("to_copy"),
+                 function() {
+                   flash.animateHighlight("lightgreen", 200);
+                 }
+               );
+             })
+             .css({"margin-left": "1em"})
            )
          )
         ;

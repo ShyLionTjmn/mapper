@@ -481,23 +481,12 @@ func (d *Dev) Decode(raw M) error {
     raw["vlanNames"].(M)["1"] = "default"
   }
 
-  if raw.EvM("ifIndexToPort") && !raw.EvM("portToIfIndex") {
-    raw["portToIfIndex"] = make(M)
-    for i, v := range raw.VM("ifIndexToPort") {
-      var index string
-      switch v.(type) {
-      case uint64:
-        index = strconv.FormatUint(v.(uint64), 10)
-      case int64:
-        index = strconv.FormatInt(v.(int64), 10)
-      case string:
-        index = v.(string)
-      default:
-        err = errors.New("Unhandled type for key ifIndexToPort")
-        return err
-      }
-      raw["portToIfIndex"].(M)[index], err = strconv.ParseInt(i, 10, 64)
-      if err != nil { return err }
+  if raw.EvM("ifIndexToPort") {
+    if !raw.EvM("portToIfIndex") {
+      raw["portToIfIndex"] = make(M)
+    }
+    for i, _ := range raw.VM("ifIndexToPort") {
+      raw.VM("portToIfIndex")[ raw.Vs("ifIndexToPort", i) ], _  = strconv.ParseInt(i, 10, 64)
     }
   }
 
@@ -1918,6 +1907,54 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
       dev["memoryUsed"] = total_used
 
       dev.MkM("proc_graph")["memoryUsed"] = 1
+    }
+  }
+
+  if raw.EvM("lagParentIfIndex") {
+    for ifIndex, _ := range raw.VM("lagParentIfIndex") {
+      parentIfIndex := raw.Vs("lagParentIfIndex", ifIndex)
+      memIfName, mem_ok := dev.Vse("ifName", ifIndex)
+      parIfName, par_ok := dev.Vse("ifName", parentIfIndex)
+      if mem_ok && par_ok && dev.EvM("interfaces", memIfName) && dev.EvM("interfaces", parIfName) {
+        dev.VM("interfaces", memIfName)["lag_parent"] = parIfName
+
+        var lag_members []string
+        if dev.EvA("interfaces", parIfName, "lag_members") {
+          lag_members = dev.VA("interfaces", parIfName, "lag_members").([]string)
+        } else {
+          lag_members = []string{}
+        }
+        lag_members = append(lag_members, memIfName)
+        dev.VM("interfaces", parIfName)["lag_members"] = lag_members
+      }
+    }
+  }
+
+  if raw.EvM("pagpMode") && raw.EvM("pagpParentIfIndex") {
+    for ifIndex, _ := range raw.VM("pagpMode") {
+      mode := raw.Vi("pagpMode", ifIndex)
+      if mode == 2 || mode == 3 && raw.Evi("pagpParentIfIndex", ifIndex) {
+        parentIfIndex := raw.Vs("pagpParentIfIndex", ifIndex)
+        memIfName, mem_ok := dev.Vse("ifName", ifIndex)
+        parIfName, par_ok := dev.Vse("ifName", parentIfIndex)
+        if mem_ok && par_ok && dev.EvM("interfaces", memIfName) && dev.EvM("interfaces", parIfName) {
+          dev.VM("interfaces", memIfName)["pagp_parent"] = parIfName
+          if mode == 2 {
+            dev.VM("interfaces", memIfName)["pagp_mode"] = "manual"
+          } else {
+            dev.VM("interfaces", memIfName)["pagp_mode"] = "PAGP"
+          }
+
+          var pagp_members []string
+          if dev.EvA("interfaces", parIfName, "pagp_members") {
+            pagp_members = dev.VA("interfaces", parIfName, "pagp_members").([]string)
+          } else {
+            pagp_members = []string{}
+          }
+          pagp_members = append(pagp_members, memIfName)
+          dev.VM("interfaces", parIfName)["pagp_members"] = pagp_members
+        }
+      }
     }
   }
 
