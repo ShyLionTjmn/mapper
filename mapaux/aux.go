@@ -203,6 +203,7 @@ func SafeDevId(s string) string {
   ret := s
   ret = strings.ReplaceAll(ret, " ", "_")
   ret = strings.ReplaceAll(ret, "/", "s")
+  ret = strings.ReplaceAll(ret, "#", "S")
   ret = strings.ReplaceAll(ret, ":", "c")
   ret = strings.ReplaceAll(ret, "\t", "_")
   ret = strings.ReplaceAll(ret, ">", "_")
@@ -217,6 +218,7 @@ func SafeIntId(s string) string {
   ret = strings.ReplaceAll(ret, ">", "_")
   ret = strings.ReplaceAll(ret, "<", "_")
   ret = strings.ReplaceAll(ret, "/", "s")
+  ret = strings.ReplaceAll(ret, "#", "S")
   ret = strings.ReplaceAll(ret, ":", "c")
   return ret
 }

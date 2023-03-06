@@ -31,7 +31,7 @@ var safeInt_regex *regexp.Regexp
 func init() {
   w.WhereAmI()
   regexp.MustCompile("")
-  safeInt_regex = regexp.MustCompile(`^[a-zA-Z0-9\._\-]+$`)
+  safeInt_regex = regexp.MustCompile(SAFE_INT_REGEX)
 }
 
 var legNeiErrNoDev = errors.New("nd")

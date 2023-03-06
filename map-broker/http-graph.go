@@ -41,7 +41,7 @@ func init() {
   g_graph_start_reg = regexp.MustCompile(`^[0-9+\-a-zA-Z \:\.\/]+$`)
   g_graph_integer_reg = regexp.MustCompile(`^-?\d+$`)
   g_graph_dev_id_reg = regexp.MustCompile(`^[a-zA-Z0-9\.\-_]+$`)
-  g_graph_if_name_reg = regexp.MustCompile(`^[a-zA-Z0-9\.\-_]+$`)
+  g_graph_if_name_reg = regexp.MustCompile(SAFE_INT_REGEX)
   g_graph_cpu_name_reg = regexp.MustCompile(`^[a-zA-Z0-9 \/.,;:\-]+$`)
   g_graph_file_reg = regexp.MustCompile(`^[a-zA-Z0-9 .,:\-_]+\.png$`)
 
@@ -55,7 +55,7 @@ func init() {
   g_graph_json_end_reg = regexp.MustCompile(`^graph_end = (\d+)$`)
 }
 
-func handle_graph_error(dbg bool, r interface{}, w http.ResponseWriter, req *http.Request) {
+func handle_graph_error(dbg bool, r interface{}, w http.ResponseWriter, req *http.Request, json bool) {
   if r == nil {
     return
   }
@@ -86,6 +86,14 @@ func handle_graph_error(dbg bool, r interface{}, w http.ResponseWriter, req *htt
     for _, errstr := range strings.Split(err_text, "\n") {
       w.Header().Add("X-Debug", errstr)
     }
+
+    if json {
+      w.WriteHeader(http.StatusOK)
+      w.Header().Set("Content-Type", "text/javascript; charset=UTF-8")
+      w.Write([]byte( M{"error": err_text }.ToJsonStr(true) ))
+      return
+    }
+
     var err error
     var f *os.File
 
@@ -127,12 +135,15 @@ func handleGraph(w http.ResponseWriter, req *http.Request) {
 
   var dbg bool = false
 
-  defer func() { handle_graph_error(dbg, recover(), w, req); } ()
+  var q M
+
+  defer func() {
+    json := (q == nil && q["json"] != nil)
+    handle_graph_error(dbg, recover(), w, req, json);
+  } ()
 
   var err error
   _ = err
-
-  var q M
 
   if req.Method == "GET" {
     q = make(M)

@@ -2634,11 +2634,11 @@ function int_metrics(int, dev) {
       };
     };
 
-    if(dev["interfaces"][int]["portIndex"] != undefined && dev["lldp_ports"] != undefined &&
-       dev["lldp_ports"][ dev["interfaces"][int]["portIndex"] ] != undefined &&
-       dev["lldp_ports"][ dev["interfaces"][int]["portIndex"] ]["neighbours"] != undefined
+    if(dev["interfaces"][int]["lldp_portIndex"] != undefined && dev["lldp_ports"] != undefined &&
+       dev["lldp_ports"][ dev["interfaces"][int]["lldp_portIndex"] ] != undefined &&
+       dev["lldp_ports"][ dev["interfaces"][int]["lldp_portIndex"] ]["neighbours"] != undefined
     ) {
-      let port_neighs=dev["lldp_ports"][ dev["interfaces"][int]["portIndex"] ]["neighbours"];
+      let port_neighs=dev["lldp_ports"][ dev["interfaces"][int]["lldp_portIndex"] ]["neighbours"];
       let nei_count=keys(port_neighs).length;
       let links_count=0;
       if(dev["interfaces"][int]["l2_links"] != undefined) {
@@ -2658,12 +2658,26 @@ function int_metrics(int, dev) {
       labels["05_macs"]={};
       labels["05_macs"]["short_text"] = String(dev["interfaces"][int]["macs_count"])+"m";
       labels["05_macs"]["long_text"] = String(dev["interfaces"][int]["macs_count"])+" MACs";
-      if(dev["interfaces"][int]['portMode'] === 1 && dev["interfaces"][int]["macs_count"] > 2) {
+      if((dev["interfaces"][int]['portMode'] === 1 && dev["interfaces"][int]["macs_count"] > 3) ||
+         (dev["interfaces"][int]['ifOperStatus'] == 1 && dev["interfaces"][int]["macs_count"] == 0 &&
+          dev["macs_time"] !== undefined) ||
+        false
+      ) {
         labels["05_macs"]["bg_color"]="#FF8888";
       } else {
         labels["05_macs"]["bg_color"]="#FFCCFF";
         labels["05_macs"]["bg_color"]="white";
       };
+    } else if(dev["macs_time"] !== undefined && dev["interfaces"][int]['ifOperStatus'] == 1 &&
+              dev["interfaces"][int]["lag_parent"] === undefined &&
+              dev["interfaces"][int]["pagp_parent"] === undefined &&
+              dev["interfaces"][int]["ifType"] == 6 &&
+              true
+    ) {
+      labels["05_macs"]={};
+      labels["05_macs"]["short_text"] = "0m";
+      labels["05_macs"]["long_text"] = "No MACs";
+      labels["05_macs"]["bg_color"]="#FF8888";
     };
 
     if(dev["interfaces"][int]["lag_parent"] != undefined) {

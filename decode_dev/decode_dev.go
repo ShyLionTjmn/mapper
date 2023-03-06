@@ -787,6 +787,7 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
         ifName := dev.Vs("ifName", port_iis)
         if dev.EvM("interfaces", ifName) {
           dev["interfaces"].(M)[ifName].(M)["lldp_portIndex"] = port_i
+          dev["interfaces"].(M)[ifName].(M)["portIndex"] = port_i
         }
       }
     }
@@ -940,8 +941,39 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
       macs_time = raw.Vi("_key_stop", "macTable") / 1000
 
       raw["vlanMacTable"] = make(M)
-      for mac, port := range raw.VM("portVlanMacTable") {
+      for mac, port := range raw.VM("macTable") {
         raw["vlanMacTable"].(M)["0."+mac] = port
+      }
+    }
+
+    if !raw.EvM("vlanMacTable") && raw.EvM("huiMacVlanPort") {
+      if !raw.Evi("_key_stop", "huiMacVlanPort") {
+        err = errors.New("No _key_stop for huiMacVlanPort")
+        return err
+      }
+      macs_time = raw.Vi("_key_stop", "huiMacVlanPort") / 1000
+      for mac_vlan_vsi, _ := range raw.VM("huiMacVlanPort") {
+        a := strings.Split(mac_vlan_vsi, ".")
+        if len(a) >= 7 {
+          raw.MkM("vlanMacTable")[ a[7]+"."+strings.Join(a[:6], ".") ] = raw.VA("huiMacVlanPort", mac_vlan_vsi)
+        }
+      }
+    }
+
+    if !raw.EvM("vlanMacTable") && raw.EvM("huiMacVlanIfIndex") {
+      if !raw.Evi("_key_stop", "huiMacVlanIfIndex") {
+        err = errors.New("No _key_stop for huiMacVlanIfIndex")
+        return err
+      }
+      macs_time = raw.Vi("_key_stop", "huiMacVlanIfIndex") / 1000
+      for mac_vlan_vsi, _ := range raw.VM("huiMacVlanIfIndex") {
+        a := strings.Split(mac_vlan_vsi, ".")
+        if len(a) >= 7 {
+          if ifName, ex := raw.Vse("ifName", raw.Vs("huiMacVlanIfIndex", mac_vlan_vsi));
+          ex && dev.Evi("interfaces", ifName, "portIndex") {
+            raw.MkM("vlanMacTable")[ a[7]+"."+strings.Join(a[:6], ".") ] = dev.Vi("interfaces", ifName, "portIndex")
+          }
+        }
       }
     }
 
@@ -1012,10 +1044,10 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
   }
 
   if raw.EvM("locPortId") && raw.EvM("locPortIdSubtype") {
-    for port_index, port_id_ := range raw.VM("locPortId") {
+    for port_index, _ := range raw.VM("locPortId") {
       if raw.Evi("locPortIdSubtype", port_index) {
         subtype := raw.Vi("locPortIdSubtype", port_index)
-        port_id := port_id_.(string)
+        port_id := raw.Vs("locPortId", port_index)
         if (subtype == 5 || subtype == 7) && len(port_id)%2 == 0 { //interfaceName(5) or local(7)
           // port id is hex encoded string
           //trim trailing zeros
@@ -1042,12 +1074,15 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
         if subtype == 5 && dev.EvM("interfaces", port_id) { // interface name as port_id
           dev["lldp_ports"].(M)[port_index].(M)["ifName"] = port_id
           dev["interfaces"].(M)[port_id].(M)["lldp_portIndex"] = port_index
-        } else if subtype == 7 && port_eq_ifindex > 0 && port_ne_ifindex == 0 && IsNumber(port_id) { // numeric port number as port_id
+        } else if subtype == 7 && port_eq_ifindex > 0 && port_ne_ifindex == 0 && IsNumber(port_id) {
+          // numeric port number as port_id
           if dev.Evs("ifName", port_id) && dev.EvM("interfaces", dev.Vs("ifName", port_id)) {
             dev["lldp_ports"].(M)[port_index].(M)["ifName"] = dev.Vs("ifName", port_id)
             dev["interfaces"].(M)[dev.Vs("ifName", port_id)].(M)["lldp_portIndex"] = port_index
           }
-        } else if subtype == 7 && strings.Index(dev.Vs("sysObjectID"), ".1.3.6.1.4.1.3320.1.") == 0 && strings.Index(port_id, "Gig") == 0 { //BDCOM
+        } else if subtype == 7 && strings.Index(dev.Vs("sysObjectID"), ".1.3.6.1.4.1.3320.1.") == 0 &&
+                  strings.Index(port_id, "Gig") == 0 &&
+        true { //BDCOM
           a := SplitByNum(port_id) //GigX/Y
           if len(a) == 4 &&
              reflect.TypeOf(a[0]) == reflect.TypeOf("") && a[0] == "Gig" &&
@@ -1081,6 +1116,13 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
               dev["interfaces"].(M)[ifName].(M)["lldp_portIndex"] = port_index
             }
           }
+        } else if subtype == 7 && raw.Evs("portToIfIndex", port_id) &&
+                  dev.Evs("ifName", raw.Vs("portToIfIndex", port_id)) &&
+                  dev.EvM("interfaces", dev.Vs("ifName", raw.Vs("portToIfIndex", port_id))) &&
+        true {
+            ifName := dev.Vs("ifName", raw.Vs("portToIfIndex", port_id))
+            dev.VM("lldp_ports", port_index)["ifName"] = ifName
+            dev.VM("interfaces", ifName)["lldp_portIndex"] = port_index
         } else { //give up
           dev["lldp_ports"].(M)[port_index].(M)["error"] = "ifName not found"
         }
