@@ -2639,7 +2639,20 @@ function int_metrics(int, dev) {
        dev["lldp_ports"][ dev["interfaces"][int]["lldp_portIndex"] ]["neighbours"] != undefined
     ) {
       let port_neighs=dev["lldp_ports"][ dev["interfaces"][int]["lldp_portIndex"] ]["neighbours"];
-      let nei_count=keys(port_neighs).length;
+      let nei_count=0;
+      for(let n in port_neighs) {
+        if(/^SEP[0-9A-F]{12}/.test(port_neighs[n]["RemSysName"]) ||
+           (/^[0-9a-f]{12}/.test(port_neighs[n]["RemChassisId"]) &&
+             port_neighs[n]["RemSysCapsDecoded"] == "none" &&
+             port_neighs[n]["RemSysName"] == ""
+           ) ||
+          false
+        ) {
+          //skip
+        } else {
+          nei_count++;
+        };
+      };
       let links_count=0;
       if(dev["interfaces"][int]["l2_links"] != undefined) {
         links_count=dev["interfaces"][int]["l2_links"].length;
