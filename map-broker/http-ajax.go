@@ -1949,7 +1949,7 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
     var ip string
     if ip, err = get_p_string(q, "ip", nil); err != nil { panic(err) }
 
-    if out, err = ip_info(ip, red, 500*time.Millisecond); err != nil { panic(err) }
+    if out, err = ip_info(ip, red, 500*time.Millisecond, false); err != nil { panic(err) }
 
   } else if action == "search" {
     var search_for string

@@ -75,9 +75,8 @@ func search(search_for string, q M, red redis.Conn, timeout time.Duration) (M, e
   }
 
   if origin_type == "ip" {
-    ip_inf, err := ip_info(ips_list[0], red, timeout)
+    ip_inf, err := ip_info(ips_list[0], red, timeout, false)
 
-fmt.Println("ip_info returned, err:", err)
 
     if err != nil { return nil, err }
     ips[ips_list[0]] = ip_inf
@@ -86,7 +85,6 @@ fmt.Println("ip_info returned, err:", err)
     }
   } else if origin_type == "mac" {
     mac_inf, err := mac_info(macs_list[0], red)
-fmt.Println("mac_info returned, err:", err)
     if err != nil { return nil, err }
     macs[macs_list[0]] = mac_inf
     for _, ip := range mac_inf.VA("mac_ips").([]string) {
@@ -96,6 +94,8 @@ fmt.Println("mac_info returned, err:", err)
     //free search, look for devs/ints/neigs names, descriptions, etc...
     reg, _ := regexp.Compile(`(?i:` + regexp.QuoteMeta(search_for) + `)`)
     globalMutex.RLock()
+
+    //search devices
     for dev_id, _ := range devs {
       dev_match := false
 DEV:  for _, key := range []string{ "short_name", "id", "model_short", "model_long", "sysDescr", "sysLocation",
@@ -197,24 +197,34 @@ INV:    for _, key := range []string{ "invEntModel", "invEntSerial" } {
       }
 
     }
+    //search ip hostnames
+
+    for ip, name := range ip2name {
+      if reg.MatchString(name) {
+        ips_list = append(ips_list, ip)
+      }
+    }
+    for net, _ := range net2name {
+      if reg.MatchString(net2name.Vs(net, "name")) {
+        if slash_pos := strings.Index(net, "/"); slash_pos > 0 {
+          ips_list = append(ips_list, net[:slash_pos])
+        }
+      }
+    }
     globalMutex.RUnlock()
   }
 
   var err error
   for _, ip := range ips_list {
     if ips[ip] == nil {
-fmt.Println("chech another ip: ", ip)
-      ips[ip], err = ip_info(ip, red, timeout)
-fmt.Println("ip_info returned, err:", err)
+      ips[ip], err = ip_info(ip, red, timeout, origin_type == "free")
       if err != nil { return nil, err }
     }
   }
 
   for _, mac := range macs_list {
     if macs[mac] == nil {
-fmt.Println("chech another mac: ", mac)
       macs[mac], err = mac_info(mac, red)
-fmt.Println("mac_info returned, err:", err)
       if err != nil { return nil, err }
     }
   }
@@ -389,7 +399,7 @@ func mac_info(mac string, red redis.Conn) (M, error) {
   return ret, nil
 }
 
-func ip_info(ip string, red redis.Conn, timeout time.Duration) (M, error) {
+func ip_info(ip string, red redis.Conn, timeout time.Duration, skip_lookups bool) (M, error) {
   var var_ok bool
   var v4ip uint32
 
@@ -609,7 +619,7 @@ func ip_info(ip string, red redis.Conn, timeout time.Duration) (M, error) {
 
   globalMutex.Unlock()
 
-  if update_whois || update_dns {
+  if (update_whois || update_dns) && !skip_lookups {
     whois_ch := make(chan string, 1)
     dns_ch := make(chan string, 1)
 
