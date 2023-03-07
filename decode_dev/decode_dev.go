@@ -743,6 +743,8 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
               net_ip := nip.Mask(nmask)
               iph["net"] = fmt.Sprintf("%v/%d", net_ip, ones)
               iph["masklen"] = int64(ones)
+              iph["v"] = "4"
+              iph["ipu"], _ = V4ip2long(nip.String())
             }
           }
         }
@@ -1390,9 +1392,11 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
       var ifIndex string = ""
       var ip string = ""
       a := strings.Split(key, ".")
+      var v string
       if len(a) == 7 && a[1] == "1" && a[2] == "4" { // 0 = ifIndex . 1 = 1 . 2 = 4 . (3-6) = IPv4
         ifIndex = a[0]
         ip = strings.Join(a[3:7], ".")
+        v = "4"
       } else if len(a) == 19 && a[1] == "2" && a[2] == "16" { // 0 = ifIndex . 1 = 2 . 2 = 16 . (3-18) = IPv6
         ipv6 := make(net.IP, 0)
         for c := 3; c < 19; c++ {
@@ -1403,13 +1407,31 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
         }
         ifIndex = a[0]
         ip = ipv6.String()
+        v = "6"
       }
 
-      if ifIndex != "" && dev.Evs("ifName", ifIndex) {
+      if v == "4" && ifIndex != "" && dev.Evs("ifName", ifIndex) {
+        ipu, ipu_ok := V4ip2long(ip)
         ifName := dev.Vs("ifName", ifIndex)
-        if dev.EvM("interfaces", ifName) {
-          arp_h := dev_arp.MkM(ifName)
-          arp_h[ip] = mac
+        if ipu_ok && dev.EvM("interfaces", ifName) {
+          for dev_ip,_ := range dev.VM("interfaces", ifName, "ips") {
+            if masklen, ok := dev.Vue("interfaces", ifName, "ips", dev_ip, "masklen"); ok &&
+               dev.Vs("interfaces", ifName, "ips", dev_ip, "v") == "4" &&
+            true {
+              dev_ipu := dev.VA("interfaces", ifName, "ips", dev_ip, "ipu").(uint32)
+              if Ip4net(ipu, uint32(masklen)) == Ip4net(dev_ipu, uint32(masklen)) {
+                arp_h := dev_arp.MkM(ifName)
+                arp_h[ip] = mac
+
+                int_arp_count := uint64(0)
+                if dev.Evu("interfaces", ifName, "arp_count") {
+                  int_arp_count = dev.Vu("interfaces", ifName, "arp_count")
+                }
+                int_arp_count++
+                dev.VM("interfaces", ifName)["arp_count"] = int_arp_count
+              }
+            }
+          }
         }
       }
     }
@@ -1431,11 +1453,29 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
     for key, mac := range raw.VM("arpTableOld") {
       a := strings.Split(key, ".")
       if len(a) == 5 && dev.Evs("ifName", a[0]) {
+        ip := strings.Join(a[1:], ".")
+        ipu, ipu_ok := V4ip2long(ip)
         ifName := dev.Vs("ifName", a[0])
-        if dev.EvM("interfaces", ifName) {
-          arp_h := dev_arp.MkM(ifName)
-          ip := strings.Join(a[1:], ".")
-          arp_h[ip] = mac
+
+        if ipu_ok && dev.EvM("interfaces", ifName) {
+          for dev_ip,_ := range dev.VM("interfaces", ifName, "ips") {
+            if masklen, ok := dev.Vue("interfaces", ifName, "ips", dev_ip, "masklen"); ok &&
+               dev.Vs("interfaces", ifName, "ips", dev_ip, "v") == "4" &&
+            true {
+              dev_ipu := dev.VA("interfaces", ifName, "ips", dev_ip, "ipu").(uint32)
+              if Ip4net(ipu, uint32(masklen)) == Ip4net(dev_ipu, uint32(masklen)) {
+                arp_h := dev_arp.MkM(ifName)
+                arp_h[ip] = mac
+
+                int_arp_count := uint64(0)
+                if dev.Evu("interfaces", ifName, "arp_count") {
+                  int_arp_count = dev.Vu("interfaces", ifName, "arp_count")
+                }
+                int_arp_count++
+                dev.VM("interfaces", ifName)["arp_count"] = int_arp_count
+              }
+            }
+          }
         }
       }
     }

@@ -20,6 +20,10 @@ func init() {
 func socket_listener(stop chan string, wg *sync.WaitGroup) {
   defer wg.Done()
 
+  _, serr := os.Stat(opt_u)
+  if serr == nil {
+    os.Remove(opt_u)
+  }
   listener, listen_err := net.Listen("unix", opt_u)
   if listen_err != nil {
     panic("Listening error: "+listen_err.Error())

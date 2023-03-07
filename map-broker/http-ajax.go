@@ -51,7 +51,7 @@ var g_map_key_reg *regexp.Regexp
 var g_file_key_reg *regexp.Regexp
 var g_shared_key_reg *regexp.Regexp
 
-var g_mac_free_reg *regexp.Regexp
+var g_mac_oui_reg *regexp.Regexp
 
 func init() {
   g_num_reg = regexp.MustCompile(`^\d+$`)
@@ -70,7 +70,7 @@ func init() {
   g_graph_if_name_reg = regexp.MustCompile(`^[a-zA-Z0-9\.\-_]+$`)
   g_graph_cpu_name_reg = regexp.MustCompile(`^[a-z0-9 \/.,;:\-]+$`)
 
-  g_mac_free_reg = regexp.MustCompile(`^([a-fA-F0-9])([a-fA-F0-9])[\-:\.]?([a-fA-F0-9])([a-fA-F0-9])[\-:\.]?([a-fA-F0-9])([a-fA-F0-9])(?:[\-:\.]?(?:[a-fA-F0-9][a-fA-F0-9])){3}$`)
+  g_mac_oui_reg = regexp.MustCompile(`^([a-fA-F0-9])([a-fA-F0-9])[\-:\.]?([a-fA-F0-9])([a-fA-F0-9])[\-:\.]?([a-fA-F0-9])([a-fA-F0-9])(?:[\-:\.]?(?:[a-fA-F0-9][a-fA-F0-9])){3}$`)
 
   gob.Register(M{})
   gob.Register(map[string]interface{}{})
@@ -1932,7 +1932,7 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
   } else if action == "mac_vendor" {
     var mac_str string
     if mac_str, err = get_p_string(q, "mac", nil); err != nil { panic(err) }
-    a := g_mac_free_reg.FindStringSubmatch(mac_str)
+    a := g_mac_oui_reg.FindStringSubmatch(mac_str)
     if a == nil { panic("Bad mac") }
     oui := strings.ToLower(a[1]+a[2]+a[3]+a[4]+a[5]+a[6])
 
@@ -1949,7 +1949,13 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
     var ip string
     if ip, err = get_p_string(q, "ip", nil); err != nil { panic(err) }
 
-    if out, err = ip_info(ip, red); err != nil { panic(err) }
+    if out, err = ip_info(ip, red, 500*time.Millisecond); err != nil { panic(err) }
+
+  } else if action == "search" {
+    var search_for string
+    if search_for, err = get_p_string(q, "for", nil); err != nil { panic(err) }
+
+    if out, err = search(search_for, q, red, 2*time.Second); err != nil { panic(err) }
 
   } else if action == "query" {
     out["_query"] = q

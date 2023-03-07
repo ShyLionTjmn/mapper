@@ -2576,18 +2576,33 @@ function int_metrics(int, dev) {
     };
 
     if(dev["interfaces"][int]['ips'] != undefined) {
-      labels["01_ips"]={};
+      labels["01_0ips"]={};
       let ips_keys=keys(dev["interfaces"][int]['ips']);
       let count=hash_length(dev["interfaces"][int]['ips']);
       if(count == 0) {
-        labels["01_ips"]["short_text"]="ERROR";
-        labels["01_ips"]["long_text"]="IPs object error!";
-        labels["01_ips"]["bg_color"]="red";
+        labels["01_0ips"]["short_text"]="ERROR";
+        labels["01_0ips"]["long_text"]="IPs object error!";
+        labels["01_0ips"]["bg_color"]="red";
       } else {
-        labels["01_ips"]["short_text"]=count+"&nbsp;IPs";
-        labels["01_ips"]["long_text"]=ips_keys.join(",");
-        labels["01_ips"]["bg_color"]="lightgreen";
-        //labels["01_ips"]["bg_color"]="greenyellow";
+        labels["01_0ips"]["short_text"]=count+"&nbsp;IPs";
+        labels["01_0ips"]["long_text"]=ips_keys.join(",");
+        labels["01_0ips"]["bg_color"]="lightgreen";
+      };
+
+      if(dev["interfaces"][int]['ifType'] != 24 &&
+         dev["interfaces"][int]['ifType'] != 1 &&
+         dev["interfaces"][int]['ifType'] != 131 &&
+         dev["interfaces"][int]['ifOperStatus'] == 1
+      ) {
+        labels["01_1arp"]={};
+        labels["01_1arp"]["short_text"]="ARP";
+        if(dev["interfaces"][int]['arp_count'] != undefined) {
+          labels["01_1arp"]["long_text"] = dev["interfaces"][int]['arp_count'] + " ARP records";
+          labels["01_1arp"]["bg_color"]="white";
+        } else {
+          labels["01_1arp"]["long_text"] = "No ARP records";
+          labels["01_1arp"]["bg_color"]="lightcoral";
+        };
       };
     };
 
@@ -2997,7 +3012,9 @@ function add_device(dev_id) {
   temp_data["devs"][dev_id]={};
   temp_data["devs"][dev_id]["interfaces"]={};
 
-  if(data["devs"][dev_id]["powerState"] != undefined && data["devs"][dev_id]["powerState"] != 1 && ! /(?:^|\W)rps(?:\W|$)/i.test(data["devs"][dev_id]["sysLocation"])) {
+  if(data["devs"][dev_id]["powerState"] != undefined && data["devs"][dev_id]["powerState"] != 1
+     && ! /(?:^|\W)rps(?:\W|$)/i.test(data["devs"][dev_id]["sysLocation"])
+  ) {
     power_sensor=0;
     power_sensor_at="Onboard";
     on_battery=1;
@@ -3006,7 +3023,8 @@ function add_device(dev_id) {
   if(data["devs"][dev_id]["interfaces"] != undefined) {
     for(let int_i in data["devs"][dev_id]["interfaces_sorted"]) {
       let int = data["devs"][dev_id]["interfaces_sorted"][int_i];
-      if(data["devs"][dev_id]["interfaces"][int]["ifAlias"] != undefined && /power.*sensor/i.test(data["devs"][dev_id]["interfaces"][int]["ifAlias"]) &&
+      if(data["devs"][dev_id]["interfaces"][int]["ifAlias"] != undefined &&
+         /power.*sensor/i.test(data["devs"][dev_id]["interfaces"][int]["ifAlias"]) &&
          power_sensor == undefined &&
          data["devs"][dev_id]["interfaces"][int]["ifAdminStatus"] == 1
       ) {
@@ -3060,7 +3078,13 @@ function add_device(dev_id) {
             ) ||
             (data["devs"][dev_id]["interfaces"][int]["ifType"] == 6 &&
              data["devs"][dev_id]["interfaces"][int]["ips"] != undefined &&
-             !int.match(/^(?:BD|Vl|CPU port)/))
+             !int.match(/^(?:BD|Vl|CPU port)/)
+            ) ||
+            (data["devs"][dev_id]["interfaces"][int]["macs_count"] != undefined &&
+             data["devs"][dev_id]["interfaces"][int]["macs_count"] > 3 &&
+             data["devs"][dev_id]["interfaces"][int]["ifType"] == 6
+            ) ||
+            false
         ) {
           temp_data["devs"][dev_id]["interfaces"][int]["_draw"]=1;
           draw1_count++;
@@ -3081,8 +3105,14 @@ function add_device(dev_id) {
                    !int.match(/^BD/) &&
                    data["devs"][dev_id]["isGroup"] == undefined &&
                    true) ||
-                  (int.match(/^Po\d+$/) && data["devs"][dev_id]["interfaces"][int]["ifType"] == 53 && data["devs"][dev_id]["interfaces"][int]["ifAdminStatus"] == 1) ||
-                  (int.match(/^EPON\d+\/\d+$/) && data["devs"][dev_id]["interfaces"][int]["ifAdminStatus"] == 1)
+                  (int.match(/^Po\d+$/) && data["devs"][dev_id]["interfaces"][int]["ifType"] == 53 &&
+                   data["devs"][dev_id]["interfaces"][int]["ifAdminStatus"] == 1
+                  ) ||
+                  (int.match(/^EPON\d+\/\d+$/) && data["devs"][dev_id]["interfaces"][int]["ifAdminStatus"] == 1) ||
+                  (data["devs"][dev_id]["interfaces"][int]["macs_count"] != undefined &&
+                   data["devs"][dev_id]["interfaces"][int]["macs_count"] > 3
+                  ) ||
+                  false
         ) {
           temp_data["devs"][dev_id]["interfaces"][int]["_draw"]=2;
           draw2_count++;
@@ -3357,7 +3387,11 @@ function add_device(dev_id) {
             if_text="Et";
           };
         } else if(if_type == 136 || if_type == 53) {
-          if_text="Vl";
+          if(/^Po\d+$/.test(int)) {
+            if_text="Po";
+          } else {
+            if_text="Vl";
+          };
         } else if(if_type == 135) {
           if_text="Dt";
         } else if(if_type == 161) {
