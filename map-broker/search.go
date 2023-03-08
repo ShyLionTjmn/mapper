@@ -60,11 +60,13 @@ func search(search_for string, q M, red redis.Conn, timeout time.Duration) (M, e
   ints := []M{}
   neigs := []M{}
 
-  if _, var_ok = V4ip2long(search_for); var_ok {
+  reg_search := q.Vi("reg")
+
+  if _, var_ok = V4ip2long(search_for); var_ok && reg_search != 1 {
     ips_list = append(ips_list, search_for)
     origin = search_for
     origin_type = "ip"
-  } else if m := g_mac_reg.FindStringSubmatch(search_for); m != nil {
+  } else if m := g_mac_reg.FindStringSubmatch(search_for); m != nil && reg_search != 1 {
     mac := strings.ToLower(m[1]+m[2]+m[3]+m[4]+m[5]+m[6])
     macs_list = append(macs_list, mac)
     origin = mac
@@ -92,7 +94,14 @@ func search(search_for string, q M, red redis.Conn, timeout time.Duration) (M, e
     }
   } else {
     //free search, look for devs/ints/neigs names, descriptions, etc...
-    reg, _ := regexp.Compile(`(?i:` + regexp.QuoteMeta(search_for) + `)`)
+    var reg *regexp.Regexp
+    var err error
+    if reg_search != 1 {
+      reg, _ = regexp.Compile(`(?i:` + regexp.QuoteMeta(search_for) + `)`)
+    } else {
+      reg, err = regexp.Compile(`(?i:` + search_for + `)`)
+      if err != nil { return nil, err }
+    }
     globalMutex.RLock()
 
     //search devices
@@ -146,6 +155,7 @@ INV:    for _, key := range []string{ "invEntModel", "invEntSerial" } {
             "safe_dev_id": devs.Vs(dev_id, "safe_dev_id"),
             "overall_status": devs.Vs(dev_id, "overall_status"),
             "interface": devs.VM(dev_id, "interfaces", ifName).Copy(),
+            "ifName": ifName,
           }
           ints = append(ints, _int)
         }
@@ -161,14 +171,22 @@ INV:    for _, key := range []string{ "invEntModel", "invEntSerial" } {
           false {
             neig := M{
               "dev_id": dev_id,
-              "source": "lldp_ports",
+              "source": "LLDP",
               "neighbour": devs.VM(dev_id, "lldp_ports", lldp_port, "neighbours", nei_idx).Copy(),
               "port": devs.VM(dev_id, "lldp_ports", lldp_port).Copy(),
               "nei_index": nei_idx,
+              "port_index": lldp_port,
               "short_name": devs.Vs(dev_id, "short_name"),
               "safe_dev_id": devs.Vs(dev_id, "safe_dev_id"),
               "overall_status": devs.Vs(dev_id, "overall_status"),
             }
+
+            if ifName, ok := devs.Vse(dev_id, "lldp_ports", lldp_port, "ifName");
+            ok && devs.EvM(dev_id, "interfaces", ifName) {
+              neig["interface"] = devs.VM(dev_id, "interfaces", ifName).Copy();
+              neig["ifName"] = ifName
+            }
+
             neigs = append(neigs, neig)
           }
         }
@@ -183,14 +201,22 @@ INV:    for _, key := range []string{ "invEntModel", "invEntSerial" } {
           false {
             neig := M{
               "dev_id": dev_id,
-              "source": "cdp_ports",
+              "source": "CDP",
               "neighbour": devs.VM(dev_id, "cdp_ports", cdp_port, "neighbours", nei_idx).Copy(),
               "port": devs.VM(dev_id, "cdp_ports", cdp_port).Copy(),
               "nei_index": nei_idx,
+              "port_index": cdp_port,
               "short_name": devs.Vs(dev_id, "short_name"),
               "safe_dev_id": devs.Vs(dev_id, "safe_dev_id"),
               "overall_status": devs.Vs(dev_id, "overall_status"),
             }
+
+            if ifName, ok := devs.Vse(dev_id, "cdp_ports", cdp_port, "ifName");
+            ok && devs.EvM(dev_id, "interfaces", ifName) {
+              neig["interface"] = devs.VM(dev_id, "interfaces", ifName).Copy();
+              neig["ifName"] = ifName
+            }
+
             neigs = append(neigs, neig)
           }
         }
@@ -201,13 +227,13 @@ INV:    for _, key := range []string{ "invEntModel", "invEntSerial" } {
 
     for ip, name := range ip2name {
       if reg.MatchString(name) {
-        ips_list = append(ips_list, ip)
+        ips_list = StrAppendOnce(ips_list, ip)
       }
     }
     for net, _ := range net2name {
       if reg.MatchString(net2name.Vs(net, "name")) {
         if slash_pos := strings.Index(net, "/"); slash_pos > 0 {
-          ips_list = append(ips_list, net[:slash_pos])
+          ips_list = StrAppendOnce(ips_list, net[:slash_pos])
         }
       }
     }
@@ -322,7 +348,7 @@ func mac_info(mac string, red redis.Conn) (M, error) {
             "overall_status": devs.Vs(dev_id, "overall_status"),
           }
           mac_arps = append(mac_arps, arp)
-          mac_ips = append(mac_ips, ip)
+          mac_ips = StrAppendOnce(mac_ips, ip)
         }
       }
     }
@@ -360,14 +386,22 @@ func mac_info(mac string, red redis.Conn) (M, error) {
         false {
           mac_neig := M{
             "dev_id": dev_id,
-            "source": "lldp_ports",
+            "source": "LLDP",
             "neighbour": devs.VM(dev_id, "lldp_ports", lldp_port, "neighbours", nei_idx).Copy(),
             "port": devs.VM(dev_id, "lldp_ports", lldp_port).Copy(),
             "nei_index": nei_idx,
+            "port_index": lldp_port,
             "short_name": devs.Vs(dev_id, "short_name"),
             "safe_dev_id": devs.Vs(dev_id, "safe_dev_id"),
             "overall_status": devs.Vs(dev_id, "overall_status"),
           }
+
+          if ifName, ok := devs.Vse(dev_id, "lldp_ports", lldp_port, "ifName");
+          ok && devs.EvM(dev_id, "interfaces", ifName) {
+            mac_neig["interface"] = devs.VM(dev_id, "interfaces", ifName).Copy();
+            mac_neig["ifName"] = ifName
+          }
+
           mac_neigs = append(mac_neigs, mac_neig)
         }
       }
@@ -378,14 +412,22 @@ func mac_info(mac string, red redis.Conn) (M, error) {
         false {
           mac_neig := M{
             "dev_id": dev_id,
-            "source": "cdp_ports",
+            "source": "CDP",
             "neighbour": devs.VM(dev_id, "cdp_ports", cdp_port, "neighbours", nei_idx).Copy(),
             "port": devs.VM(dev_id, "cdp_ports", cdp_port).Copy(),
             "nei_index": nei_idx,
+            "port_index": cdp_port,
             "short_name": devs.Vs(dev_id, "short_name"),
             "safe_dev_id": devs.Vs(dev_id, "safe_dev_id"),
             "overall_status": devs.Vs(dev_id, "overall_status"),
           }
+
+          if ifName, ok := devs.Vse(dev_id, "cdp_ports", cdp_port, "ifName");
+          ok && devs.EvM(dev_id, "interfaces", ifName) {
+            mac_neig["interface"] = devs.VM(dev_id, "interfaces", ifName).Copy();
+            mac_neig["ifName"] = ifName
+          }
+
           mac_neigs = append(mac_neigs, mac_neig)
         }
       }
@@ -394,6 +436,10 @@ func mac_info(mac string, red redis.Conn) (M, error) {
 
   if len(mac_ifs) > 0 {
     ret["mac_ifs"] = mac_ifs
+  }
+
+  if len(mac_neigs) > 0 {
+    ret["mac_neigs"] = mac_neigs
   }
 
   return ret, nil
@@ -494,7 +540,7 @@ func ip_info(ip string, red redis.Conn, timeout time.Duration, skip_lookups bool
               }
             }
           }
-          ip_macs = append(ip_macs, mac_addr)
+          ip_macs = StrAppendOnce(ip_macs, mac_addr)
         }
       }
     }
@@ -572,14 +618,22 @@ func ip_info(ip string, red redis.Conn, timeout time.Duration, skip_lookups bool
         ); ok && rem_addr == ip {
           ip_neig := M{
             "dev_id": dev_id,
-            "source": "lldp_ports",
+            "source": "LLDP",
             "neighbour": devs.VM(dev_id, "lldp_ports", lldp_port, "neighbours", nei_idx).Copy(),
             "port": devs.VM(dev_id, "lldp_ports", lldp_port).Copy(),
             "nei_index": nei_idx,
+            "port_index": lldp_port,
             "short_name": devs.Vs(dev_id, "short_name"),
             "safe_dev_id": devs.Vs(dev_id, "safe_dev_id"),
             "overall_status": devs.Vs(dev_id, "overall_status"),
           }
+
+          if ifName, ok := devs.Vse(dev_id, "lldp_ports", lldp_port, "ifName");
+          ok && devs.EvM(dev_id, "interfaces", ifName) {
+            ip_neig["interface"] = devs.VM(dev_id, "interfaces", ifName).Copy();
+            ip_neig["ifName"] = ifName
+          }
+
           ip_neigs = append(ip_neigs, ip_neig)
         }
       }
@@ -591,14 +645,22 @@ func ip_info(ip string, red redis.Conn, timeout time.Duration, skip_lookups bool
         ); ok && rem_addr == ip {
           ip_neig := M{
             "dev_id": dev_id,
-            "source": "cdp_ports",
+            "source": "CDP",
             "neighbour": devs.VM(dev_id, "cdp_ports", cdp_port, "neighbours", nei_idx).Copy(),
             "port": devs.VM(dev_id, "cdp_ports", cdp_port).Copy(),
             "nei_index": nei_idx,
+            "port_index": cdp_port,
             "short_name": devs.Vs(dev_id, "short_name"),
             "safe_dev_id": devs.Vs(dev_id, "safe_dev_id"),
             "overall_status": devs.Vs(dev_id, "overall_status"),
           }
+
+          if ifName, ok := devs.Vse(dev_id, "cdp_ports", cdp_port, "ifName");
+          ok && devs.EvM(dev_id, "interfaces", ifName) {
+            ip_neig["interface"] = devs.VM(dev_id, "interfaces", ifName).Copy();
+            ip_neig["ifName"] = ifName
+          }
+
           ip_neigs = append(ip_neigs, ip_neig)
         }
       }
@@ -671,13 +733,17 @@ UP: for {
           res["whois"] = ws
           res["whois_source"] = "lookup"
         }
-        continue UP
+        if update_dns { continue UP }
+        all_timer.Stop()
+        break UP
       case ds := <-dns_ch:
         if ds != "" {
           res["dns"] = ds
           res["dns_source"] = "lookup"
         }
-        continue UP
+        if update_whois { continue UP }
+        all_timer.Stop()
+        break UP
       case <-all_timer.C:
         break UP
       }
