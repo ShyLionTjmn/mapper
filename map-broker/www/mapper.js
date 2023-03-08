@@ -188,6 +188,18 @@ $.fn.ip_info = function(ip) {
           ;
         };
 
+        if(res["ok"]["site"] !== undefined) {
+          table
+           .append( $(TR)
+             .append( $(TD).text("Локация:") )
+             .append( $(TD)
+               .append( get_tag({"id": "root", "children": data["sites"], "data": {}}, res["ok"]["site"])
+               )
+             )
+           )
+          ;
+        };
+
         if(res["ok"]["net"] !== undefined) {
           table
            .append( $(TR)
@@ -947,6 +959,14 @@ $( document ).ready(function() {
      .click(function(e) {
        e.stopPropagation();
        macVendorWindow();
+     })
+   )
+   .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-search"])
+     //.css({"position": "absolute", "top": "0px", "left": "6em"})
+     .title("Поиск")
+     .click(function(e) {
+       e.stopPropagation();
+       showSearchWindow();
      })
    )
    .appendTo( $("BODY") )
@@ -2576,18 +2596,33 @@ function int_metrics(int, dev) {
     };
 
     if(dev["interfaces"][int]['ips'] != undefined) {
-      labels["01_ips"]={};
+      labels["01_0ips"]={};
       let ips_keys=keys(dev["interfaces"][int]['ips']);
       let count=hash_length(dev["interfaces"][int]['ips']);
       if(count == 0) {
-        labels["01_ips"]["short_text"]="ERROR";
-        labels["01_ips"]["long_text"]="IPs object error!";
-        labels["01_ips"]["bg_color"]="red";
+        labels["01_0ips"]["short_text"]="ERROR";
+        labels["01_0ips"]["long_text"]="IPs object error!";
+        labels["01_0ips"]["bg_color"]="red";
       } else {
-        labels["01_ips"]["short_text"]=count+"&nbsp;IPs";
-        labels["01_ips"]["long_text"]=ips_keys.join(",");
-        labels["01_ips"]["bg_color"]="lightgreen";
-        //labels["01_ips"]["bg_color"]="greenyellow";
+        labels["01_0ips"]["short_text"]=count+"&nbsp;IPs";
+        labels["01_0ips"]["long_text"]=ips_keys.join(",");
+        labels["01_0ips"]["bg_color"]="lightgreen";
+      };
+
+      if(dev["interfaces"][int]['ifType'] != 24 &&
+         dev["interfaces"][int]['ifType'] != 1 &&
+         dev["interfaces"][int]['ifType'] != 131 &&
+         dev["interfaces"][int]['ifOperStatus'] == 1
+      ) {
+        labels["01_1arp"]={};
+        labels["01_1arp"]["short_text"]="ARP";
+        if(dev["interfaces"][int]['arp_count'] != undefined) {
+          labels["01_1arp"]["long_text"] = dev["interfaces"][int]['arp_count'] + " ARP records";
+          labels["01_1arp"]["bg_color"]="white";
+        } else {
+          labels["01_1arp"]["long_text"] = "No ARP records";
+          labels["01_1arp"]["bg_color"]="lightcoral";
+        };
       };
     };
 
@@ -5891,13 +5926,18 @@ $.fn.graph = function(gdata) {
 };
 
 function interface_win(dev_id, int) {
-  run_query({"action": "get_interface", "dev_id": dev_id, "int": int}, function(res) {
+  //run_query({"action": "get_interface", "dev_id": dev_id, "int": int}, function(res) {
+  run_query({"action": "get_device", "dev_id": dev_id}, function(res) {
     if(res["ok"]["no_data"] !== undefined) {
-      show_dialog("Интерфейс отсутсвует в данных.");
+      show_dialog("Устройство отсутствует в данных.");
       return;
     };
-    let int_info = res["ok"]["int"];
-    data["devs"][dev_id]["interfaces"][int] = res["ok"]["int"];
+    if(res["ok"]["dev"]["interfaces"][int] == undefined) {
+      show_dialog("Интерфейс отсутствует в данных.");
+      return;
+    };
+    let int_info = res["ok"]["dev"]["interfaces"][int];
+    data["devs"][dev_id] = res["ok"]["dev"];
 
     let dlg = createWindow("int_win_"+int+"@"+dev_id,
       data["devs"][dev_id]["short_name"] + ": " + int
@@ -6134,7 +6174,7 @@ function interface_win(dev_id, int) {
      .appendTo(content)
     ;
 
-    if(int_info["cdp_neighbours"] !== undefined) {
+    if(int_info["cdp_portIndex"] !== undefined) {
       tabs
        .append( $(LABEL).text("CDP").addClass("button")
          .click(function() {
@@ -6148,10 +6188,11 @@ function interface_win(dev_id, int) {
       ;
       let tbody = $(DIV).addClass("tbody").appendTo(neighbours);
 
-      for(let i in int_info["cdp_neighbours"]) {
-        let ni = int_info["cdp_neighbours"][i];
+      for(let i in data["devs"][dev_id]["cdp_ports"][ int_info["cdp_portIndex"] ]["neighbours"]) {
+        let ni = data["devs"][dev_id]["cdp_ports"][ int_info["cdp_portIndex"] ]["neighbours"][i];
         let tr = $(DIV).addClass("tr")
          .data("data", ni)
+         .append( $(LABEL).addClass("td").text("CDP") )
          .append( $(SPAN).addClass("td")
            .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-info"])
              .css({"font-size": "x-small"})
@@ -6189,7 +6230,7 @@ function interface_win(dev_id, int) {
       neighbours.appendTo(tab_items);
     };
 
-    if(int_info["lldp_neighbours"] !== undefined) {
+    if(int_info["lldp_portIndex"] !== undefined) {
       tabs
        .append( $(LABEL).text("LLDP").addClass("button")
          .click(function() {
@@ -6203,8 +6244,8 @@ function interface_win(dev_id, int) {
       ;
       let tbody = $(DIV).addClass("tbody").appendTo(neighbours);
 
-      for(let i in int_info["lldp_neighbours"]) {
-        let ni = int_info["lldp_neighbours"][i];
+      for(let i in data["devs"][dev_id]["lldp_ports"][ int_info["lldp_portIndex"] ]["neighbours"]) {
+        let ni = data["devs"][dev_id]["lldp_ports"][ int_info["lldp_portIndex"] ]["neighbours"][i];
 
         let ip = "no IP";
 
@@ -6217,6 +6258,7 @@ function interface_win(dev_id, int) {
 
         let tr = $(DIV).addClass("tr")
          .data("data", ni)
+         .append( $(LABEL).addClass("td").text("LLDP") )
          .append( $(SPAN).addClass("td")
            .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-info"])
              .css({"font-size": "x-small"})
@@ -6287,4 +6329,1154 @@ function macVendorWindow() {
      .css({"font-size": "larger", "margin-top": "0.3em"})
    )
   ;
+};
+
+function showSearchWindow(find="") {
+  let dlg_options = {
+  };
+  let now = unix_timestamp();
+  let dlg = createWindow("search_" + now, "Поиск", dlg_options);
+
+  let content = dlg.find(".content");
+
+  content
+   .append( $(DIV)
+     .append( $(LABEL).text("Текст/IP/MAC: ") )
+     .append( $(INPUT, {"type": "search"}).val(find)
+       .css({"width": "30em"})
+       .enterKey(function() { $(this).parent().find("LABEL.ui-icon-search").trigger("click"); })
+     )
+     .append( $(LABEL, {"for": "search_reg_"+now}).text(" Re: ")
+       .title("Поиск по регулярному выражению")
+     )
+     .append( $(INPUT, {"type": "checkbox", "id": "search_reg_"+now}).addClass("reg")
+       .title("Поиск по регулярному выражению")
+     )
+     .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-search"])
+       .css({"margin-left": "1em"})
+       .click(function() {
+         let search_for = String($(this).parent().find("INPUT[type=search]").val()).trim();
+         if(search_for == "") return;
+         let dlg = $(this).closest(".dialog_start");
+         let results = dlg.find(".results");
+         let reg = 0;
+         if(dlg.find(".reg").is(":checked")) {
+           reg = 1;
+           try {
+             new RegExp(search_for);
+           } catch(e) {
+             dlg.find("INPUT[type=search]").animateHighlight("red", 300);
+             return;
+           };
+         };
+
+         run_query({"action": "search", "for": search_for, "reg": reg}, function(res) {
+           results.empty();
+
+           if(res["ok"]["origin_type"] == "mac") {
+             results.append( mac_results(res["ok"]) );
+             results.append( ip_results(res["ok"]) );
+           } else {
+             results.append( ip_results(res["ok"]) );
+             results.append( mac_results(res["ok"]) );
+           };
+
+           results.append( devs_results(res["ok"]) );
+           results.append( ints_results(res["ok"]) );
+           results.append( neigs_results(res["ok"]) );
+
+           dlg.trigger("recenter");
+         });
+       })
+     )
+   )
+   .append( $(DIV).addClass("results") )
+  ;
+
+  dlg.trigger("recenter");
+  dlg.find("INPUT[type=search]").focus();
+
+  if(find != "") {
+    dlg.find("LABEL.ui-icon-search").trigger("click");
+  };
+};
+
+function section(title, state, content) {
+  let init_icon = state?"ui-icon-minus":"ui-icon-plus";
+  let ret = $(DIV).addClass("section")
+   .append( $(DIV).addClass("sect_head")
+     .append( $(LABEL).addClass(["sect_toggle", "button", "ui-icon", init_icon])
+       .css({"font-size": "x-small"})
+       .click(function() {
+         if($(this).hasClass("ui-icon-minus")) {
+           $(this).removeClass("ui-icon-minus").addClass("ui-icon-plus");
+         } else {
+           $(this).removeClass("ui-icon-plus").addClass("ui-icon-minus");
+         };
+         $(this).closest(".section").find(".sect_content").first().toggle();
+       })
+     )
+     .append( $(SPAN).text( title )
+       .css({"margin-left": "0.5em"})
+     )
+   )
+   .append( $(DIV).addClass("sect_content")
+     .css({"padding-left": "1em"})
+     .css({"padding-top": "0.2em"})
+     .toggle(state)
+   )
+  ;
+
+  if(content !== undefined) {
+    ret.find(".sect_content").append( content );
+  };
+
+  return ret;
+};
+
+function ip_results(ok) {
+  if(ok["ips"] === undefined) return $([]);
+
+  let ips = keys(ok["ips"]);
+
+  let ret = section(ips.length + " IP Адресов", ok["origin_type"] == "ip");
+  let ret_cont = ret.find(".sect_content");
+
+  ips.sort(function(a, b) {
+    if(ok["origin_type"] == "ip") {
+      if(a == ok["origin"]) return -1;
+      if(b == ok["origin"]) return 1;
+    };
+    return num_compare(a, b);
+  });
+
+  for(let i in ips) {
+    let ip = ips[i];
+    let data_row = ok["ips"][ip];
+    let row = section(ip, ok["origin_type"] == "ip" && ip == ok["origin"]);
+    let row_cont = row.find(".sect_content");
+
+    let table = $(TABLE);
+
+    if(data_row["hostname"] != undefined) {
+      table
+        .append( $(TR)
+          .append( $(TD).text("IPDB:")
+          )
+          .append( $(TD).text(data_row["hostname"])
+          )
+        )
+      ;
+    };
+
+    if(data_row["site"] != undefined) {
+      table
+        .append( $(TR)
+          .append( $(TD).text("Локация:")
+          )
+          .append( $(TD)
+            .append( get_tag({"id": "root", "children": data["sites"], "data": {}}, data_row["site"])
+            )
+          )
+        )
+      ;
+    };
+
+    if(data_row["net"] !== undefined) {
+      table
+        .append( $(TR)
+          .append( $(TD).text("IPDB NET:")
+          )
+          .append( $(TD).text(data_row["net"])
+          )
+        )
+      ;
+    };
+
+    if(data_row["dns"] != undefined) {
+      table
+        .append( $(TR)
+          .append( $(TD).text("DNS:")
+          )
+          .append( $(TD).text(data_row["dns"])
+          )
+        )
+      ;
+    };
+    if(data_row["whois"] != undefined) {
+      table
+        .append( $(TR)
+          .append( $(TD, {"colspan": "2"})
+            .append( section("WHOIS", false,
+                $(DIV)
+                  .css({"white-space": "pre", "font-family": "monospace"})
+                  .text( data_row["whois"] )
+              )
+            )
+          )
+        )
+      ;
+    };
+
+    if(data_row["ip_macs"].length > 0) {
+      data_row["ip_macs"].sort(num_compare);
+
+      table
+        .append( $(TR)
+          .css({"background-color": (data_row["ip_macs"].length > 1)?"lightcoral":"initial"})
+          .append( $(TD).text("MACs:")
+          )
+          .append( $(TD).text(data_row["ip_macs"].map(function(a) { return format_mac(a); }).join(", "))
+          )
+        )
+      ;
+    };
+
+    if(data_row["ip_ifs"] != undefined) {
+      let subsect = section("Интерфейсы с IP " + ip, false);
+      let sub_cont = subsect.find(".sect_content");
+
+      data_row["ip_ifs"].sort(function(a, b) {
+        if(a["short_name"] != b["short_name"]) return num_compare(a["short_name"], b["short_name"]);
+        return num_compare(a["ifName"], b["ifName"]);
+      });
+
+      for(let i in data_row["ip_ifs"]) {
+        let ip_if = data_row["ip_ifs"][i];
+        let ifName = ip_if["ifName"];
+
+        let vdev = {
+          "interfaces": {}
+        };
+
+        vdev["interfaces"][ifName] = ip_if["interface"];
+
+        sub_cont
+          .append( $(DIV).addClass("data_row")
+            .css({"padding-top": "0.3em"})
+            .data("dev_id", ip_if["dev_id"])
+            .data("int", ip_if["ifName"])
+            .append( $(LABEL).text(ip_if["short_name"])
+              .css({"border": "1px solid black", "padding": "0 0.2em"})
+              .css({"background-color": ip_if["overall_status"] == "ok"?"white":"#FFE0E0"})
+              .click(function() {
+                let dev_id = $(this).closest(".data_row").data("dev_id");
+                device_win(dev_id);
+              })
+            )
+            .append( $(SPAN).text(" : ") )
+            .append( $(LABEL).text(ip_if["ifName"])
+              .title(if_undef(ip_if["interface"]["ifAlias"], ""))
+              .css({"border": "1px solid black", "padding": "0 0.2em"})
+              .css({"background-color": ip_if["overall_status"] == "ok"?"white":"#FFE0E0"})
+              .click(function() {
+                let dev_id = $(this).closest(".data_row").data("dev_id");
+                let int = $(this).closest(".data_row").data("int");
+                interface_win(dev_id, int);
+              })
+            )
+            .append( int_labels(ifName, vdev) )
+          )
+        ;
+      };
+
+      table
+        .append( $(TR)
+          .append( $(TD, {"colspan": "2"})
+            .append( subsect )
+          )
+        )
+      ;
+    };
+
+    if(data_row["ip_net_ifs"] != undefined) {
+      let subsect = section("Интерфейсы в одной сети с " + ip, false);
+      let sub_cont = subsect.find(".sect_content");
+
+      data_row["ip_net_ifs"].sort(function(a, b) {
+        if(a["short_name"] != b["short_name"]) return num_compare(a["short_name"], b["short_name"]);
+        return num_compare(a["ifName"], b["ifName"]);
+      });
+
+      for(let i in data_row["ip_net_ifs"]) {
+        let ip_if = data_row["ip_net_ifs"][i];
+        let ifName = ip_if["ifName"];
+
+        let vdev = {
+          "interfaces": {}
+        };
+
+        vdev["interfaces"][ifName] = ip_if["interface"];
+
+        sub_cont
+          .append( $(DIV).addClass("data_row")
+            .css({"padding-top": "0.3em"})
+            .data("dev_id", ip_if["dev_id"])
+            .data("int", ip_if["ifName"])
+            .append( $(LABEL).text(ip_if["short_name"])
+              .css({"border": "1px solid black", "padding": "0 0.2em"})
+              .css({"background-color": ip_if["overall_status"] == "ok"?"white":"#FFE0E0"})
+              .click(function() {
+                let dev_id = $(this).closest(".data_row").data("dev_id");
+                device_win(dev_id);
+              })
+            )
+            .append( $(SPAN).text(" : ") )
+            .append( $(LABEL).text(ip_if["ifName"])
+              .title(if_undef(ip_if["interface"]["ifAlias"], ""))
+              .css({"border": "1px solid black", "padding": "0 0.2em"})
+              .css({"background-color": ip_if["overall_status"] == "ok"?"white":"#FFE0E0"})
+              .click(function() {
+                let dev_id = $(this).closest(".data_row").data("dev_id");
+                let int = $(this).closest(".data_row").data("int");
+                interface_win(dev_id, int);
+              })
+            )
+            .append( int_labels(ifName, vdev) )
+          )
+        ;
+      };
+
+      table
+        .append( $(TR)
+          .append( $(TD, {"colspan": "2"})
+            .append( subsect )
+          )
+        )
+      ;
+    };
+
+    if(data_row["ip_neigs"] != undefined) {
+      let subsect = section("CDP/LLDP соседи с IP " + ip, false);
+      let sub_cont = subsect.find(".sect_content");
+
+      data_row["ip_neigs"].sort(function(a, b) {
+        if(a["short_name"] != b["short_name"]) return num_compare(a["short_name"], b["short_name"]);
+        if(a["ifName"] !== undefined && b["ifName"] !== undefined) return num_compare(a["ifName"], b["ifName"]);
+        return Number(a["port_index"]) - Number(b["port_index"]);
+      });
+
+      for(let i in data_row["ip_neigs"]) {
+        let neigh = data_row["ip_neigs"][i];
+        let ifName = undefined;
+        let ifAlias = undefined;
+        let vdev = {
+          "interfaces": {}
+        };
+
+        if(neigh["ifName"] != undefined) {
+          ifName = neigh["ifName"];
+          ifAlias = neigh["interface"]["ifAlias"];
+          vdev["interfaces"][ifName] = neigh["interface"];
+        };
+
+        let neigh_ip = "NO IP";
+        if(neigh["source"] == "CDP" && neigh["neighbour"]["cdpRemAddrDecoded"] != undefined) {
+          neigh_ip = neigh["neighbour"]["cdpRemAddrDecoded"];
+        } else if(neigh["source"] == "LLDP" && neigh["neighbour"]["RemMgmtAddr"] != undefined &&
+          neigh["neighbour"]["RemMgmtAddr"]["1"] != undefined
+        ) {
+          neigh_ip = neigh["neighbour"]["RemMgmtAddr"]["1"];
+        };
+
+
+        sub_cont
+          .append( $(DIV).addClass("data_row")
+            .data("dev_id", neigh["dev_id"])
+            .css({"padding-top": "0.3em"})
+            .append( $(DIV)
+              .data("int", (ifName != undefined? ifName:""))
+              .append( $(LABEL).text(neigh["source"])
+                .css({"margin-right": "0.5em"})
+              )
+              .append( $(LABEL).text(neigh["short_name"])
+                .css({"border": "1px solid black", "padding": "0 0.2em"})
+                .css({"background-color": neigh["overall_status"] == "ok"?"white":"#FFE0E0"})
+                .click(function() {
+                  let dev_id = $(this).closest(".data_row").data("dev_id");
+                  device_win(dev_id);
+                })
+              )
+              .append( $(SPAN).text(" : ") )
+              .append( $(LABEL).text(ifName != undefined?ifName:(neigh["source"] + " Port: "+neigh["port_index"]))
+                .title(if_undef(ifAlias, ""))
+                .css({"border": "1px solid black", "padding": "0 0.2em"})
+                .css({"background-color": neigh["overall_status"] == "ok"?"white":"#FFE0E0"})
+                .click(function() {
+                  let dev_id = $(this).closest(".data_row").data("dev_id");
+                  let int = $(this).closest(".data_row").data("int");
+                  if(int != "") {
+                    interface_win(dev_id, int);
+                  };
+                })
+              )
+              .append( ifName != undefined?int_labels(ifName, vdev):$(SPAN) )
+            )
+            .append( (neigh["source"] == "CDP") ? $(DIV)
+              .data("data", neigh["neighbour"])
+              .data("nei_index", neigh["nei_index"])
+              .data("port_index", neigh["port_index"])
+              .append( $(SPAN).addClass("td")
+                .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-info"])
+                  .css({"font-size": "x-small"})
+                  .click(function() {
+                    let ni = $(this).closest("DIV").data("data");
+                    let neigh_index = $(this).closest("DIV").data("nei_index");
+                    let port_index = $(this).closest("DIV").data("port_index");
+                    let js = jstr(ni);
+                    let dev_id = $(this).closest(".data_row").data("dev_id");
+                    let win_id = "nei_cdp_json_"+neigh_index+"@"+port_index+"@"+dev_id;
+
+                    createWindow(win_id, "JSON: CDP neigh: "+dev_id+": Port "+port_index + ": Neigh "+neigh_index, {
+                                 minWidth: 500,
+                                 maxWidth: 1500,
+                                 width: 500,
+                     })
+                     .find(".content").css({"white-space": "pre"}).text( js )
+                     .parent().trigger("recenter")
+                    ;
+                  })
+                )
+              )
+              .append( $(SPAN).addClass("td").text(neigh_ip)
+                .title( neigh["neighbour"]["cdpRemCapsDecoded"] !== undefined ?
+                  neigh["neighbour"]["cdpRemCapsDecoded"] : ""
+                )
+              )
+              .append( $(SPAN).addClass("td").text(neigh["neighbour"]["cdpRemDevId"])
+                .title( neigh["neighbour"]["cdpRemSoftware"] !== undefined ?
+                  neigh["neighbour"]["cdpRemSoftware"] : ""
+                )
+              )
+              .append( $(SPAN).addClass("td").text(neigh["neighbour"]["cdpRemIfName"])
+                .title( neigh["neighbour"]["cdpRemPlatform"] !== undefined ?
+                  neigh["neighbour"]["cdpRemPlatform"] : ""
+                )
+              )
+              : $(DIV)
+              .data("data", neigh["neighbour"])
+              .data("nei_index", neigh["nei_index"])
+              .data("port_index", neigh["port_index"])
+              .append( $(SPAN).addClass("td")
+                .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-info"])
+                  .css({"font-size": "x-small"})
+                  .click(function() {
+                    let ni = $(this).closest("DIV").data("data");
+                    let neigh_index = $(this).closest("DIV").data("nei_index");
+                    let port_index = $(this).closest("DIV").data("port_index");
+                    let js = jstr(ni);
+                    let dev_id = $(this).closest(".data_row").data("dev_id");
+                    let win_id = "nei_lldp_json_"+neigh_index+"@"+port_index+"@"+dev_id;
+
+                    createWindow(win_id, "JSON: LLDP neigh: "+dev_id+": Port "+port_index + ": Neigh "+neigh_index, {
+                                 minWidth: 500,
+                                 maxWidth: 1500,
+                                 width: 500,
+                     })
+                     .find(".content").css({"white-space": "pre"}).text( js )
+                     .parent().trigger("recenter")
+                    ;
+                  })
+                )
+              )
+              .append( $(SPAN).addClass("td").text(neigh_ip)
+                .title( neigh["neighbour"]["RemSysCapsDecoded"] !== undefined ?
+                  neigh["neighbour"]["RemSysCapsDecoded"] : ""
+                )
+              )
+              .append( $(SPAN).addClass("td")
+                .text(neigh["neighbour"]["RemSysName"] !== undefined ?
+                  neigh["neighbour"]["RemSysName"] : "no name advertized"
+                )
+                .title( neigh["neighbour"]["RemSysDescr"] !== undefined ? neigh["neighbour"]["RemSysDescr"] : "")
+              )
+              .append( $(SPAN).addClass("td").text(neigh["neighbour"]["RemPortId"])
+                .title( neigh["neighbour"]["RemPortDescr"] !== undefined ? neigh["neighbour"]["RemPortDescr"] : "")
+              )
+            )
+          )
+        ;
+      };
+
+      table
+        .append( $(TR)
+          .append( $(TD, {"colspan": "2"})
+            .append( subsect )
+          )
+        )
+      ;
+    };
+    table.appendTo(row_cont);
+    row.appendTo(ret_cont);
+  };
+
+  return ret;
+};
+
+function mac_results(ok) {
+  if(ok["macs"] === undefined) return $([]);
+
+  let macs = keys(ok["macs"]);
+
+  let ret = section(macs.length + " MAC Адресов", true);
+  let ret_cont = ret.find(".sect_content");
+
+  macs.sort(function(a, b) {
+    if(ok["origin_type"] == "mac") {
+      if(a == ok["origin"]) return -1;
+      if(b == ok["origin"]) return 1;
+    };
+    return num_compare(a, b);
+  });
+
+  for(let i in macs) {
+    let mac = macs[i];
+    let data_row = ok["macs"][mac];
+    let row = section(format_mac(mac), ok["origin_type"] == "mac" && mac == ok["origin"]);
+    let row_cont = row.find(".sect_content");
+
+    let table = $(TABLE);
+
+    if(data_row["corp"] != undefined) {
+      table
+        .append( $(TR)
+          .append( $(TD).text("Вендор:")
+          )
+          .append( $(TD).text(data_row["corp"])
+          )
+        )
+      ;
+    };
+
+    if(data_row["mac_ips"].length > 0 ) {
+      data_row["mac_ips"].sort(num_compare);
+
+      let ips_list = $([]);
+
+      for(let i in data_row["mac_ips"]) {
+        ips_list = ips_list
+          .add( $(SPAN)
+            .append( $(SPAN).text(data_row["mac_ips"][i]) )
+            .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-search"])
+              .css({"font-size": "small", "margin-left": "0.2em"})
+              .data("search", data_row["mac_ips"][i])
+              .click(function() { showSearchWindow( $(this).data("search") ); })
+            )
+          )
+        ;
+        if(i < (data_row["mac_ips"].length - 1)) {
+          ips_list = ips_list.add( $(SPAN).text(", ") );
+        };
+      };
+
+      table
+        .append( $(TR)
+          //.css({"background-color": (data_row["mac_ips"].length > 1)?"lightcoral":"initial"})
+          .append( $(TD).text("IPs:")
+          )
+          .append( $(TD).append(ips_list)
+          )
+        )
+      ;
+    };
+
+    if(data_row["mac_ifs"] != undefined) {
+      let subsect = section("Интерфейсы с MAC " + format_mac(mac), true);
+      let sub_cont = subsect.find(".sect_content");
+
+      data_row["mac_ifs"].sort(function(a, b) {
+        if(a["short_name"] != b["short_name"]) return num_compare(a["short_name"], b["short_name"]);
+        return num_compare(a["ifName"], b["ifName"]);
+      });
+
+      for(let i in data_row["mac_ifs"]) {
+        let mac_if = data_row["mac_ifs"][i];
+        let ifName = mac_if["ifName"];
+
+        let vdev = {
+          "interfaces": {}
+        };
+
+        vdev["interfaces"][ifName] = mac_if["interface"];
+
+        sub_cont
+          .append( $(DIV).addClass("data_row")
+            .css({"padding-top": "0.3em"})
+            .data("dev_id", mac_if["dev_id"])
+            .data("int", mac_if["ifName"])
+            .append( $(LABEL).text(mac_if["short_name"])
+              .css({"border": "1px solid black", "padding": "0 0.2em"})
+              .css({"background-color": mac_if["overall_status"] == "ok"?"white":"#FFE0E0"})
+              .click(function() {
+                let dev_id = $(this).closest(".data_row").data("dev_id");
+                device_win(dev_id);
+              })
+            )
+            .append( $(SPAN).text(" : ") )
+            .append( $(LABEL).text(mac_if["ifName"])
+              .title(if_undef(mac_if["interface"]["ifAlias"], ""))
+              .css({"border": "1px solid black", "padding": "0 0.2em"})
+              .css({"background-color": mac_if["overall_status"] == "ok"?"white":"#FFE0E0"})
+              .click(function() {
+                let dev_id = $(this).closest(".data_row").data("dev_id");
+                let int = $(this).closest(".data_row").data("int");
+                interface_win(dev_id, int);
+              })
+            )
+            .append( int_labels(ifName, vdev) )
+          )
+        ;
+      };
+
+      table
+        .append( $(TR)
+          .append( $(TD, {"colspan": "2"})
+            .append( subsect )
+          )
+        )
+      ;
+    };
+
+    let end_ports = [];
+    let trunk_ports = [];
+
+    if(data_row["ports"] != undefined) {
+      for(let i in data_row["ports"]) {
+        let mac_port = data_row["ports"][i];
+        if( mac_port["interface"]["l2_links"] == undefined &&
+            mac_port["interface"]["lag_members"] == undefined
+        ) {
+          end_ports.push(mac_port);
+        } else {
+          trunk_ports.push(mac_port);
+        };
+      };
+    };
+
+    if(end_ports.length > 0) {
+      let subsect = section("Конечные порты с MAC " + format_mac(mac), true);
+      let sub_cont = subsect.find(".sect_content");
+
+      end_ports.sort(function(a, b) {
+        if(a["short_name"] != b["short_name"]) return num_compare(a["short_name"], b["short_name"]);
+        return num_compare(a["ifName"], b["ifName"]);
+      });
+
+      for(let i in end_ports) {
+        let mac_port = end_ports[i];
+        let ifName = mac_port["ifName"];
+
+        let vdev = {
+          "interfaces": {}
+        };
+
+        vdev["interfaces"][ifName] = mac_port["interface"];
+
+        sub_cont
+          .append( $(DIV).addClass("data_row")
+            .css({"padding-top": "0.3em"})
+            .data("dev_id", mac_port["dev_id"])
+            .data("int", mac_port["ifName"])
+            .append( $(LABEL).text("VLAN "+mac_port["vlan"])
+              .css({"border": "1px solid black", "margin-right": "0.5em", "padding": "0 0.2em"})
+            )
+            .append( $(LABEL).text(mac_port["short_name"])
+              .css({"border": "1px solid black", "padding": "0 0.2em"})
+              .css({"background-color": mac_port["overall_status"] == "ok"?"white":"#FFE0E0"})
+              .click(function() {
+                let dev_id = $(this).closest(".data_row").data("dev_id");
+                device_win(dev_id);
+              })
+            )
+            .append( $(SPAN).text(" : ") )
+            .append( $(LABEL).text(mac_port["ifName"])
+              .title(if_undef(mac_port["interface"]["ifAlias"], ""))
+              .css({"border": "1px solid black", "padding": "0 0.2em"})
+              .css({"background-color": mac_port["overall_status"] == "ok"?"white":"#FFE0E0"})
+              .click(function() {
+                let dev_id = $(this).closest(".data_row").data("dev_id");
+                let int = $(this).closest(".data_row").data("int");
+                interface_win(dev_id, int);
+              })
+            )
+            .append( int_labels(ifName, vdev) )
+          )
+        ;
+      };
+
+      table
+        .append( $(TR)
+          .append( $(TD, {"colspan": "2"})
+            .append( subsect )
+          )
+        )
+      ;
+    };
+
+    if(trunk_ports.length > 0) {
+      let subsect = section("Транзитные порты с MAC " + format_mac(mac), false);
+      let sub_cont = subsect.find(".sect_content");
+
+      trunk_ports.sort(function(a, b) {
+        if(a["short_name"] != b["short_name"]) return num_compare(a["short_name"], b["short_name"]);
+        return num_compare(a["ifName"], b["ifName"]);
+      });
+
+      for(let i in trunk_ports) {
+        let mac_port = trunk_ports[i];
+        let ifName = mac_port["ifName"];
+
+        let vdev = {
+          "interfaces": {}
+        };
+
+        vdev["interfaces"][ifName] = mac_port["interface"];
+
+        sub_cont
+          .append( $(DIV).addClass("data_row")
+            .css({"padding-top": "0.3em"})
+            .data("dev_id", mac_port["dev_id"])
+            .data("int", mac_port["ifName"])
+            .append( $(LABEL).text("VLAN "+mac_port["vlan"])
+              .css({"border": "1px solid black", "margin-right": "0.5em", "padding": "0 0.2em"})
+            )
+            .append( $(LABEL).text(mac_port["short_name"])
+              .css({"border": "1px solid black", "padding": "0 0.2em"})
+              .css({"background-color": mac_port["overall_status"] == "ok"?"white":"#FFE0E0"})
+              .click(function() {
+                let dev_id = $(this).closest(".data_row").data("dev_id");
+                device_win(dev_id);
+              })
+            )
+            .append( $(SPAN).text(" : ") )
+            .append( $(LABEL).text(mac_port["ifName"])
+              .title(if_undef(mac_port["interface"]["ifAlias"], ""))
+              .css({"border": "1px solid black", "padding": "0 0.2em"})
+              .css({"background-color": mac_port["overall_status"] == "ok"?"white":"#FFE0E0"})
+              .click(function() {
+                let dev_id = $(this).closest(".data_row").data("dev_id");
+                let int = $(this).closest(".data_row").data("int");
+                interface_win(dev_id, int);
+              })
+            )
+            .append( int_labels(ifName, vdev) )
+          )
+        ;
+      };
+
+      table
+        .append( $(TR)
+          .append( $(TD, {"colspan": "2"})
+            .append( subsect )
+          )
+        )
+      ;
+    };
+
+    if(data_row["mac_neigs"] != undefined) {
+      let subsect = section("CDP/LLDP соседи с MAC " + format_mac(mac), false);
+      let sub_cont = subsect.find(".sect_content");
+
+      data_row["mac_neigs"].sort(function(a, b) {
+        if(a["short_name"] != b["short_name"]) return num_compare(a["short_name"], b["short_name"]);
+        if(a["ifName"] !== undefined && b["ifName"] !== undefined) return num_compare(a["ifName"], b["ifName"]);
+        return Number(a["port_index"]) - Number(b["port_index"]);
+      });
+
+      for(let i in data_row["mac_neigs"]) {
+        let neigh = data_row["mac_neigs"][i];
+        let ifName = undefined;
+        let ifAlias = undefined;
+        let vdev = {
+          "interfaces": {}
+        };
+
+        if(neigh["ifName"] != undefined) {
+          ifName = neigh["ifName"];
+          ifAlias = neigh["interface"]["ifAlias"];
+          vdev["interfaces"][ifName] = neigh["interface"];
+        };
+
+        let neigh_ip = "NO IP";
+        if(neigh["source"] == "CDP" && neigh["neighbour"]["cdpRemAddrDecoded"] != undefined) {
+          neigh_ip = neigh["neighbour"]["cdpRemAddrDecoded"];
+        } else if(neigh["source"] == "LLDP" && neigh["neighbour"]["RemMgmtAddr"] != undefined &&
+          neigh["neighbour"]["RemMgmtAddr"]["1"] != undefined
+        ) {
+          neigh_ip = neigh["neighbour"]["RemMgmtAddr"]["1"];
+        };
+
+        sub_cont
+          .append( $(DIV).addClass("data_row")
+            .data("dev_id", neigh["dev_id"])
+            .data("int", if_undef(neigh["ifName"], ""))
+            .css({"padding-top": "0.3em"})
+            .append( $(DIV)
+              .append( $(LABEL).text(neigh["source"])
+                .css({"margin-right": "0.5em"})
+              )
+              .append( $(LABEL).text(neigh["short_name"])
+                .css({"border": "1px solid black", "padding": "0 0.2em"})
+                .css({"background-color": neigh["overall_status"] == "ok"?"white":"#FFE0E0"})
+                .click(function() {
+                  let dev_id = $(this).closest(".data_row").data("dev_id");
+                  device_win(dev_id);
+                })
+              )
+              .append( $(SPAN).text(" : ") )
+              .append( $(LABEL).text(ifName != undefined?ifName:(neigh["source"] + " Port: "+neigh["port_index"]))
+                .title(if_undef(ifAlias, ""))
+                .css({"border": "1px solid black", "padding": "0 0.2em"})
+                .css({"background-color": neigh["overall_status"] == "ok"?"white":"#FFE0E0"})
+                .click(function() {
+                  let dev_id = $(this).closest(".data_row").data("dev_id");
+                  let int = $(this).closest(".data_row").data("int");
+                  if(int != "") {
+                    interface_win(dev_id, int);
+                  };
+                })
+              )
+              .append( ifName != undefined?int_labels(ifName, vdev):$(SPAN) )
+            )
+            .append( (neigh["source"] == "CDP") ? $(DIV)
+              .data("data", neigh["neighbour"])
+              .data("nei_index", neigh["nei_index"])
+              .data("port_index", neigh["port_index"])
+              .append( $(SPAN).addClass("td")
+                .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-info"])
+                  .css({"font-size": "x-small"})
+                  .click(function() {
+                    let ni = $(this).closest("DIV").data("data");
+                    let neigh_index = $(this).closest("DIV").data("nei_index");
+                    let port_index = $(this).closest("DIV").data("port_index");
+                    let js = jstr(ni);
+                    let dev_id = $(this).closest(".data_row").data("dev_id");
+                    let win_id = "nei_cdp_json_"+neigh_index+"@"+port_index+"@"+dev_id;
+
+                    createWindow(win_id, "JSON: CDP neigh: "+dev_id+": Port "+port_index + ": Neigh "+neigh_index, {
+                                 minWidth: 500,
+                                 maxWidth: 1500,
+                                 width: 500,
+                     })
+                     .find(".content").css({"white-space": "pre"}).text( js )
+                     .parent().trigger("recenter")
+                    ;
+                  })
+                )
+              )
+              .append( $(SPAN).addClass("td").text(neigh_ip)
+                .title( neigh["neighbour"]["cdpRemCapsDecoded"] !== undefined ?
+                  neigh["neighbour"]["cdpRemCapsDecoded"] : ""
+                )
+              )
+              .append( $(SPAN).addClass("td").text(neigh["neighbour"]["cdpRemDevId"])
+                .title( neigh["neighbour"]["cdpRemSoftware"] !== undefined ?
+                  neigh["neighbour"]["cdpRemSoftware"] : ""
+                )
+              )
+              .append( $(SPAN).addClass("td").text(neigh["neighbour"]["cdpRemIfName"])
+                .title( neigh["neighbour"]["cdpRemPlatform"] !== undefined ?
+                  neigh["neighbour"]["cdpRemPlatform"] : ""
+                )
+              )
+              : $(DIV)
+              .data("data", neigh["neighbour"])
+              .data("nei_index", neigh["nei_index"])
+              .data("port_index", neigh["port_index"])
+              .append( $(SPAN).addClass("td")
+                .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-info"])
+                  .css({"font-size": "x-small"})
+                  .click(function() {
+                    let ni = $(this).closest("DIV").data("data");
+                    let neigh_index = $(this).closest("DIV").data("nei_index");
+                    let port_index = $(this).closest("DIV").data("port_index");
+                    let js = jstr(ni);
+                    let dev_id = $(this).closest(".data_row").data("dev_id");
+                    let win_id = "nei_lldp_json_"+neigh_index+"@"+port_index+"@"+dev_id;
+
+                    createWindow(win_id, "JSON: LLDP neigh: "+dev_id+": Port "+port_index + ": Neigh "+neigh_index, {
+                                 minWidth: 500,
+                                 maxWidth: 1500,
+                                 width: 500,
+                     })
+                     .find(".content").css({"white-space": "pre"}).text( js )
+                     .parent().trigger("recenter")
+                    ;
+                  })
+                )
+              )
+              .append( $(SPAN).addClass("td").text(neigh_ip)
+                .title( neigh["neighbour"]["RemSysCapsDecoded"] !== undefined ?
+                  neigh["neighbour"]["RemSysCapsDecoded"] : ""
+                )
+              )
+              .append( $(SPAN).addClass("td")
+                .text(neigh["neighbour"]["RemSysName"] !== undefined ?
+                  neigh["neighbour"]["RemSysName"] : "no name advertized"
+                )
+                .title( neigh["neighbour"]["RemSysDescr"] !== undefined ? neigh["neighbour"]["RemSysDescr"] : "")
+              )
+              .append( $(SPAN).addClass("td").text(neigh["neighbour"]["RemPortId"])
+                .title( neigh["neighbour"]["RemPortDescr"] !== undefined ? neigh["neighbour"]["RemPortDescr"] : "")
+              )
+
+            )
+          )
+        ;
+      };
+
+      table
+        .append( $(TR)
+          .append( $(TD, {"colspan": "2"})
+            .append( subsect )
+          )
+        )
+      ;
+    };
+    table.appendTo(row_cont);
+    row.appendTo(ret_cont);
+  };
+
+  return ret;
+};
+
+function devs_results(ok) {
+  if(ok["devs"] == undefined) return $([]);
+
+  ok["devs"].sort(function(a, b) {
+    return num_compare(a["short_name"], b["short_name"]);
+  });
+
+
+  let ret = section(ok["devs"].length + " Устройств", false);
+  let ret_cont = ret.find(".sect_content");
+
+  for(let i in ok["devs"]) {
+    let item = ok["devs"][i];
+
+    ret_cont
+      .append( $(DIV).addClass("data_row")
+        .css({"padding-top": "0.3em"})
+        .data("dev_id", item["dev_id"])
+        .append( $(LABEL).text(item["short_name"])
+          .css({"border": "1px solid black", "padding": "0 0.2em"})
+          .css({"background-color": item["overall_status"] == "ok"?"white":"#FFE0E0"})
+          .click(function() {
+            let dev_id = $(this).closest(".data_row").data("dev_id");
+            device_win(dev_id);
+          })
+        )
+      )
+    ;
+  };
+  return ret;
+};
+
+function ints_results(ok) {
+  if(ok["ints"] == undefined) return $([]);
+
+  ok["ints"].sort(function(a, b) {
+    if(a["short_name"] != b["short_name"]) return num_compare(a["short_name"], b["short_name"]);
+    return num_compare(a["ifName"], b["ifName"]);
+  });
+
+
+  let ret = section(ok["ints"].length + " Интерфейсов", false);
+  let ret_cont = ret.find(".sect_content");
+
+  for(let i in ok["ints"]) {
+    let item = ok["ints"][i];
+    let ifName = item["ifName"];
+
+    let vdev = {
+      "interfaces": {}
+    };
+
+    vdev["interfaces"][ifName] = item["interface"];
+
+    ret_cont
+      .append( $(DIV).addClass("data_row")
+        .css({"padding-top": "0.3em"})
+        .data("dev_id", item["dev_id"])
+        .data("int", item["ifName"])
+        .append( $(LABEL).text(item["short_name"])
+          .css({"border": "1px solid black", "padding": "0 0.2em"})
+          .css({"background-color": item["overall_status"] == "ok"?"white":"#FFE0E0"})
+          .click(function() {
+            let dev_id = $(this).closest(".data_row").data("dev_id");
+            device_win(dev_id);
+          })
+        )
+        .append( $(SPAN).text(" : ") )
+        .append( $(LABEL).text(item["ifName"])
+          .title(if_undef(item["interface"]["ifAlias"], ""))
+          .css({"border": "1px solid black", "padding": "0 0.2em"})
+          .css({"background-color": item["overall_status"] == "ok"?"white":"#FFE0E0"})
+          .click(function() {
+            let dev_id = $(this).closest(".data_row").data("dev_id");
+            let int = $(this).closest(".data_row").data("int");
+            interface_win(dev_id, int);
+          })
+        )
+        .append( int_labels(ifName, vdev) )
+      )
+    ;
+  };
+  return ret;
+};
+
+function neigs_results(ok) {
+  if(ok["neigs"] == undefined) return $([]);
+
+  let ret = section(ok["neigs"].length + " соседей", false);
+  let ret_cont = ret.find(".sect_content");
+
+  ok["neigs"].sort(function(a, b) {
+    if(a["short_name"] != b["short_name"]) return num_compare(a["short_name"], b["short_name"]);
+    if(a["ifName"] !== undefined && b["ifName"] !== undefined) return num_compare(a["ifName"], b["ifName"]);
+    return Number(a["port_index"]) - Number(b["port_index"]);
+  });
+
+  for(let i in ok["neigs"]) {
+    let neigh = ok["neigs"][i];
+    let ifName = undefined;
+    let ifAlias = undefined;
+    let vdev = {
+      "interfaces": {}
+    };
+
+    if(neigh["ifName"] != undefined) {
+      ifName = neigh["ifName"];
+      ifAlias = neigh["interface"]["ifAlias"];
+      vdev["interfaces"][ifName] = neigh["interface"];
+    };
+
+    let neigh_ip = "NO IP";
+    if(neigh["source"] == "CDP" && neigh["neighbour"]["cdpRemAddrDecoded"] != undefined) {
+      neigh_ip = neigh["neighbour"]["cdpRemAddrDecoded"];
+    } else if(neigh["source"] == "LLDP" && neigh["neighbour"]["RemMgmtAddr"] != undefined &&
+      neigh["neighbour"]["RemMgmtAddr"]["1"] != undefined
+    ) {
+      neigh_ip = neigh["neighbour"]["RemMgmtAddr"]["1"];
+    };
+
+    ret_cont
+      .append( $(DIV).addClass("data_row")
+        .data("dev_id", neigh["dev_id"])
+        .data("int", if_undef(neigh["ifName"], ""))
+        .css({"padding-top": "0.3em"})
+        .append( $(DIV)
+          .append( $(LABEL).text(neigh["source"])
+            .css({"margin-right": "0.5em"})
+          )
+          .append( $(LABEL).text(neigh["short_name"])
+            .css({"border": "1px solid black", "padding": "0 0.2em"})
+            .css({"background-color": neigh["overall_status"] == "ok"?"white":"#FFE0E0"})
+            .click(function() {
+              let dev_id = $(this).closest(".data_row").data("dev_id");
+              device_win(dev_id);
+            })
+          )
+          .append( $(SPAN).text(" : ") )
+          .append( $(LABEL).text(ifName != undefined?ifName:(neigh["source"] + " Port: "+neigh["port_index"]))
+            .title(if_undef(ifAlias, ""))
+            .css({"border": "1px solid black", "padding": "0 0.2em"})
+            .css({"background-color": neigh["overall_status"] == "ok"?"white":"#FFE0E0"})
+            .click(function() {
+              let dev_id = $(this).closest(".data_row").data("dev_id");
+              let int = $(this).closest(".data_row").data("int");
+              if(int != "") {
+                interface_win(dev_id, int);
+              };
+            })
+          )
+          .append( ifName != undefined?int_labels(ifName, vdev):$(SPAN) )
+        )
+        .append( (neigh["source"] == "CDP") ? $(DIV)
+          .data("data", neigh["neighbour"])
+          .data("nei_index", neigh["nei_index"])
+          .data("port_index", neigh["port_index"])
+          .append( $(SPAN).addClass("td")
+            .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-info"])
+              .css({"font-size": "x-small"})
+              .click(function() {
+                let ni = $(this).closest("DIV").data("data");
+                let neigh_index = $(this).closest("DIV").data("nei_index");
+                let port_index = $(this).closest("DIV").data("port_index");
+                let js = jstr(ni);
+                let dev_id = $(this).closest(".data_row").data("dev_id");
+                let win_id = "nei_cdp_json_"+neigh_index+"@"+port_index+"@"+dev_id;
+
+                createWindow(win_id, "JSON: CDP neigh: "+dev_id+": Port "+port_index + ": Neigh "+neigh_index, {
+                             minWidth: 500,
+                             maxWidth: 1500,
+                             width: 500,
+                 })
+                 .find(".content").css({"white-space": "pre"}).text( js )
+                 .parent().trigger("recenter")
+                ;
+              })
+            )
+          )
+          .append( $(SPAN).addClass("td").text(neigh_ip)
+            .title( neigh["neighbour"]["cdpRemCapsDecoded"] !== undefined ?
+              neigh["neighbour"]["cdpRemCapsDecoded"] : ""
+            )
+          )
+          .append( $(SPAN).addClass("td").text(neigh["neighbour"]["cdpRemDevId"])
+            .title( neigh["neighbour"]["cdpRemSoftware"] !== undefined ?
+              neigh["neighbour"]["cdpRemSoftware"] : ""
+            )
+          )
+          .append( $(SPAN).addClass("td").text(neigh["neighbour"]["cdpRemIfName"])
+            .title( neigh["neighbour"]["cdpRemPlatform"] !== undefined ?
+              neigh["neighbour"]["cdpRemPlatform"] : ""
+            )
+          )
+          : $(DIV)
+          .data("data", neigh["neighbour"])
+          .data("nei_index", neigh["nei_index"])
+          .data("port_index", neigh["port_index"])
+          .append( $(SPAN).addClass("td")
+            .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-info"])
+              .css({"font-size": "x-small"})
+              .click(function() {
+                let ni = $(this).closest("DIV").data("data");
+                let neigh_index = $(this).closest("DIV").data("nei_index");
+                let port_index = $(this).closest("DIV").data("port_index");
+                let js = jstr(ni);
+                let dev_id = $(this).closest(".data_row").data("dev_id");
+                let win_id = "nei_lldp_json_"+neigh_index+"@"+port_index+"@"+dev_id;
+
+                createWindow(win_id, "JSON: LLDP neigh: "+dev_id+": Port "+port_index + ": Neigh "+neigh_index, {
+                             minWidth: 500,
+                             maxWidth: 1500,
+                             width: 500,
+                 })
+                 .find(".content").css({"white-space": "pre"}).text( js )
+                 .parent().trigger("recenter")
+                ;
+              })
+            )
+          )
+          .append( $(SPAN).addClass("td").text(neigh_ip)
+            .title( neigh["neighbour"]["RemSysCapsDecoded"] !== undefined ?
+              neigh["neighbour"]["RemSysCapsDecoded"] : ""
+            )
+          )
+          .append( $(SPAN).addClass("td")
+            .text(neigh["neighbour"]["RemSysName"] !== undefined ?
+              neigh["neighbour"]["RemSysName"] : "no name advertized"
+            )
+            .title( neigh["neighbour"]["RemSysDescr"] !== undefined ? neigh["neighbour"]["RemSysDescr"] : "")
+          )
+          .append( $(SPAN).addClass("td").text(neigh["neighbour"]["RemPortId"])
+            .title( neigh["neighbour"]["RemPortDescr"] !== undefined ? neigh["neighbour"]["RemPortDescr"] : "")
+          )
+
+        )
+      )
+    ;
+  };
+  return ret;
 };
