@@ -649,6 +649,18 @@ function createWindow(win_id, title, options) {
       $('.ui-dialog').css('z-index', windows_z+1);
       $('.ui-widget-overlay').css('z-index', windows_z);
     },
+    resize: function() {
+      let heightPadding = parseInt($(this).css('padding-top'), 10) + parseInt($(this).css('padding-bottom'), 10),
+          widthPadding = parseInt($(this).css('padding-left'), 10) + parseInt($(this).css('padding-right'), 10),
+          titlebarMargin = parseInt($(this).prev('.ui-dialog-titlebar').css('margin-bottom'), 10)
+      ;
+      $(this).height($(this).parent().height() -
+        $(this).prev('.ui-dialog-titlebar').outerHeight(true) -
+        heightPadding - titlebarMargin
+      );
+
+      $(this).width($(this).prev('.ui-dialog-titlebar').outerWidth(true) - widthPadding);
+    },
   };
 
   if(options !== undefined) {
@@ -661,6 +673,7 @@ function createWindow(win_id, title, options) {
 
   dlg.dialog(dialog_options);
   let widget = dlg.dialog("widget");
+
   widget.find(".ui-dialog-titlebar-close").css({"font-size": "6pt", "font-weight": "normal"});
   widget.find(".ui-button-icon.ui-icon.ui-icon-closethick").removeClass("ui-icon-closethick").addClass("ui-icon-close");
   widget.find(".ui-dialog-title").css({"font-size": "10", "font-weight": "normal"});
@@ -6174,7 +6187,9 @@ function interface_win(dev_id, int) {
      .appendTo(content)
     ;
 
-    if(int_info["cdp_portIndex"] !== undefined) {
+    if(int_info["cdp_portIndex"] !== undefined &&
+      data["devs"][dev_id]["cdp_ports"][ int_info["cdp_portIndex"] ]["neighbours"] !== undefined
+    ) {
       tabs
        .append( $(LABEL).text("CDP").addClass("button")
          .click(function() {
@@ -6230,7 +6245,9 @@ function interface_win(dev_id, int) {
       neighbours.appendTo(tab_items);
     };
 
-    if(int_info["lldp_portIndex"] !== undefined) {
+    if(int_info["lldp_portIndex"] !== undefined &&
+      data["devs"][dev_id]["lldp_ports"][ int_info["lldp_portIndex"] ]["neighbours"] !== undefined
+    ) {
       tabs
        .append( $(LABEL).text("LLDP").addClass("button")
          .click(function() {
@@ -6434,6 +6451,75 @@ function section(title, state, content) {
   return ret;
 };
 
+$.fn.searchHighlight_dev = function(dev_id) {
+  $(this)
+    .data("sh_dev_id", dev_id)
+    .hover(
+      function(e) {
+        e.stopPropagation();
+        let dev_elm = $("#"+$.escapeSelector( $(this).data("sh_dev_id") ));
+        if(dev_elm.length > 0) {
+          dev_elm.addClass("search_highlight");
+
+          let elm_offset = dev_elm.offset();
+          let elm_width = dev_elm.width();
+          let elm_height = dev_elm.height();
+          let w_scroll_left = $(window).scrollLeft();
+          let w_scroll_top = $(window).scrollTop();
+          let w_width = $(window).width();
+          let w_height = $(window).height();
+
+          if(elm_offset.left >= w_width + w_scroll_left) {
+            $("BODY")
+              .append( $(DIV).addClass("dev_dir_"+dev_id)
+                .css({"position": "fixed", "right": "0.5em", "width": "0.5em", "top": "0.5em", "bottom": "0.5em",
+                      "background-color": "orange", "z-index": windows_z + 1000000,
+                })
+              )
+            ;
+          } else if((elm_offset.left + elm_width) <= w_scroll_left) {
+            $("BODY")
+              .append( $(DIV).addClass("dev_dir_"+dev_id)
+                .css({"position": "fixed", "left": "0.5em", "width": "0.5em", "top": "0.5em", "bottom": "0.5em",
+                      "background-color": "orange", "z-index": windows_z + 1000000,
+                })
+              )
+            ;
+          };
+
+          if(elm_offset.top >= w_height + w_scroll_top) {
+            $("BODY")
+              .append( $(DIV).addClass("dev_dir_"+dev_id)
+                .css({"position": "fixed", "bottom": "0.5em", "height": "0.5em", "left": "0.5em", "right": "0.5em",
+                      "background-color": "orange", "z-index": windows_z + 1000000,
+                })
+              )
+            ;
+          } else if((elm_offset.top + elm_height) <= w_scroll_top) {
+            $("BODY")
+              .append( $(DIV).addClass("dev_dir_"+dev_id)
+                .css({"position": "fixed", "top": "0.5em", "height": "0.5em", "left": "0.5em", "right": "0.5em",
+                      "background-color": "orange", "z-index": windows_z + 1000000,
+                })
+              )
+            ;
+          };
+
+        };
+      },
+      function(e) {
+        e.stopPropagation();
+        let dev_elm = $("#"+$.escapeSelector( $(this).data("sh_dev_id") ));
+        if(dev_elm.length > 0) {
+          dev_elm.removeClass("search_highlight");
+        };
+        $(".dev_dir_"+$.escapeSelector( $(this).data("sh_dev_id") )).remove();
+      }
+    )
+  ;
+  return this;
+};
+
 function ip_results(ok) {
   if(ok["ips"] === undefined) return $([]);
 
@@ -6563,6 +6649,7 @@ function ip_results(ok) {
                 let dev_id = $(this).closest(".data_row").data("dev_id");
                 device_win(dev_id);
               })
+              .searchHighlight_dev(ip_if["dev_id"])
             )
             .append( $(SPAN).text(" : ") )
             .append( $(LABEL).text(ip_if["ifName"])

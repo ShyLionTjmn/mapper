@@ -957,7 +957,7 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
       for mac_vlan_vsi, _ := range raw.VM("huiMacVlanPort") {
         a := strings.Split(mac_vlan_vsi, ".")
         if len(a) >= 7 {
-          raw.MkM("vlanMacTable")[ a[7]+"."+strings.Join(a[:6], ".") ] = raw.VA("huiMacVlanPort", mac_vlan_vsi)
+          raw.MkM("vlanMacTable")[ a[6]+"."+strings.Join(a[:6], ".") ] = raw.VA("huiMacVlanPort", mac_vlan_vsi)
         }
       }
     }
@@ -973,7 +973,7 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
         if len(a) >= 7 {
           if ifName, ex := raw.Vse("ifName", raw.Vs("huiMacVlanIfIndex", mac_vlan_vsi));
           ex && dev.Evi("interfaces", ifName, "portIndex") {
-            raw.MkM("vlanMacTable")[ a[7]+"."+strings.Join(a[:6], ".") ] = dev.Vi("interfaces", ifName, "portIndex")
+            raw.MkM("vlanMacTable")[ a[6]+"."+strings.Join(a[:6], ".") ] = dev.Vi("interfaces", ifName, "portIndex")
           }
         }
       }

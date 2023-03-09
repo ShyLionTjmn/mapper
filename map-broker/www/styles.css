@@ -286,3 +286,6 @@ table.dataTable tfoot td {
   bottom: 0px;
   background-color: #8080FF80;
 }
+.search_highlight {
+  outline: 5px solid orange !important;
+}
