@@ -6607,12 +6607,31 @@ function ip_results(ok) {
     if(data_row["ip_macs"].length > 0) {
       data_row["ip_macs"].sort(num_compare);
 
+      let macs_list = $([]);
+
+      for(let i in data_row["ip_macs"]) {
+        macs_list = macs_list
+          .add( $(SPAN)
+            .append( $(SPAN).text(format_mac(data_row["ip_macs"][i])) )
+            .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-search"])
+              .css({"font-size": "small", "margin-left": "0.2em"})
+              .data("search", data_row["ip_macs"][i])
+              .click(function() { showSearchWindow( $(this).data("search") ); })
+            )
+          )
+        ;
+        if(i < (data_row["ip_macs"].length - 1)) {
+          macs_list = macs_list.add( $(SPAN).text(", ") );
+        };
+      };
+
+
       table
         .append( $(TR)
           .css({"background-color": (data_row["ip_macs"].length > 1)?"lightcoral":"initial"})
           .append( $(TD).text("MACs:")
           )
-          .append( $(TD).text(data_row["ip_macs"].map(function(a) { return format_mac(a); }).join(", "))
+          .append( $(TD).append(macs_list)
           )
         )
       ;
