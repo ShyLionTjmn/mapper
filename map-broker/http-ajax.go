@@ -383,278 +383,6 @@ func NoCache(h http.Handler) http.Handler {
   return http.HandlerFunc(fn)
 }
 
-
-
-func myHttpHandlerRoot(w http.ResponseWriter, req *http.Request) {
-  req.ParseForm()
-  globalMutex.RLock()
-
-  //var j []byte
-  var err error
-
-  out := make(M)
-
-  if req.URL.Path == "/debug" || req.URL.Path == "/debug/" {
-    out["data"] = data
-  } else if req.URL.Path == "/refs" || req.URL.Path == "/refs/" {
-    out = dev_refs
-  } else if req.URL.Path == "/macs" {
-    out["macs"]=devs_macs
-    out["arp"]=devs_arp
-  } else if req.URL.Path == "/command" {
-    command := req.Form.Get("command")
-    if command == "" {
-      out["error"] = "no command supplied"
-    } else if command == "delete_l2_link" {
-      link_id := req.Form.Get("link_id")
-      if link_id == "" {
-        out["error"] = "no link_id supplied"
-      } else {
-        globalMutex.RUnlock()
-        globalMutex.Lock()
-
-        if link_h, ok := data.VMe("l2_links", link_id); ok {
-          matrix_id := link_h.Vs("matrix_id")
-          alt_matrix_id := link_h.Vs("alt_matrix_id")
-          for _, leg := range []string{"0", "1"} {
-            ifName := link_h.Vs(leg, "ifName")
-            DevId := link_h.Vs(leg, "DevId")
-
-            if if_h, ok := devs.VMe(DevId, "interfaces", ifName); ok && if_h.EvA("l2_links") {
-              list := if_h.VA("l2_links").([]string)
-              new_list := make([]string, 0)
-              for _, l := range list {
-                if l != link_id {
-                  new_list = append(new_list, l)
-                }
-              }
-              if len(new_list) > 0 {
-                if_h["l2_links"] = new_list
-              } else {
-                delete(if_h, "l2_links")
-              }
-            }
-
-            if refs_h, ok := dev_refs.VMe(DevId, "l2_links"); ok {
-              delete(refs_h, link_id)
-              if len(refs_h) == 0 {
-                delete(dev_refs.VM(DevId), "l2_links")
-              }
-            }
-            if refs_h, ok := dev_refs.VMe(DevId, "l2Matrix"); ok {
-              delete(refs_h, matrix_id)
-              delete(refs_h, alt_matrix_id)
-              if len(refs_h) == 0 {
-                delete(dev_refs.VM(DevId), "l2Matrix")
-              }
-            }
-          }
-
-          delete(l2Matrix, matrix_id)
-          delete(l2Matrix, alt_matrix_id)
-          delete(data.VM("l2_links"), link_id)
-          out["ok"] = "done"
-        } else {
-          out["warn"] = "no link"
-        }
-
-        globalMutex.Unlock()
-        globalMutex.RLock()
-      }
-    } else {
-      out["error"] = "unknown command supplied"
-    }
-  } else if req.URL.Path == "/compact" {
-    _, with_macs := req.Form["with_macs"]
-    _, with_arp := req.Form["with_arp"]
-    ret_devs := out.MkM("devs")
-
-    if _, ok := req.Form["with_l2_links"]; ok {
-      out_l2_links := out.MkM("l2_links")
-      if data.EvM("l2_links") {
-        for link_id, link_m := range data.VM("l2_links") {
-          out_l2_link_h := out_l2_links.MkM(link_id)
-          for _, key := range []string{"status"} {
-            if _a, ok := link_m.(M).VAe(key); ok {
-              out_l2_link_h[key] = _a
-            }
-          }
-          for _, leg := range []string{"0", "1"} {
-            if leg_h, ok := link_m.(M).VMe(leg); ok {
-              out_l2_link_leg_h := out_l2_link_h.MkM(leg)
-              for _, leg_key := range []string{"DevId", "ifName"} {
-                if key_val, ok := leg_h.VAe(leg_key); ok {
-                  out_l2_link_leg_h[leg_key] = key_val
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-
-    for dev_id, dev_m := range devs {
-      dev_h := dev_m.(M)
-      out_dev_h := ret_devs.MkM(dev_id)
-
-      // copy scalar values and slices
-      for _, key := range []string{"data_ip", "dhcpSnoopingEnable", "dhcpSnoopingStatisticDropPktsNum", "dhcpSnoopingVlanEnable", "id", "last_seen", "memorySize", "memoryUsed",
-        "model_long", "model_short", "overall_status", "short_name", "sysContact", "sysDescr", "sysLocation", "sysObjectID", "sysUpTime", "sysUpTimeStr",
-        "CiscoConfChange", "CiscoConfSave", "powerState",
-        "interfaces_sorted"} {
-        //for
-        if _a, ok := dev_h.VAe(key); ok {
-          out_dev_h[key] = _a
-        }
-      }
-
-      // link hashes
-      for _, key := range []string{"CPUs"} {
-        if _h, ok := dev_h.VMe(key); ok {
-          out_dev_h[key] = _h
-        }
-      }
-
-      if dev_h.EvM("interfaces") {
-        for ifName, if_m := range dev_h.VM("interfaces") {
-          if_h := if_m.(M)
-
-          out_if_h := out_dev_h.MkM("interfaces", ifName)
-
-          // copy scalar values and slices
-          for _, key := range []string{"ifAdminStatus", "ifAlias", "ifInCRCErrors", "ifIndex", "ifName", "ifOperStatus", "ifPhysAddr", "ifSpeed", "ifType", "ifHighSpeed",
-            "macs_count", "portHybridTag", "portHybridUntag", "portIndex", "portMode", "portPvid", "portTrunkVlans", "ifDelay",
-            "ip_neighbours", "l2_links", "stpBlockInstances" } {
-            //for
-            if _a, ok := if_h.VAe(key); ok {
-              out_if_h[key] = _a
-            }
-          }
-
-          // link hashes
-          for _, key := range []string{"ips"} {
-            //for
-            if _h, ok := if_h.VMe(key); ok {
-              out_if_h[key] = _h
-            }
-          }
-        }
-      }
-
-      if dev_h.EvM("lldp_ports") {
-        for portIndex, port_m := range dev_h.VM("lldp_ports") {
-          port_h := port_m.(M)
-
-          out_port_h := out_dev_h.MkM("lldp_ports", portIndex)
-
-/*
-          // copy scalar values and slices
-          for _, key := range []string{} {
-            //for
-            if _a, ok := port_h.VAe(key); ok {
-              out_port_h[key] = _a
-            }
-          }
-*/
-          // link neighbours
-          if nei_h, ok := port_h.VMe("neighbours"); ok {
-            out_nei_h := out_port_h.MkM("neighbours")
-            for nei_index, nei_m := range nei_h {
-              _ = out_nei_h.MkM(nei_index)
-              _ = nei_m.(M)
-            }
-          }
-        }
-      }
-
-      if with_macs && devs_macs.EvM(dev_id) {
-        for ifName, macs_m := range devs_macs.VM(dev_id) {
-          if if_h, ok := ret_devs.VMe(dev_id, "interfaces", ifName); ok {
-            if_h["macs"] = macs_m
-          }
-        }
-      }
-      if with_arp && devs_arp.EvM(dev_id) {
-        for ifName, arp_m := range devs_arp.VM(dev_id) {
-          if if_h, ok := ret_devs.VMe(dev_id, "interfaces", ifName); ok {
-            if_h["arp_table"] = arp_m
-          }
-        }
-      }
-    }
-  } else if req.URL.Path == "/" {
-    _, with_macs := req.Form["with_macs"]
-    _, with_arp := req.Form["with_arp"]
-    var short_name_regex *regexp.Regexp
-    short_name_pattern := req.Form.Get("match_short_name")
-    by_dev_id := req.Form.Get("dev_id")
-    by_dev_ip := req.Form.Get("dev_ip")
-    by_safe_dev_id := req.Form.Get("safe_dev_id")
-    err = nil
-    if short_name_pattern != "" {
-      short_name_regex, err = regexp.Compile(short_name_pattern)
-    }
-    if err == nil {
-      ret_devs := out.MkM("devs")
-
-      if _, ok := req.Form["with_l2_links"]; ok {
-        out["l2_links"] = data.VM("l2_links")
-      }
-
-      for dev_id, dev_m := range devs {
-        dev_h := dev_m.(M)
-        safe_dev_id := SafeDevId(dev_id)
-        if (short_name_pattern == "" || short_name_regex.MatchString(dev_h.Vs("short_name"))) &&
-           (by_dev_id == "" || by_dev_id == dev_id) &&
-           (by_dev_ip == "" || by_dev_ip == dev_h.Vs("data_ip")) &&
-           (by_safe_dev_id == "" || by_safe_dev_id == safe_dev_id) &&
-           true {
-          //if
-          ret_devs[dev_id] = dev_h.Copy()
-
-          if with_macs && devs_macs.EvM(dev_id) {
-            for ifName, macs_m := range devs_macs.VM(dev_id) {
-              if if_h, ok := ret_devs.VMe(dev_id, "interfaces", ifName); ok {
-                if_h["macs"] = macs_m
-              }
-            }
-          }
-          if with_arp && devs_arp.EvM(dev_id) {
-            for ifName, arp_m := range devs_arp.VM(dev_id) {
-              if if_h, ok := ret_devs.VMe(dev_id, "interfaces", ifName); ok {
-                if_h["arp_table"] = arp_m
-              }
-            }
-          }
-        }
-      }
-    }
-
-  } else {
-    globalMutex.RUnlock()
-    http.Error(w, "Not found", http.StatusNotFound)
-    return
-  }
-
-  if err != nil {
-    globalMutex.RUnlock()
-    http.Error(w, err.Error(), http.StatusInternalServerError)
-    return
-  }
-
-  w.Header().Set("Content-Type", "text/javascript")
-  w.WriteHeader(http.StatusCreated)
-  enc := json.NewEncoder(w)
-
-  if _, indent := req.Form["indent"]; indent {
-    enc.SetIndent("", "  ")
-  }
-  enc.Encode(out)
-  //w.Write([]byte("\n"))
-  globalMutex.RUnlock()
-}
-
-
 func http_server(stop chan string, wg *sync.WaitGroup) {
   defer wg.Done()
   s := &http.Server{}
@@ -677,8 +405,6 @@ func http_server(stop chan string, wg *sync.WaitGroup) {
     }
     close(server_shut)
   }()
-
-//  http.HandleFunc("/", myHttpHandlerRoot)
 
   fsys := dotFileHidingFileSystem{http.Dir(opt_w)}
 
@@ -1418,17 +1144,23 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
         var redint int64
 
         if suffix == "shared" {
-          if redstr, err = redis.String(red.Do("HGET", "maps", key)); err != nil && err != redis.ErrNil { panic(err) }
+          if redstr, err = redis.String(red.Do("HGET", "maps", key));
+          err != nil && err != redis.ErrNil { panic(err) }
+
           if err != redis.ErrNil {
             temp_files_list[file_key].(M)["shared"] = redstr
           }
         } else if suffix == "time" {
-          if redint, err = redis.Int64(red.Do("HGET", "maps", key)); err != nil && err != redis.ErrNil { panic(err) }
+          if redint, err = redis.Int64(red.Do("HGET", "maps", key));
+          err != nil && err != redis.ErrNil { panic(err) }
+
           if err != redis.ErrNil {
             temp_files_list[file_key].(M)["time"] = redint
           }
         } else if suffix == "name" {
-          if redstr, err = redis.String(red.Do("HGET", "maps", key)); err != nil && err != redis.ErrNil { panic(err) }
+          if redstr, err = redis.String(red.Do("HGET", "maps", key));
+          err != nil && err != redis.ErrNil { panic(err) }
+
           if err != redis.ErrNil && file_key != "" {
             temp_files_list[file_key].(M)["name"] = redstr
           }
@@ -1473,7 +1205,8 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
     map_hash_key_time := user_sub+"_"+req_site+"_"+req_proj+"."+req_file_key+".time"
 
     var map_data []byte
-    if map_data, err = redis.Bytes(red.Do("HGET", "maps", map_hash_key_data)); err != nil && err != redis.ErrNil {
+    if map_data, err = redis.Bytes(red.Do("HGET", "maps", map_hash_key_data));
+    err != nil && err != redis.ErrNil {
       panic(err)
     }
 
@@ -1530,7 +1263,8 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
     map_hash_key_time := user_sub+"_"+req_site+"_"+req_proj+"."+req_file_key+".time"
 
     var map_data []byte
-    if map_data, err = redis.Bytes(red.Do("HGET", "maps", map_hash_key_data)); err != nil && err != redis.ErrNil {
+    if map_data, err = redis.Bytes(red.Do("HGET", "maps", map_hash_key_data));
+    err != nil && err != redis.ErrNil {
       panic(err)
     }
 
@@ -1633,7 +1367,8 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
     map_hash_key_time := user_sub+"_"+req_site+"_"+req_proj+"."+req_file_key+".time"
 
     var map_data []byte
-    if map_data, err = redis.Bytes(red.Do("HGET", "maps", map_hash_key_data)); err != nil && err != redis.ErrNil {
+    if map_data, err = redis.Bytes(red.Do("HGET", "maps", map_hash_key_data));
+    err != nil && err != redis.ErrNil {
       panic(err)
     }
 
@@ -1720,7 +1455,8 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
     if map_keys, err = RedHKeys(red, "maps", map_hash_key_prefix); err != nil { panic(err) }
 
     var shared_key string
-    if shared_key, err = redis.String(red.Do("HGET", "maps", map_hash_key_shared)); err != nil && err != redis.ErrNil {
+    if shared_key, err = redis.String(red.Do("HGET", "maps", map_hash_key_shared));
+    err != nil && err != redis.ErrNil {
       panic(err)
     }
 
@@ -1827,7 +1563,9 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
 
     for {
       var redint int
-      if redint, err = redis.Int(red.Do("HSETNX", "maps", shared_map_key, share_json)); err != nil { panic(err) }
+      if redint, err = redis.Int(red.Do("HSETNX", "maps", shared_map_key, share_json));
+      err != nil { panic(err) }
+
       if redint == 0 {
         share_key = KeyGen(10)
         shared_map_key = "shared."+share_key
@@ -1878,45 +1616,6 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
     out["net2site"] = net2site
     out["pref_ips"] = g_pref_ips
 
-  } else if action == "get_interface" {
-    var dev_id string
-    var ifName string
-
-    if dev_id, err = get_p_string(q, "dev_id", nil); err != nil { panic(err) }
-    if ifName, err = get_p_string(q, "int", nil); err != nil { panic(err) }
-
-    globalMutex.RLock()
-    defer globalMutex.RUnlock()
-
-    if !devs.EvM(dev_id, "interfaces", ifName) {
-      out["fail"] = "no_data"
-    } else {
-      out["int"] = devs.VM(dev_id, "interfaces", ifName)
-
-      if port_index, var_ok := devs.Vse(dev_id, "interfaces", ifName, "lldp_portIndex"); var_ok {
-        neighbours := []M{}
-
-        for _, nei_h := range devs.VM(dev_id, "lldp_ports", port_index, "neighbours") {
-          neighbours = append(neighbours, nei_h.(M))
-        }
-
-        if len(neighbours) > 0 {
-          out.VM("int")["lldp_neighbours"] = neighbours
-        }
-      }
-
-      if port_index, var_ok := devs.Vse(dev_id, "interfaces", ifName, "cdp_portIndex"); var_ok {
-        neighbours := []M{}
-
-        for _, nei_h := range devs.VM(dev_id, "cdp_ports", port_index, "neighbours") {
-          neighbours = append(neighbours, nei_h.(M))
-        }
-
-        if len(neighbours) > 0 {
-          out.VM("int")["cdp_neighbours"] = neighbours
-        }
-      }
-    }
   } else if action == "get_device" {
     var dev_id string
 
@@ -1928,7 +1627,18 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
     if !devs.EvM(dev_id) {
       out["fail"] = "no_data"
     } else {
-      out["dev"] = devs.VM(dev_id)
+      out["dev"] = devs.VM(dev_id).Copy()
+
+      for ifName, _ := range devs_macs.VM(dev_id) {
+        if out.EvM("dev", "interfaces", ifName) {
+          out.VM("dev", "interfaces", ifName)["macs"] = devs_macs.VM(dev_id, ifName).Copy()
+        }
+      }
+      for ifName, _ := range devs_arp.VM(dev_id) {
+        if out.EvM("dev", "interfaces", ifName) {
+          out.VM("dev", "interfaces", ifName)["arp"] = devs_arp.VM(dev_id, ifName).Copy()
+        }
+      }
     }
   } else if action == "mac_vendor" {
     var mac_str string
@@ -1951,6 +1661,12 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
     if ip, err = get_p_string(q, "ip", nil); err != nil { panic(err) }
 
     if out, err = ip_info(ip, red, 500*time.Millisecond, false); err != nil { panic(err) }
+
+  } else if action == "mac_info" {
+    var mac string
+    if mac, err = get_p_string(q, "mac", nil); err != nil { panic(err) }
+
+    if out, err = mac_info(mac, red); err != nil { panic(err) }
 
   } else if action == "search" {
     var search_for string

@@ -151,6 +151,78 @@ function format_mac(mac, view="canonic") {
   return mac;
 };
 
+$.fn.mac_info = function(mac) {
+  $(this).data("mac_info.mac", mac);
+  $(this).tooltip({
+    classes: { "ui-tooltip": "ui-corner-all ui-widget-shadow wsp tooltip" },
+    items: $(this),
+    content: function() {
+      let mac = $(this).data("mac_info.mac");
+
+      run_query({"action": "mac_info", "mac": mac}, function(res) {
+        let elm = $("." + $.escapeSelector("mac_tooltip_"+mac));
+        if(elm.length == 0) return;
+
+        elm.empty();
+
+        if(keys(res["ok"]).length == 0) {
+          elm.text("Ничего не найдено");
+          return;
+        };
+
+        let table = $(TABLE);
+
+        table
+         .append( $(TR)
+           .append( $(TD).text("MAC:") )
+           .append( $(TD).text(format_mac(mac)) )
+         )
+        ;
+
+        if(res["ok"]["corp"] !== undefined) {
+          table
+           .append( $(TR)
+             .append( $(TD).text("Вендор:") )
+             .append( $(TD).text(res["ok"]["corp"]) )
+           )
+          ;
+        };
+
+        if(res["ok"]["ports"] !== undefined) {
+          table
+           .append( $(TR)
+             .append( $(TD).text("Портов:") )
+             .append( $(TD).text(res["ok"]["ports"].length) )
+           )
+          ;
+        };
+
+        if(res["ok"]["mac_ips"] !== undefined) {
+          res["ok"]["mac_ips"].sort(num_compare);
+          table
+           .append( $(TR)
+             .append( $(TD).text("IP:") )
+             .append( $(TD).text(res["ok"]["mac_ips"].join(", ")) )
+           )
+          ;
+        };
+
+
+        elm.append(table);
+
+         let a = 1;
+
+      })
+
+      return $(DIV).addClass("mac_tooltip_"+mac).text("Загрузка...")
+       //.css({"background-color": "white"})
+      ;
+    }
+  });
+
+  return this;
+};
+
 $.fn.ip_info = function(ip) {
   $(this).data("ip_info.ip", ip);
   $(this).tooltip({
@@ -2686,36 +2758,57 @@ function int_metrics(int, dev) {
       };
     };
 
-    if(dev["interfaces"][int]["lldp_portIndex"] != undefined && dev["lldp_ports"] != undefined &&
-       dev["lldp_ports"][ dev["interfaces"][int]["lldp_portIndex"] ] != undefined &&
-       dev["lldp_ports"][ dev["interfaces"][int]["lldp_portIndex"] ]["neighbours"] != undefined
-    ) {
-      let port_neighs=dev["lldp_ports"][ dev["interfaces"][int]["lldp_portIndex"] ]["neighbours"];
-      let nei_count=0;
-      for(let n in port_neighs) {
-        if(/^SEP[0-9A-F]{12}/.test(port_neighs[n]["RemSysName"]) ||
-           (/^[0-9a-f]{12}/.test(port_neighs[n]["RemChassisId"]) &&
-             port_neighs[n]["RemSysCapsDecoded"] == "none" &&
-             port_neighs[n]["RemSysName"] == ""
-           ) ||
-          false
-        ) {
-          //skip
-        } else {
-          nei_count++;
+    if(dev["interfaces"][int]["lldp_count"] != undefined) {
+      labels["04_0lldp"]={};
+      labels["04_0lldp"]["short_text"]="LLDP&nbsp;"+dev["interfaces"][int]["lldp_count"];
+      labels["04_0lldp"]["long_text"]=dev["interfaces"][int]["lldp_count"]+"&nbsp;LLDP Neighbours&nbsp;";
+      labels["04_0lldp"]["bg_color"]="#FFCCFF";
+      if(dev["lldp_ports"] != undefined &&
+         dev["interfaces"][int]["lldp_portIndex"] != undefined &&
+         dev["lldp_ports"][ dev["interfaces"][int]["lldp_portIndex"] ] != undefined &&
+         dev["lldp_ports"][ dev["interfaces"][int]["lldp_portIndex"] ]["neighbours"] != undefined
+      ) {
+        let neigs_list = [];
+        for(let i in dev["lldp_ports"][ dev["interfaces"][int]["lldp_portIndex"] ]["neighbours"]) {
+          if(neigs_list.length == 10) {
+            neigs_list.push("...");
+            break;
+          };
+          let nei = dev["lldp_ports"][ dev["interfaces"][int]["lldp_portIndex"] ]["neighbours"][i];
+          let nei_ip = "NO IP";
+          if(nei["RemMgmtAddr"] != undefined && nei["RemMgmtAddr"]["1"] != undefined) {
+            nei_ip = nei["RemMgmtAddr"]["1"];
+          };
+          neigs_list.push(nei_ip + " " + nei["RemSysName"] + " : " + nei["RemPortId"]);
         };
+        labels["04_0lldp"]["long_text"]=dev["interfaces"][int]["lldp_count"]+"&nbsp;LLDP Neighbours\n"+
+          neigs_list.join("\n")
+        ;
       };
-      let links_count=0;
-      if(dev["interfaces"][int]["l2_links"] != undefined) {
-        links_count=dev["interfaces"][int]["l2_links"].length;
-      };
-      labels["04_lldp"]={};
-      labels["04_lldp"]["short_text"]="LLDP&nbsp;"+keys(port_neighs).length;
-      labels["04_lldp"]["long_text"]=keys(port_neighs).length+"&nbsp;LLDP Neighbours&nbsp;/&nbsp;"+links_count+"&nbsp;links built";
-      if(nei_count == links_count) {
-        labels["04_lldp"]["bg_color"]="#FFCCFF";
-      } else {
-        labels["04_lldp"]["bg_color"]="#FF8888";
+    };
+
+    if(dev["interfaces"][int]["cdp_count"] != undefined) {
+      labels["04_1cdp"]={};
+      labels["04_1cdp"]["short_text"]="CDP&nbsp;"+dev["interfaces"][int]["cdp_count"];
+      labels["04_1cdp"]["long_text"]=dev["interfaces"][int]["cdp_count"]+"&nbsp;CDP Neighbours&nbsp;";
+      labels["04_1cdp"]["bg_color"]="#FFCCFF";
+      if(dev["cdp_ports"] != undefined &&
+         dev["interfaces"][int]["cdp_portIndex"] != undefined &&
+         dev["cdp_ports"][ dev["interfaces"][int]["cdp_portIndex"] ] != undefined &&
+         dev["cdp_ports"][ dev["interfaces"][int]["cdp_portIndex"] ]["neighbours"] != undefined
+      ) {
+        let neigs_list = [];
+        for(let i in dev["cdp_ports"][ dev["interfaces"][int]["cdp_portIndex"] ]["neighbours"]) {
+          if(neigs_list.length == 10) {
+            neigs_list.push("...");
+            break;
+          };
+          let nei = dev["cdp_ports"][ dev["interfaces"][int]["cdp_portIndex"] ]["neighbours"][i];
+          neigs_list.push(nei["cdpRemAddrDecoded"] + " " + nei["cdpRemDevId"] + " : " + nei["cdpRemIfName"]);
+        };
+        labels["04_1cdp"]["long_text"]=dev["interfaces"][int]["cdp_count"]+"&nbsp;CDP Neighbours\n"+
+          neigs_list.join("\n")
+        ;
       };
     };
 
@@ -5943,7 +6036,6 @@ $.fn.graph = function(gdata) {
 };
 
 function interface_win(dev_id, int) {
-  //run_query({"action": "get_interface", "dev_id": dev_id, "int": int}, function(res) {
   run_query({"action": "get_device", "dev_id": dev_id}, function(res) {
     if(res["ok"]["no_data"] !== undefined) {
       show_dialog("Устройство отсутствует в данных.");
@@ -6319,6 +6411,60 @@ function interface_win(dev_id, int) {
       neighbours.appendTo(tab_items);
     };
 
+    if(int_info["macs"] != undefined) {
+      tabs
+       .append( $(LABEL).text("MACs "+int_info["macs_count"]).addClass("button")
+         .click(function() {
+           $(this).closest(".dialog_start").find(".macs").toggle();
+         })
+       )
+      ;
+
+      let sect = $(DIV).addClass("table").addClass("macs").hide()
+        .css({"border-top": "1px solid lightgray", "margin-top": "0.5em"})
+        .append( $(DIV).addClass("thead")
+          .append( $(SPAN).addClass("th").text("VLAN") )
+          .append( $(SPAN).addClass("th").text("MAC") )
+        )
+      ;
+      let tbody = $(DIV).addClass("tbody").appendTo(sect);
+
+      let if_vlans = keys(int_info["macs"]).sort(num_compare);
+      for(let i in if_vlans) {
+        let vlan = if_vlans[i];
+
+        let vlan_macs = int_info["macs"][vlan];
+        vlan_macs.sort(num_compare);
+
+        for(let v in vlan_macs) {
+          let mac = vlan_macs[v];
+          let vlan_name = "";
+
+          if(data["devs"][dev_id]["vlanNames"] != undefined ) {
+            vlan_name = if_undef(data["devs"][dev_id]["vlanNames"][vlan], "");
+          };
+
+          let tr = $(DIV).addClass("tr")
+            .append( $(SPAN).addClass("td").text(vlan)
+              .title(vlan_name)
+            )
+            .append( $(SPAN).addClass("td")
+              .append( $(SPAN).text(format_mac(mac))
+                .css({"font-family": "monospace"})
+                .mac_info(mac)
+              )
+              .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-search"])
+                .css({"margin-left": "0.3em"})
+                .data("search", mac)
+                .click(function() { showSearchWindow($(this).data("search")); })
+              )
+            )
+            .appendTo(tbody)
+          ;
+        };
+      };
+      sect.appendTo(tab_items);
+    };
   });
 };
 

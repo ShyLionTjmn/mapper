@@ -441,6 +441,7 @@ func GetRawRed(red redis.Conn, dev_ip string) (M, error) {
 func (d *Dev) Decode(raw M) error {
   d.Warnings = make([]string, 0)
   var err error
+  var var_ok bool
 
   if !raw.Evs("sysObjectID") {
     err = errors.New("No sysObjectID in data, giving up")
@@ -957,7 +958,8 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
       for mac_vlan_vsi, _ := range raw.VM("huiMacVlanPort") {
         a := strings.Split(mac_vlan_vsi, ".")
         if len(a) >= 7 {
-          raw.MkM("vlanMacTable")[ a[6]+"."+strings.Join(a[:6], ".") ] = raw.VA("huiMacVlanPort", mac_vlan_vsi)
+          raw.MkM("vlanMacTable")[ a[6]+"."+strings.Join(a[:6], ".") ] =
+            raw.VA("huiMacVlanPort", mac_vlan_vsi)
         }
       }
     }
@@ -973,7 +975,8 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
         if len(a) >= 7 {
           if ifName, ex := raw.Vse("ifName", raw.Vs("huiMacVlanIfIndex", mac_vlan_vsi));
           ex && dev.Evi("interfaces", ifName, "portIndex") {
-            raw.MkM("vlanMacTable")[ a[6]+"."+strings.Join(a[:6], ".") ] = dev.Vi("interfaces", ifName, "portIndex")
+            raw.MkM("vlanMacTable")[ a[6]+"."+strings.Join(a[:6], ".") ] =
+              dev.Vi("interfaces", ifName, "portIndex")
           }
         }
       }
@@ -1299,6 +1302,16 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
             nei_h["RemSysDescr"] = ""
           }
 
+          if ifName, var_ok := dev.Vse("lldp_ports", port, "ifName"); var_ok {
+            var count uint64
+
+            if count, var_ok = dev.Vue("interfaces", ifName, "lldp_count"); var_ok {
+              count++
+            } else {
+              count = 1
+            }
+            dev.VM("interfaces", ifName)["lldp_count"] = count
+          }
         } else {
         }
       }
@@ -1749,9 +1762,9 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
     if raw.EvM("cdpRemDevId") && raw.EvM("cdpRemIfName") {
       for rem_index, _ := range raw.VM("cdpRemDevId") {
         a := strings.Split(rem_index, ".")
+        ifName := cdp_ports.Vs(a[0], "ifName")
         if len(a) == 2 &&
-           cdp_ports.EvM(a[0]) &&
-           cdp_ports.Vs(a[0], "ifName") != STRING_ERROR &&
+           ifName != STRING_ERROR &&
            raw.Evs("cdpRemIfName", rem_index) &&
            raw.Evs("cdpRemDevId", rem_index) &&
            raw.Evs("cdpRemCaps", rem_index) &&
@@ -1820,6 +1833,15 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
             }
           }
           cdp_ports.MkM(a[0], "neighbours")[a[1]] = nei
+
+          var count uint64
+
+          if count, var_ok = dev.Vue("interfaces", ifName, "cdp_count"); var_ok {
+            count++
+          } else {
+            count = 1
+          }
+          dev.VM("interfaces", ifName)["cdp_count"] = count
         }
       }
     }

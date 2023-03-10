@@ -293,7 +293,11 @@ func mac_info(mac string, red redis.Conn) (M, error) {
   } else if (first_octet & 0x02) > 0 {
     ret["corp"] = "RANDOM"
   } else {
-    if ret["corp"], err = redis.String(red.Do("HGET", "oui", oui)); err != nil { return nil, err }
+    if ret["corp"], err = redis.String(red.Do("HGET", "oui", oui)); err != nil && err != redis.ErrNil { return nil, err }
+    if err == redis.ErrNil {
+      ret["corp"] = "n/d"
+      err = nil
+    }
   }
 
   globalMutex.RLock()
