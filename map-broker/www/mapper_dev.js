@@ -6465,6 +6465,58 @@ function interface_win(dev_id, int) {
       };
       sect.appendTo(tab_items);
     };
+
+    if(int_info["arp"] != undefined) {
+      tabs
+       .append( $(LABEL).text("ARP "+hash_length(int_info["arp"])).addClass("button")
+         .click(function() {
+           $(this).closest(".dialog_start").find(".arp").toggle();
+         })
+       )
+      ;
+
+      let sect = $(DIV).addClass("table").addClass("arp").hide()
+        .css({"border-top": "1px solid lightgray", "margin-top": "0.5em"})
+        .append( $(DIV).addClass("thead")
+          .append( $(SPAN).addClass("th").text("IP") )
+          .append( $(SPAN).addClass("th").text("MAC") )
+        )
+      ;
+      let tbody = $(DIV).addClass("tbody").appendTo(sect);
+
+      let if_arps = keys(int_info["arp"]).sort(num_compare);
+      for(let i in if_arps) {
+        let arp = if_arps[i];
+
+        let mac = int_info["arp"][arp];
+
+        let tr = $(DIV).addClass("tr")
+          .append( $(SPAN).addClass("td")
+            .append( $(SPAN).text(arp)
+              .ip_info(arp)
+            )
+            .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-search"])
+              .css({"margin-left": "0.3em", "float": "right"})
+              .data("search", arp)
+              .click(function() { showSearchWindow($(this).data("search")); })
+            )
+          )
+          .append( $(SPAN).addClass("td")
+            .append( $(SPAN).text(format_mac(mac))
+              .css({"font-family": "monospace"})
+              .mac_info(mac)
+            )
+            .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-search"])
+              .css({"margin-left": "0.3em"})
+              .data("search", mac)
+              .click(function() { showSearchWindow($(this).data("search")); })
+            )
+          )
+          .appendTo(tbody)
+        ;
+      };
+      sect.appendTo(tab_items);
+    };
   });
 };
 
