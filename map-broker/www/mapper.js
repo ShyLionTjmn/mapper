@@ -1578,6 +1578,7 @@ function device_win(dev_id) {
       if(dev["memorySize"] !== undefined) {
         src += "&max=" + dev["memorySize"];
       };
+      src += "&" + unix_timestamp();
 
       cpu_mem_div
        .append( $(LABEL).text(" Mem: ") )
@@ -1651,6 +1652,7 @@ function device_win(dev_id) {
 
       if(int_data["_graph_prefix"] !== undefined) {
         let gsrc = "graph?small&dev_id="+dev["safe_dev_id"]+"&int="+int_data["safe_if_name"];
+        gsrc += "&" + unix_timestamp();
 
         let io_max = 10000000;
         if(int_data["ifSpeed"] != undefined && int_data["ifSpeed"] >= 10000000 && int_data["ifSpeed"] != "4294967295") {
@@ -2610,7 +2612,9 @@ function int_metrics(int, dev) {
 
     if(dev["interfaces"][int]['ips'] != undefined) {
       labels["01_0ips"]={};
-      let ips_keys=keys(dev["interfaces"][int]['ips']);
+      let ips_keys=keys(dev["interfaces"][int]['ips']).map(function(ip) {
+        return ip+"/"+dev["interfaces"][int]['ips'][ip]['masklen'];
+      });
       let count=hash_length(dev["interfaces"][int]['ips']);
       if(count == 0) {
         labels["01_0ips"]["short_text"]="ERROR";
@@ -2618,7 +2622,7 @@ function int_metrics(int, dev) {
         labels["01_0ips"]["bg_color"]="red";
       } else {
         labels["01_0ips"]["short_text"]=count+"&nbsp;IPs";
-        labels["01_0ips"]["long_text"]=ips_keys.join(",");
+        labels["01_0ips"]["long_text"]=ips_keys.join(", ");
         labels["01_0ips"]["bg_color"]="lightgreen";
       };
 
@@ -6246,6 +6250,8 @@ function interface_win(dev_id, int) {
     };
 
     if(int_info["lldp_portIndex"] !== undefined &&
+      data["devs"][dev_id]["lldp_ports"] !== undefined &&
+      data["devs"][dev_id]["lldp_ports"][ int_info["lldp_portIndex"] ] !== undefined &&
       data["devs"][dev_id]["lldp_ports"][ int_info["lldp_portIndex"] ]["neighbours"] !== undefined
     ) {
       tabs
@@ -6505,6 +6511,25 @@ $.fn.searchHighlight_dev = function(dev_id) {
             ;
           };
 
+          $(".dialog_start").each(function() {
+            let wg = $(this).dialog("widget");
+
+            let wg_width = wg.width();
+            let wg_height = wg.height();
+
+            let wg_offset = wg.offset();
+
+            if(wg_offset.left <= elm_offset.left &&
+               (wg_offset.left + wg_width) >= (elm_offset.left + elm_width) &&
+               wg_offset.top <= elm_offset.top &&
+               (wg_offset.top + wg_height) >= (elm_offset.top + elm_height) &&
+               true
+            ) {
+              wg.addClass("search_highlight");
+            };
+
+          });
+
         };
       },
       function(e) {
@@ -6514,6 +6539,11 @@ $.fn.searchHighlight_dev = function(dev_id) {
           dev_elm.removeClass("search_highlight");
         };
         $(".dev_dir_"+$.escapeSelector( $(this).data("sh_dev_id") )).remove();
+        $(".dialog_start").each(function() {
+          let wg = $(this).dialog("widget");
+          wg.removeClass("search_highlight");
+        });
+
       }
     )
   ;
@@ -6562,6 +6592,14 @@ function ip_results(ok) {
           )
           .append( $(TD)
             .append( get_tag({"id": "root", "children": data["sites"], "data": {}}, data_row["site"])
+            )
+            .append( site == data_row["site"] ? $(SPAN) : $(LABEL).addClass(["button", "ui-icon", "ui-icon-linkext"])
+              .css({"margin-left": "0.5em"})
+              .title("Перейти")
+              .data("site", data_row["site"])
+              .click(function() {
+                window.location = "?action=get_front&site="+$(this).data("site")+"&proj="+proj+"&file_key="+(DEBUG?"&debug":"");
+              })
             )
           )
         )
@@ -6638,7 +6676,7 @@ function ip_results(ok) {
     };
 
     if(data_row["ip_ifs"] != undefined) {
-      let subsect = section("Интерфейсы с IP " + ip, false);
+      let subsect = section("Устройства с IP " + ip, false);
       let sub_cont = subsect.find(".sect_content");
 
       data_row["ip_ifs"].sort(function(a, b) {
@@ -6656,6 +6694,9 @@ function ip_results(ok) {
 
         vdev["interfaces"][ifName] = ip_if["interface"];
 
+        let dev_id = ip_if["dev_id"];
+        let show_eye = ($("#" + $.escapeSelector(dev_id)).length > 0);
+
         sub_cont
           .append( $(DIV).addClass("data_row")
             .css({"padding-top": "0.3em"})
@@ -6667,6 +6708,18 @@ function ip_results(ok) {
               .click(function() {
                 let dev_id = $(this).closest(".data_row").data("dev_id");
                 device_win(dev_id);
+              })
+              .searchHighlight_dev(ip_if["dev_id"])
+            )
+            .append( !show_eye ? $(SPAN) : $(LABEL).addClass(["ui-icon", "ui-icon-eye"])
+              .css({"margin": "initial 0.2em"})
+              .click(function() {
+                let dev_id = $(this).closest(".data_row").data("dev_id");
+                let elm = $("#" + $.escapeSelector(dev_id));
+                if(elm.length > 0) {
+                  elm[0].scrollIntoView();
+                  $(".dev_dir_"+$.escapeSelector( dev_id )).remove();
+                };
               })
               .searchHighlight_dev(ip_if["dev_id"])
             )
@@ -6696,7 +6749,7 @@ function ip_results(ok) {
     };
 
     if(data_row["ip_net_ifs"] != undefined) {
-      let subsect = section("Интерфейсы в одной сети с " + ip, false);
+      let subsect = section("Устройства в одной сети с " + ip, false);
       let sub_cont = subsect.find(".sect_content");
 
       data_row["ip_net_ifs"].sort(function(a, b) {
@@ -6714,6 +6767,9 @@ function ip_results(ok) {
 
         vdev["interfaces"][ifName] = ip_if["interface"];
 
+        let dev_id = ip_if["dev_id"];
+        let show_eye = ($("#" + $.escapeSelector(dev_id)).length > 0);
+
         sub_cont
           .append( $(DIV).addClass("data_row")
             .css({"padding-top": "0.3em"})
@@ -6726,6 +6782,19 @@ function ip_results(ok) {
                 let dev_id = $(this).closest(".data_row").data("dev_id");
                 device_win(dev_id);
               })
+              .searchHighlight_dev(ip_if["dev_id"])
+            )
+            .append( !show_eye ? $(SPAN) : $(LABEL).addClass(["ui-icon", "ui-icon-eye"])
+              .css({"margin": "initial 0.2em"})
+              .click(function() {
+                let dev_id = $(this).closest(".data_row").data("dev_id");
+                let elm = $("#" + $.escapeSelector(dev_id));
+                if(elm.length > 0) {
+                  elm[0].scrollIntoView();
+                  $(".dev_dir_"+$.escapeSelector( dev_id )).remove();
+                };
+              })
+              .searchHighlight_dev(ip_if["dev_id"])
             )
             .append( $(SPAN).text(" : ") )
             .append( $(LABEL).text(ip_if["ifName"])
@@ -6785,6 +6854,8 @@ function ip_results(ok) {
           neigh_ip = neigh["neighbour"]["RemMgmtAddr"]["1"];
         };
 
+        let dev_id = neigh["dev_id"];
+        let show_eye = ($("#" + $.escapeSelector(dev_id)).length > 0);
 
         sub_cont
           .append( $(DIV).addClass("data_row")
@@ -6802,6 +6873,19 @@ function ip_results(ok) {
                   let dev_id = $(this).closest(".data_row").data("dev_id");
                   device_win(dev_id);
                 })
+                .searchHighlight_dev(dev_id)
+              )
+              .append( !show_eye ? $(SPAN) : $(LABEL).addClass(["ui-icon", "ui-icon-eye"])
+                .css({"margin": "initial 0.2em"})
+                .click(function() {
+                  let dev_id = $(this).closest(".data_row").data("dev_id");
+                  let elm = $("#" + $.escapeSelector(dev_id));
+                  if(elm.length > 0) {
+                    elm[0].scrollIntoView();
+                    $(".dev_dir_"+$.escapeSelector( dev_id )).remove();
+                  };
+                })
+                .searchHighlight_dev(dev_id)
               )
               .append( $(SPAN).text(" : ") )
               .append( $(LABEL).text(ifName != undefined?ifName:(neigh["source"] + " Port: "+neigh["port_index"]))
@@ -6987,7 +7071,7 @@ function mac_results(ok) {
     };
 
     if(data_row["mac_ifs"] != undefined) {
-      let subsect = section("Интерфейсы с MAC " + format_mac(mac), true);
+      let subsect = section("Устройства с MAC " + format_mac(mac), true);
       let sub_cont = subsect.find(".sect_content");
 
       data_row["mac_ifs"].sort(function(a, b) {
@@ -7005,6 +7089,9 @@ function mac_results(ok) {
 
         vdev["interfaces"][ifName] = mac_if["interface"];
 
+        let dev_id = mac_if["dev_id"];
+        let show_eye = ($("#" + $.escapeSelector(dev_id)).length > 0);
+
         sub_cont
           .append( $(DIV).addClass("data_row")
             .css({"padding-top": "0.3em"})
@@ -7017,6 +7104,19 @@ function mac_results(ok) {
                 let dev_id = $(this).closest(".data_row").data("dev_id");
                 device_win(dev_id);
               })
+              .searchHighlight_dev(dev_id)
+            )
+            .append( !show_eye ? $(SPAN) : $(LABEL).addClass(["ui-icon", "ui-icon-eye"])
+              .css({"margin": "initial 0.2em"})
+              .click(function() {
+                let dev_id = $(this).closest(".data_row").data("dev_id");
+                let elm = $("#" + $.escapeSelector(dev_id));
+                if(elm.length > 0) {
+                  elm[0].scrollIntoView();
+                  $(".dev_dir_"+$.escapeSelector( dev_id )).remove();
+                };
+              })
+              .searchHighlight_dev(dev_id)
             )
             .append( $(SPAN).text(" : ") )
             .append( $(LABEL).text(mac_if["ifName"])
@@ -7078,6 +7178,10 @@ function mac_results(ok) {
 
         vdev["interfaces"][ifName] = mac_port["interface"];
 
+        let dev_id = mac_port["dev_id"];
+        let show_eye = ($("#" + $.escapeSelector(dev_id)).length > 0);
+
+
         sub_cont
           .append( $(DIV).addClass("data_row")
             .css({"padding-top": "0.3em"})
@@ -7093,6 +7197,19 @@ function mac_results(ok) {
                 let dev_id = $(this).closest(".data_row").data("dev_id");
                 device_win(dev_id);
               })
+              .searchHighlight_dev(dev_id)
+            )
+            .append( !show_eye ? $(SPAN) : $(LABEL).addClass(["ui-icon", "ui-icon-eye"])
+              .css({"margin": "initial 0.2em"})
+              .click(function() {
+                let dev_id = $(this).closest(".data_row").data("dev_id");
+                let elm = $("#" + $.escapeSelector(dev_id));
+                if(elm.length > 0) {
+                  elm[0].scrollIntoView();
+                  $(".dev_dir_"+$.escapeSelector( dev_id )).remove();
+                };
+              })
+              .searchHighlight_dev(dev_id)
             )
             .append( $(SPAN).text(" : ") )
             .append( $(LABEL).text(mac_port["ifName"])
@@ -7138,6 +7255,9 @@ function mac_results(ok) {
 
         vdev["interfaces"][ifName] = mac_port["interface"];
 
+        let dev_id = mac_port["dev_id"];
+        let show_eye = ($("#" + $.escapeSelector(dev_id)).length > 0);
+
         sub_cont
           .append( $(DIV).addClass("data_row")
             .css({"padding-top": "0.3em"})
@@ -7153,6 +7273,19 @@ function mac_results(ok) {
                 let dev_id = $(this).closest(".data_row").data("dev_id");
                 device_win(dev_id);
               })
+              .searchHighlight_dev(dev_id)
+            )
+            .append( !show_eye ? $(SPAN) : $(LABEL).addClass(["ui-icon", "ui-icon-eye"])
+              .css({"margin": "initial 0.2em"})
+              .click(function() {
+                let dev_id = $(this).closest(".data_row").data("dev_id");
+                let elm = $("#" + $.escapeSelector(dev_id));
+                if(elm.length > 0) {
+                  elm[0].scrollIntoView();
+                  $(".dev_dir_"+$.escapeSelector( dev_id )).remove();
+                };
+              })
+              .searchHighlight_dev(dev_id)
             )
             .append( $(SPAN).text(" : ") )
             .append( $(LABEL).text(mac_port["ifName"])
@@ -7212,6 +7345,9 @@ function mac_results(ok) {
           neigh_ip = neigh["neighbour"]["RemMgmtAddr"]["1"];
         };
 
+        let dev_id = neigh["dev_id"];
+        let show_eye = ($("#" + $.escapeSelector(dev_id)).length > 0);
+
         sub_cont
           .append( $(DIV).addClass("data_row")
             .data("dev_id", neigh["dev_id"])
@@ -7228,6 +7364,19 @@ function mac_results(ok) {
                   let dev_id = $(this).closest(".data_row").data("dev_id");
                   device_win(dev_id);
                 })
+                .searchHighlight_dev(dev_id)
+              )
+              .append( !show_eye ? $(SPAN) : $(LABEL).addClass(["ui-icon", "ui-icon-eye"])
+                .css({"margin": "initial 0.2em"})
+                .click(function() {
+                  let dev_id = $(this).closest(".data_row").data("dev_id");
+                  let elm = $("#" + $.escapeSelector(dev_id));
+                  if(elm.length > 0) {
+                    elm[0].scrollIntoView();
+                    $(".dev_dir_"+$.escapeSelector( dev_id )).remove();
+                  };
+                })
+                .searchHighlight_dev(dev_id)
               )
               .append( $(SPAN).text(" : ") )
               .append( $(LABEL).text(ifName != undefined?ifName:(neigh["source"] + " Port: "+neigh["port_index"]))
@@ -7360,6 +7509,9 @@ function devs_results(ok) {
   for(let i in ok["devs"]) {
     let item = ok["devs"][i];
 
+    let dev_id = item["dev_id"];
+    let show_eye = ($("#" + $.escapeSelector(dev_id)).length > 0);
+
     ret_cont
       .append( $(DIV).addClass("data_row")
         .css({"padding-top": "0.3em"})
@@ -7371,6 +7523,19 @@ function devs_results(ok) {
             let dev_id = $(this).closest(".data_row").data("dev_id");
             device_win(dev_id);
           })
+          .searchHighlight_dev(dev_id)
+        )
+        .append( !show_eye ? $(SPAN) : $(LABEL).addClass(["ui-icon", "ui-icon-eye"])
+          .css({"margin": "initial 0.2em"})
+          .click(function() {
+            let dev_id = $(this).closest(".data_row").data("dev_id");
+            let elm = $("#" + $.escapeSelector(dev_id));
+            if(elm.length > 0) {
+              elm[0].scrollIntoView();
+              $(".dev_dir_"+$.escapeSelector( dev_id )).remove();
+            };
+          })
+          .searchHighlight_dev(dev_id)
         )
       )
     ;
@@ -7400,6 +7565,9 @@ function ints_results(ok) {
 
     vdev["interfaces"][ifName] = item["interface"];
 
+    let dev_id = item["dev_id"];
+    let show_eye = ($("#" + $.escapeSelector(dev_id)).length > 0);
+
     ret_cont
       .append( $(DIV).addClass("data_row")
         .css({"padding-top": "0.3em"})
@@ -7412,6 +7580,19 @@ function ints_results(ok) {
             let dev_id = $(this).closest(".data_row").data("dev_id");
             device_win(dev_id);
           })
+          .searchHighlight_dev(dev_id)
+        )
+        .append( !show_eye ? $(SPAN) : $(LABEL).addClass(["ui-icon", "ui-icon-eye"])
+          .css({"margin": "initial 0.2em"})
+          .click(function() {
+            let dev_id = $(this).closest(".data_row").data("dev_id");
+            let elm = $("#" + $.escapeSelector(dev_id));
+            if(elm.length > 0) {
+              elm[0].scrollIntoView();
+              $(".dev_dir_"+$.escapeSelector( dev_id )).remove();
+            };
+          })
+          .searchHighlight_dev(dev_id)
         )
         .append( $(SPAN).text(" : ") )
         .append( $(LABEL).text(item["ifName"])
@@ -7466,6 +7647,9 @@ function neigs_results(ok) {
       neigh_ip = neigh["neighbour"]["RemMgmtAddr"]["1"];
     };
 
+    let dev_id = neigh["dev_id"];
+    let show_eye = ($("#" + $.escapeSelector(dev_id)).length > 0);
+
     ret_cont
       .append( $(DIV).addClass("data_row")
         .data("dev_id", neigh["dev_id"])
@@ -7482,6 +7666,19 @@ function neigs_results(ok) {
               let dev_id = $(this).closest(".data_row").data("dev_id");
               device_win(dev_id);
             })
+            .searchHighlight_dev(dev_id)
+          )
+          .append( !show_eye ? $(SPAN) : $(LABEL).addClass(["ui-icon", "ui-icon-eye"])
+            .css({"margin": "initial 0.2em"})
+            .click(function() {
+              let dev_id = $(this).closest(".data_row").data("dev_id");
+              let elm = $("#" + $.escapeSelector(dev_id));
+              if(elm.length > 0) {
+                elm[0].scrollIntoView();
+                $(".dev_dir_"+$.escapeSelector( dev_id )).remove();
+              };
+            })
+            .searchHighlight_dev(dev_id)
           )
           .append( $(SPAN).text(" : ") )
           .append( $(LABEL).text(ifName != undefined?ifName:(neigh["source"] + " Port: "+neigh["port_index"]))

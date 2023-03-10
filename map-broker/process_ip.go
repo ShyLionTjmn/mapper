@@ -13,6 +13,7 @@ import (
   "runtime"
   dbg "runtime/debug"
   "path"
+  "math"
   "encoding/json"
 
   "github.com/gomodule/redigo/redis"
@@ -320,22 +321,42 @@ func wipe_dev(dev_id string) {
   delete(dev_refs, dev_id)
 }
 
-func debugPub(red redis.Conn, dev_ip string, debug string, key string, message string) {
+func debugPub(red redis.Conn, dev_ip, dev_id, debug, dev_debug, key, message string) {
   if red == nil || red.Err() != nil { return }
+  _, fileName, fileLine, ok := runtime.Caller(1)
+  var file_line string
+  if ok {
+    file_line = fmt.Sprintf("%s:%d", path.Base(fileName), fileLine)
+  }
+  red.Do("PUBLISH", "debug_all", fmt.Sprint(time.Now().Format("2006.01.02 15:04:05.000 "),
+    file_line, " ", dev_ip, " ", key, " ", message,
+  ))
+  red.Do("PUBLISH", "debug." + key, fmt.Sprint(time.Now().Format("2006.01.02 15:04:05.000 "),
+    file_line, " ", dev_ip, " ", key, " ", message,
+  ))
+  red.Do("PUBLISH", "debug." + dev_ip, fmt.Sprint(time.Now().Format("2006.01.02 15:04:05.000 "),
+    file_line, " ", dev_ip, " ", key, " ", message,
+  ))
+  red.Do("PUBLISH", "debug." + dev_id, fmt.Sprint(time.Now().Format("2006.01.02 15:04:05.000 "),
+    file_line, " ", dev_ip, " ", key, " ", message,
+  ))
+  red.Do("PUBLISH", "debug." + key + "." + dev_ip, fmt.Sprint(time.Now().Format("2006.01.02 15:04:05.000 "),
+    file_line, " ", dev_ip, " ", key, " ", message,
+  ))
+  red.Do("PUBLISH", "debug." + key + "." + dev_id, fmt.Sprint(time.Now().Format("2006.01.02 15:04:05.000 "),
+    file_line, " ", dev_ip, " ", key, " ", message,
+  ))
+
   if debug == "" { return }
-  if key != "" && strings.Index(debug, key) >= 0 {
-    _, fileName, fileLine, ok := runtime.Caller(1)
-    var file_line string
-    if ok {
-      file_line = fmt.Sprintf("%s:%d", path.Base(fileName), fileLine)
-    }
+  if key != "" && (strings.Index(debug, key) >= 0 || strings.Index(dev_debug, key) >= 0) {
     //if
-    red.Do("PUBLISH", "debug", fmt.Sprint(time.Now().Format("2006.01.02 15:04:05.000 "), file_line, " ", dev_ip, " ", key, " ", message))
-    red.Do("PUBLISH", "debug_map_broker", fmt.Sprint(time.Now().Format("2006.01.02 15:04:05.000 "), file_line, " ", dev_ip, " ", key, " ", message))
+    red.Do("PUBLISH", "debug", fmt.Sprint(time.Now().Format("2006.01.02 15:04:05.000 "),
+      file_line, " ", dev_ip, " ", key, " ", message,
+    ))
   }
 }
 
-func processLinks(red redis.Conn, dev M, startup bool, debug string) {
+func processLinks(red redis.Conn, dev M, startup bool, debug string, dev_debug string) {
 
   dev_id := dev.Vs("id")
   ip := dev.Vs("data_ip")
@@ -345,12 +366,12 @@ func processLinks(red redis.Conn, dev M, startup bool, debug string) {
   // build l2 LLDP neighbours
   if dev.EvM("lldp_ports") && dev.Evs("locChassisId") {
 
-    debugPub(red, ip, debug, "l2_links", "LLDP begin")
+    debugPub(red, ip, dev_id, debug, dev_debug, "l2_links", "LLDP begin")
 
     for port_index, port_h := range dev.VM("lldp_ports") {
       if port_h.(M).EvM("neighbours") && port_h.(M).Evs("ifName") {
         ifName := port_h.(M).Vs("ifName")
-        debugPub(red, ip, debug, "l2_links", fmt.Sprint("port: ", port_index, " ifName: ", ifName))
+        debugPub(red, ip, dev_id, debug, dev_debug, "l2_links", fmt.Sprint("port: ", port_index, " ifName: ", ifName))
         for _, nei_h := range port_h.(M).VM("neighbours") {
 
           nei_dev_id, nei_if_name, nei_err := find_lldp_nei(nei_h.(M))
@@ -375,12 +396,18 @@ func processLinks(red redis.Conn, dev M, startup bool, debug string) {
             if !dev.EvA("interfaces", ifName, "l2_links") {
               dev.VM("interfaces", ifName)["l2_links"] = make([]string, 0)
             }
-            dev.VM("interfaces", ifName)["l2_links"] = StrAppendOnce(dev.VM("interfaces", ifName)["l2_links"].([]string), link_id)
+            dev.VM("interfaces", ifName)["l2_links"] = StrAppendOnce(
+              dev.VM("interfaces", ifName)["l2_links"].([]string),
+              link_id,
+            )
 
             if !devs.EvA(nei_dev_id, "interfaces", nei_if_name, "l2_links") {
               devs.VM(nei_dev_id, "interfaces", nei_if_name)["l2_links"] = make([]string, 0)
             }
-            devs.VM(nei_dev_id, "interfaces", nei_if_name)["l2_links"] = StrAppendOnce( devs.VM(nei_dev_id, "interfaces", nei_if_name)["l2_links"].([]string), link_id )
+            devs.VM(nei_dev_id, "interfaces", nei_if_name)["l2_links"] = StrAppendOnce(
+              devs.VM(nei_dev_id, "interfaces", nei_if_name)["l2_links"].([]string),
+              link_id,
+            )
 
             dev_refs.MkM(dev_id, "l2_links", link_id)
             dev_refs.MkM(nei_dev_id, "l2_links", link_id)
@@ -389,10 +416,11 @@ func processLinks(red redis.Conn, dev M, startup bool, debug string) {
 
             link_h["status"] = int64(2)
             if dev.Vi("interfaces", ifName, "ifOperStatus") == 1 && dev.Vs("overall_status") == "ok" &&
-               devs.Vi(nei_dev_id, "interfaces", nei_if_name, "ifOperStatus") == 1 && devs.Vs(nei_dev_id, "overall_status") == "ok" &&
+               devs.Vi(nei_dev_id, "interfaces", nei_if_name, "ifOperStatus") == 1 &&
+               devs.Vs(nei_dev_id, "overall_status") == "ok" &&
             true {
               link_h["status"] = int64(1)
-              debugPub(red, ip, debug, "l2_links", fmt.Sprint("status set to 1"))
+              debugPub(red, ip, dev_id, debug, dev_debug, "l2_links", fmt.Sprint("status set to 1"))
             }
 /*
 if(!data.EvM("l2_links", link_id)) {
@@ -409,12 +437,12 @@ if(!data.EvM("l2_links", link_id)) {
   // build l2 CDP neighbours
   if dev.EvM("cdp_ports") && dev.Evs("locCdpDevId") {
 
-    debugPub(red, ip, debug, "l2_links", "CDP begin")
+    debugPub(red, ip, dev_id, debug, dev_debug, "l2_links", "CDP begin")
 
     for port_index, port_h := range dev.VM("cdp_ports") {
       if port_h.(M).EvM("neighbours") && port_h.(M).Evs("ifName") {
         ifName := port_h.(M).Vs("ifName")
-        debugPub(red, ip, debug, "l2_links", fmt.Sprint("cdp port: ", port_index, " ifName: ", ifName))
+        debugPub(red, ip, dev_id, debug, dev_debug, "l2_links", fmt.Sprint("cdp port: ", port_index, " ifName: ", ifName))
         for _, nei_h := range port_h.(M).VM("neighbours") {
 
           nei_dev_id, nei_if_name, nei_err := find_cdp_nei(nei_h.(M))
@@ -439,7 +467,10 @@ if(!data.EvM("l2_links", link_id)) {
             if !dev.EvA("interfaces", ifName, "l2_links") {
               dev.VM("interfaces", ifName)["l2_links"] = make([]string, 0)
             }
-            dev.VM("interfaces", ifName)["l2_links"] = StrAppendOnce(dev.VM("interfaces", ifName)["l2_links"].([]string), link_id)
+            dev.VM("interfaces", ifName)["l2_links"] = StrAppendOnce(
+              dev.VM("interfaces", ifName)["l2_links"].([]string),
+              link_id,
+            )
 
             if !devs.EvA(nei_dev_id, "interfaces", nei_if_name, "l2_links") {
               devs.VM(nei_dev_id, "interfaces", nei_if_name)["l2_links"] = make([]string, 0)
@@ -454,10 +485,11 @@ if(!data.EvM("l2_links", link_id)) {
 
             link_h["status"] = int64(2)
             if dev.Vi("interfaces", ifName, "ifOperStatus") == 1 && dev.Vs("overall_status") == "ok" &&
-               devs.Vi(nei_dev_id, "interfaces", nei_if_name, "ifOperStatus") == 1 && devs.Vs(nei_dev_id, "overall_status") == "ok" &&
+               devs.Vi(nei_dev_id, "interfaces", nei_if_name, "ifOperStatus") == 1 &&
+               devs.Vs(nei_dev_id, "overall_status") == "ok" &&
             true {
               link_h["status"] = int64(1)
-              debugPub(red, ip, debug, "l2_links", fmt.Sprint("status set to 1"))
+              debugPub(red, ip, dev_id, debug, dev_debug, "l2_links", fmt.Sprint("status set to 1"))
             }
 /*
 if(!data.EvM("l2_links", link_id)) {
@@ -507,10 +539,12 @@ if(!data.EvM("l2_links", link_id)) {
                  l0M.EvM("interfaces", l0_if) &&
                  l1M.EvM("interfaces", l1_if) &&
                  ((l0M.Vs("overall_status") == "ok" && l1M.Vs("overall_status") == "ok" &&
-                   l0M.Vi("interfaces", l0_if, "ifOperStatus") != 1 && l1M.Vi("interfaces", l1_if, "ifOperStatus") != 1 &&
+                   l0M.Vi("interfaces", l0_if, "ifOperStatus") != 1 &&
+                   l1M.Vi("interfaces", l1_if, "ifOperStatus") != 1 &&
                   true) ||
                   (l0M.Vs("overall_status") == "ok" && l1M.Vs("overall_status") == "ok" &&
-                   l0M.Vi("interfaces", l0_if, "ifOperStatus") == 1 && l1M.Vi("interfaces", l1_if, "ifOperStatus") == 1 &&
+                   l0M.Vi("interfaces", l0_if, "ifOperStatus") == 1 &&
+                   l1M.Vi("interfaces", l1_if, "ifOperStatus") == 1 &&
                    link_h.Vs("_creator") != dev_id && // link created by live divice, which seen us recently
                    link_h.Vi("_time") == l0M.Vi("last_seen") &&
                   true) ||
@@ -520,7 +554,8 @@ if(!data.EvM("l2_links", link_id)) {
               true {
                 // keep link
                 if l0M.Vs("overall_status") == "ok" && l1M.Vs("overall_status") == "ok" &&
-                   l0M.Vi("interfaces", l0_if, "ifOperStatus") == 1 && l1M.Vi("interfaces", l1_if, "ifOperStatus") == 1 &&
+                   l0M.Vi("interfaces", l0_if, "ifOperStatus") == 1 &&
+                   l1M.Vi("interfaces", l1_if, "ifOperStatus") == 1 &&
                 true {
                   link_h["status"] = int64(1)
                 } else {
@@ -530,44 +565,22 @@ if(!data.EvM("l2_links", link_id)) {
                 if !l0M.EvA("interfaces", l0_if, "l2_links") {
                   l0M.VM("interfaces", l0_if)["l2_links"] = make([]string, 0)
                 }
-                l0M.VM("interfaces", l0_if)["l2_links"] = StrAppendOnce(l0M.VM("interfaces", l0_if)["l2_links"].([]string), link_id)
+                l0M.VM("interfaces", l0_if)["l2_links"] = StrAppendOnce(
+                  l0M.VM("interfaces", l0_if)["l2_links"].([]string),
+                  link_id,
+                )
 
                 if !l1M.EvA("interfaces", l1_if, "l2_links") {
                   l1M.VM("interfaces", l1_if)["l2_links"] = make([]string, 0)
                 }
-                l1M.VM("interfaces", l1_if)["l2_links"] = StrAppendOnce(l1M.VM("interfaces", l1_if)["l2_links"].([]string), link_id)
+                l1M.VM("interfaces", l1_if)["l2_links"] = StrAppendOnce(
+                  l1M.VM("interfaces", l1_if)["l2_links"].([]string),
+                  link_id,
+                )
 
                 dev_refs.MkM(l0_dev, "l2_links", link_id)
                 dev_refs.MkM(l1_dev, "l2_links", link_id)
               } else {
-/*
-  fmt.Println("wiping link: ", link_h)
-  fmt.Println("wiper: ", dev_id)
-  fmt.Println("\tl0_status: ", l0M.Vs("overall_status"), "l0_if_opStatus:", l0M.Vi("interfaces", l0_if, "ifOperStatus"))
-  fmt.Println("\tl1_status: ", l1M.Vs("overall_status"), "l1_if_opStatus:", l1M.Vi("interfaces", l1_if, "ifOperStatus"))
-  if lldp_port_index, ex := l0M.Vse("interfaces", l0_if, "lldp_portIndex"); ex {
-    if l0M.EvM("lldp_ports", lldp_port_index, "neighbours") {
-      fmt.Println("\t\tl0_neighbours:")
-      for _, hei_h := range l0M.VM("lldp_ports", lldp_port_index, "neighbours") {
-        fmt.Println("\t\t\tChassisId: ", hei_h.(M).Vs("RemChassisId"))
-        fmt.Println("\t\t\tPortId: ", hei_h.(M).Vs("RemPortId"))
-      }
-    } else {
-      fmt.Println("\t\tl0_neighbours: none")
-    }
-  }
-  if lldp_port_index, ex := l1M.Vse("interfaces", l1_if, "lldp_portIndex"); ex {
-    if l1M.EvM("lldp_ports", lldp_port_index, "neighbours") {
-      fmt.Println("\t\tl1_neighbours:")
-      for _, hei_h := range l1M.VM("lldp_ports", lldp_port_index, "neighbours") {
-        fmt.Println("\t\t\tChassisId: ", hei_h.(M).Vs("RemChassisId"))
-        fmt.Println("\t\t\tPortId: ", hei_h.(M).Vs("RemPortId"))
-      }
-    } else {
-      fmt.Println("\t\tl1_neighbours: none")
-    }
-  }
-*/
                 //wipe link
                 if l0M != nil && l0M.EvA("interfaces", l0_if, "l2_links") {
                   new_list := StrExclude(l0M.VM("interfaces", l0_if)["l2_links"].([]string), link_id)
@@ -630,7 +643,12 @@ func process_ip_data(wg *sync.WaitGroup, ip string, startup bool) {
   defer func() {
     if err != nil {
       if red != nil && red.Err() == nil {
-        ip_err := fmt.Sprintf("%d:%s ! %s\n%s", time.Now().Unix(), time.Now().Format("2006 Jan 2 15:04:05"), err.Error(), string(dbg.Stack()))
+        ip_err := fmt.Sprintf("%d:%s ! %s\n%s",
+          time.Now().Unix(),
+          time.Now().Format("2006 Jan 2 15:04:05"),
+          err.Error(),
+          string(dbg.Stack()),
+        )
         red.Do("SET", "ip_proc_error."+ip, ip_err)
       }
 
@@ -839,6 +857,8 @@ func process_ip_data(wg *sync.WaitGroup, ip string, startup bool) {
 
   dev_id := dev.Vs("id")
 
+  dev_debug, _ := redis.String(red.Do("GET", "dev_debug."+dev_id))
+
   var redstr string
   redstr, err = redis.String(red.Do("GET", "status_alert."+dev_id))
 
@@ -997,7 +1017,11 @@ func process_ip_data(wg *sync.WaitGroup, ip string, startup bool) {
   current_run := dev.Vu("run")
 
   // process links
-  processLinks(red, dev, startup, debug)
+  processLinks(red, dev, startup, debug, dev_debug)
+
+  dev_ips := []string{}
+
+  all_ips := make(map[string]struct{})
 
   if dev.EvM("interfaces") {
     for ifName, if_m := range dev.VM("interfaces") {
@@ -1005,19 +1029,29 @@ func process_ip_data(wg *sync.WaitGroup, ip string, startup bool) {
       if astatus, ok := if_m.(M).Vse("ifAdminStatus"); ok && astatus == "1" {
         if ips, ok := if_m.(M).VMe("ips"); ok {
           for if_ip, if_ip_m := range ips {
-            if net, ok := if_ip_m.(M).Vse("net"); ok && !strings.HasPrefix(if_ip,"127.") {
+            if net, ok := if_ip_m.(M).Vse("net"); ok && !strings.HasPrefix(if_ip,"127.") &&
+               !strings.HasPrefix(if_ip,"0.") &&
+            true {
               register := false
+              dev_ips = StrAppendOnce(dev_ips, if_ip)
+
+              all_ips[if_ip] = struct{}{}
+
               if l3link_ip_h, ok := data.VMe("l3_links", net, if_ip); ok {
                 link_dev_id := l3link_ip_h.Vs("dev_id")
                 if link_dev_id != dev_id || l3link_ip_h.Vs("ifName") != ifName {
                   if startup {
-                    color.Red("IP conflict: %s, %s @ %s vs %s @ %s", if_ip, dev_id, ifName, link_dev_id, l3link_ip_h.Vs("ifName"))
+                    color.Red("IP conflict: %s, %s @ %s vs %s @ %s",
+                              if_ip, dev_id, ifName, link_dev_id, l3link_ip_h.Vs("ifName"),
+                    )
                   } else {
                     if devs.EvM(link_dev_id) && devs.Vs(link_dev_id, "overall_status") == "ok" &&
                        (link_dev_id != dev_id || l3link_ip_h.Vi("time") == now_unix) {
                       //if
                       if opt_v > 1 {
-                        color.Red("IP conflict: %s, %s @ %s vs %s @ %s", if_ip, dev_id, ifName, link_dev_id, l3link_ip_h.Vs("ifName"))
+                        color.Red("IP conflict: %s, %s @ %s vs %s @ %s",
+                          if_ip, dev_id, ifName, link_dev_id, l3link_ip_h.Vs("ifName"),
+                        )
                       }
                     } else {
                       //overwrite data
@@ -1054,18 +1088,25 @@ func process_ip_data(wg *sync.WaitGroup, ip string, startup bool) {
     }
   }
 
-  all_ips := make(map[string]struct{})
+  for d_id, _ := range devs {
+    for ifName, _ := range devs.VM(d_id, "interfaces") {
+      if as, var_ok := devs.Vie(d_id, "interfaces", ifName, "ifAdminStatus"); var_ok && as == 1 {
+        for d_ip, _ := range devs.VM(d_id, "interfaces", ifName, "ips") {
+          if !strings.HasPrefix(d_ip, "127.") && !strings.HasPrefix(d_ip, "0.") {
+            all_ips[d_ip] = struct{}{}
+          }
+        }
+      }
+    }
+  }
 
   for net, _ := range data.VM("l3_links") {
     for ip, ip_m := range data.VM("l3_links", net) {
-      add := true
       if ip_m.(M).Vs("dev_id") == dev_id && ip_m.(M).Vi("time") != now_unix {
         //ip or interface moved or deleted
         delete(data.VM("l3_links", net), ip)
         delete(dev_refs.VM(dev_id, "l3_links", net), ip)
-        add = false
       }
-      if add { all_ips[ip] = struct{}{} }
     }
     if len(data.VM("l3_links", net)) == 0 { delete(data.VM("l3_links"), net) }
     if len(dev_refs.VM(dev_id, "l3_links", net)) == 0 { delete(dev_refs.VM(dev_id, "l3_links"), net) }
@@ -1616,7 +1657,9 @@ func process_ip_data(wg *sync.WaitGroup, ip string, startup bool) {
   if !startup && dev.Vs("overall_status") == "ok" && dev.EvM("proc_graph") {
     for key, _ := range dev.VM("proc_graph") {
       if dev.Evs(key + "_graph_file") && dev.Evs(key + "_graph_key") && dev.EvA(key) {
-        red.Do("PUBLISH", "graph", ip + " " + dev.Vs("sysUpTime") + " " + dev.Vs(key + "_graph_key") + " " + dev.Vs(key))
+        red.Do("PUBLISH", "graph", ip + " " + dev.Vs("sysUpTime") +
+               " " + dev.Vs(key + "_graph_key") + " " + dev.Vs(key),
+        )
       }
     }
   }
@@ -1634,4 +1677,33 @@ func process_ip_data(wg *sync.WaitGroup, ip string, startup bool) {
   data.VM("dev_list", ip)["time"] = time.Now().Unix()
 
   red.Do("SET", "dev_last_seen."+dev_id, strconv.FormatInt(last_seen, 10)+":"+ip)
+
+  pref_level := math.MaxInt
+  pref_ip := ip
+
+  sort.Sort(ByNum(dev_ips))
+
+  for _, dev_ip := range dev_ips {
+    debugPub(red, ip, dev_id, debug, dev_debug, "pref_ips", fmt.Sprint("checking ", dev_ip))
+    if v4ip, var_ok := V4ip2long(dev_ip); var_ok {
+PREF: for level, pref := range g_pref_ips {
+        first, f_ok := pref.Vue("first")
+        last, l_ok := pref.Vue("last")
+        if f_ok && l_ok && level < pref_level &&
+           first <= uint64(v4ip) && last >= uint64(v4ip) &&
+        true {
+          debugPub(red, ip, dev_id, debug, dev_debug, "pref_ips", fmt.Sprint(dev_ip, " is better than ", pref_ip))
+          pref_level = level
+          pref_ip = dev_ip
+          break PREF
+        }
+      }
+    }
+  }
+
+  if ip != pref_ip && red != nil && red.Err() == nil {
+    debugPub(red, ip, dev_id, debug, dev_debug, "pref_ips", fmt.Sprint("switching to ", pref_ip))
+    red.Do("HSET", "dev_list", ip, now_unix_str+":conflict")
+    red.Do("HSET", "dev_list", pref_ip, now_unix_str+":run")
+  }
 }

@@ -1876,6 +1876,7 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
     out["macs"]=devs_macs
     out["arp"]=devs_arp
     out["net2site"] = net2site
+    out["pref_ips"] = g_pref_ips
 
   } else if action == "get_interface" {
     var dev_id string

@@ -35,6 +35,10 @@ func SplitByNum(s string) []interface{} {
   return ret
 }
 
+// usage:
+// test := []string{ "a1", "a2", "a20", "a10", "a3" }
+// sort.Sort(ByNum(test)) // test == {"a1", "a2, "a3", "a10", "a20" }
+
 type ByNum []string
 
 func (a ByNum) Len() int		{ return len(a) }
@@ -83,6 +87,11 @@ func (a ByNum) Less(i, j int) bool {
   return true
 }
 
+
+// usage:
+// test := []string{ "1", "3", "2", "20" }
+// sort.Sort(StrByNum(test)) //test == {"1", "2", "3", "20" }
+// 
 type StrByNum []string
 
 func (a StrByNum) Len() int		{ return len(a) }

@@ -86,6 +86,7 @@ var ipdb_time int64
 
 const PNG_MAX_AGE = 60*time.Second
 
+var g_pref_ips = make([]M, 0)
 
 var opt_Q bool
 var opt_P bool
@@ -541,6 +542,28 @@ MAIN_LOOP:
           }
         }
       }
+
+      if err == nil {
+        var red_prefs []string
+        red_prefs, err = redis.Strings(red.Do("LRANGE", "pref_ips", "0", "-1"))
+        if err == nil {
+          globalMutex.Lock()
+          g_pref_ips = []M{}
+
+          for _, redstr := range red_prefs {
+            if a := strings.Split(redstr, "-"); len(a) == 2 {
+              first, f_ok := V4ip2long(strings.TrimSpace(a[0]))
+              last, l_ok := V4ip2long(strings.TrimSpace(a[1]))
+              if f_ok && l_ok && first <= last {
+                g_pref_ips = append(g_pref_ips, M{"first": first, "last": last})
+              }
+            }
+          }
+          globalMutex.Unlock()
+        } else if err == redis.ErrNil {
+          err = nil
+        }
+      }
     }
 
     if (ipdb_time + IPDB_REFRESH) < time.Now().Unix() && red != nil && red.Err() == nil {
@@ -761,8 +784,9 @@ MAIN_LOOP:
 
       dev_map, err = read_devlist(red)
       if err == nil {
-        total_ips := uint64(len(dev_map))
-        fast_start := max_open_files > total_ips+20
+        //total_ips := uint64(len(dev_map))
+        //fast_start := max_open_files > total_ips+20
+        fast_start := false
         var wg_ sync.WaitGroup
         for ip, _ := range dev_map {
           if ip_reg.MatchString(ip) && dev_map.Vs(ip, "state") != "conflict" {
@@ -783,7 +807,12 @@ MAIN_LOOP:
         globalMutex.Lock()
         for _, dev_m := range devs {
           ip_debug, _ := redis.String(red.Do("GET", "ip_debug."+dev_m.(M).Vs("data_ip")))
-          processLinks(red, dev_m.(M), true, ip_debug)
+          dev_id, rerr := redis.String(red.Do("GET", "ip_dev_id."+dev_m.(M).Vs("data_ip")))
+          dev_debug := ip_debug
+          if rerr == nil {
+            dev_debug, _ = redis.String(red.Do("GET", "dev_debug."+dev_id))
+          }
+          processLinks(red, dev_m.(M), true, ip_debug, dev_debug)
         }
         globalMutex.Unlock()
       }
