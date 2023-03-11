@@ -3340,6 +3340,10 @@ function add_device(dev_id) {
     bcolor =  "green";
   };
 
+  if(data["devs"][dev_id]["virtual"] != undefined) {
+    name_bg = "#F0F0FF";
+  };
+
   let dev_name_text=data["devs"][dev_id]["short_name"] != undefined ? data["devs"][dev_id]["short_name"] : "no data";
 
   let name_border;
