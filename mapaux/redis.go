@@ -3,6 +3,9 @@ package mapaux
 import (
   "errors"
   "strings"
+  "math/rand"
+  "net"
+  "time"
   "github.com/gomodule/redigo/redis"
 )
 
@@ -23,7 +26,19 @@ func RedisCheck(r redis.Conn, red_sock_type, red_sock, red_db string) (redis.Con
   err = nil
 
   if red == nil {
-    red, err = redis.Dial(red_sock_type, red_sock)
+    tries := 10
+    for tries != 0 {
+      red, err = redis.Dial(red_sock_type, red_sock)
+      if err == nil {
+        break
+      }
+      if nerr, ok := err.(net.Error); ok && nerr.Temporary() {
+        time.Sleep(time.Duration(rand.Intn(1000)) * time.Millisecond)
+      } else {
+        break
+      }
+      tries--
+    }
   }
 
   if err != nil { return nil, err }

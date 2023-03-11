@@ -255,10 +255,11 @@ function error_dialog(message, opts) {
                    .appendTo("BODY");
   let d={
     modal:true,
-    maxHeight:1000,
-    maxWidth:1000,
+    maxHeight: ($(window).height() - 20),
+    maxWidth: ($(window).width() - 20),
     minWidth:600,
     width: "auto",
+    height: "auto",
     buttons: { "Закрыть": function() {$(this).dialog( "close" );} },
     close: function() {
       $(this).dialog("destroy");
@@ -534,4 +535,11 @@ function copy_to_clipboard(copy_data, donefunc = undefined) {
    } catch(e) {
      alert(e);
   };
+};
+
+function append_once(list, val) {
+  if(!list.includes(val)) {
+    list.push(val);
+  };
+  return list;
 };

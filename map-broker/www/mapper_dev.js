@@ -130,6 +130,22 @@ var userinfo = {};
 var default_graph_size = "500x150";
 var graph_sizes_list = ["500x70", default_graph_size, "800x100", "800x200", "1000x150", "1000x300", "1600x180", "1600x350"];
 
+var g_short_name_reg = /^[0-9a-z_A-Z][0-9a-z_A-Z\-]*$/;
+var g_ifName_reg = /^[0-9a-z_A-Z][0-9a-z_A-Z\-\/# ]*$/;
+var g_num_reg = /^\d+$/;
+
+function gen_code() {
+  let code_chars="qwertyuiopasdfghjkzxcvbnmQWERTYUPASDFGHJKLZXCVBNM23456789";
+  let code = "";
+
+  for(let i=0; i < 32; i++) {
+    let idx = Math.floor(Math.random() * code_chars.length);
+    code += code_chars.charAt(idx);
+  };
+
+  return code;
+};
+
 function format_mac(mac, view="canonic") {
   let m = String(mac).match(/^([0-9a-fA-F]{2})[:\.\-]?([0-9a-fA-F]{2})[:\.\-]?([0-9a-fA-F]{2})[:\.\-]?([0-9a-fA-F]{2})[:\.\-]?([0-9a-fA-F]{2})[:\.\-]?([0-9a-fA-F]{2})$/);
   if(m === null) return mac;
@@ -775,9 +791,6 @@ function dev_select_border(dev_elm, selected, color="#FF4444") {
   dev_elm.find(".select_border").toggle(selected).css("border-color", color);
 };  
 
-function virtLinksWin() {
-};
-
 function dev_list_stop(e, ui) {
   if(e.pageX > $(e.target).width()) {
     let id=ui.item.data('id');
@@ -1020,11 +1033,14 @@ $( document ).ready(function() {
             .title("Выбор разрешен")
             .css({"color": "darkgreen"})
            ;
+           $(".vlink_btn").css({"color": "black"});
          } else {
            $(this).removeClass("ui-icon-unlocked").addClass("ui-icon-lock")
             .title("Выбор запрещен")
             .css({"color": "darkred"})
            ;
+           $(".vlink_btn").css({"color": "gray"});
+           $("#vlink_win").dialog("close");
          };
        })
      )
@@ -1054,6 +1070,22 @@ $( document ).ready(function() {
        showSearchWindow();
      })
    )
+   .append( $(LABEL).addClass(["button", "vdev_btn"])
+     .text("vDev")
+     .title("Виртуальные устройства")
+     .click(function(e) {
+       e.stopPropagation();
+       vDevsWindow();
+     })
+   )
+   .append( $(LABEL).addClass(["button", "vlink_btn"])
+     .text("vLink")
+     .title("Виртуальные связи")
+     .click(function(e) {
+       e.stopPropagation();
+       vLinksWindow();
+     })
+   )
    .appendTo( $("BODY") )
   ;
 
@@ -1067,9 +1099,6 @@ $( document ).ready(function() {
      e.stopPropagation();
      dev_select_border($(".device"), false);
      dev_selected = [];
-     if($("#virtLinksWin").length > 0) {
-       virtLinksWin();
-     };
      $("#btnSetColor").prop("disabled", true);
      $("#btnGetColor").prop("disabled", true);
    })
@@ -1174,6 +1203,12 @@ $( document ).ready(function() {
       $("#filename").css({"color": "black"});
     };
 
+    if(g_num_reg.test(site)) {
+      $(".vdev_btn").show();
+    } else {
+      $(".vdev_btn").hide();
+    };
+
     let site_tag = get_tag({"id": "root", "children": data["sites"], "data": {}}, site);
     document.title = "MAP: " + site_tag.text();
     $("#site").empty().append(site_tag);
@@ -1193,14 +1228,18 @@ $( document ).ready(function() {
   });
 });
 
-function data_loaded(new_data) {
-  map_data = new_data["map"]; //{loc, tps, colors, options}
+function data_loaded(new_data, really=true) {
+  if(really) {
+    map_data = new_data["map"]; //{loc, tps, colors, options}
+    data["files_list"] = new_data["files_list"];
+  };
+
+  dev_selected = [];
 
   data["devs"] = new_data["devs"];
   data["l2_links"] = new_data["l2_links"];
   data["l3_links"] = new_data["l3_links"];
 
-  data["files_list"] = new_data["files_list"];
 
   temp_data["devs"] = {};
   temp_data["p2p_links"] = {};
@@ -1384,7 +1423,7 @@ function device_to_list(dev_id) {
     name_color="black";
   };
 
-  $(dev_list).append(
+  $("#dev_list").append(
     $(DIV)
      .data('id',dev_id)
      .data('shortname', data["devs"][dev_id]["short_name"] != undefined ? data["devs"][dev_id]["short_name"] : dev_id)
@@ -1404,7 +1443,7 @@ function device_to_list(dev_id) {
        },
        device_out
      )
-     .append( $(LABEL)
+     .append( $(LABEL).addClass("short_name")
        .css("white-space", "nowrap")
        .text(data["devs"][dev_id]["short_name"] != undefined ? data["devs"][dev_id]["short_name"] : dev_id)
      )
@@ -1416,12 +1455,17 @@ function device_to_list(dev_id) {
 
 function device_dblclick(ui) {
   let id=ui.parent().prop('id');
+  remove_from_map(id);
+};
 
+function remove_from_map(id, to_list=true) {
   delete map_data["loc"][id];
  
   save_map("loc", id);
 
-  device_to_list(id);
+  if(to_list) {
+    device_to_list(id);
+  };
   delete temp_data["devs"][id];
 
   $(document.getElementById(id)).remove();
@@ -1440,7 +1484,7 @@ function device_dblclick(ui) {
 
 function device_win(dev_id) {
   run_query({"action": "get_device", "dev_id": dev_id}, function(res) {
-    if(res["ok"]["no_data"] !== undefined) {
+    if(res["ok"]["fail"] !== undefined) {
       show_dialog("Устройство отсутствует в данных.");
       return; 
     };
@@ -2302,7 +2346,9 @@ function device_click(ui, e) {
   let id=ui.parent().attr('id');
 
   if(!allow_select) {
-    device_win(id);
+    if(!e.shiftKey) {
+      device_win(id);
+    };
     return;
   };
 
@@ -2321,10 +2367,6 @@ function device_click(ui, e) {
       dev_select_border($(".device"), false);
       dev_select_border($(document.getElementById(id)), true);
       dev_selected=[id];
-    };
-
-    if($("#virtLinksWin").length > 0) {
-      virtLinksWin();
     };
 
     if(dev_selected.length > 0) {
@@ -2890,15 +2932,18 @@ function interface_in(int, dev) {
   let safe_int = dev["interfaces"][int]["safe_if_name"];
 
   let int_info_text=dev["interfaces"][int]["ifName"]+"&nbsp;";
-  let io_src="graph?type=int_io&dev_id="+safe_dev_id+"&int="+safe_int+"&small&"+sec;
-  let pkt_src="graph?type=int_pkts&dev_id="+safe_dev_id+"&int="+safe_int+"&small&"+sec;
-  let ifspeed=1000000000;
-  if(dev["interfaces"][int]["ifSpeed"] != undefined && dev["interfaces"][int]["ifSpeed"] > 0) {
-    ifspeed=dev["interfaces"][int]["ifSpeed"];
+  if(dev["virtual"] == undefined) {
+    let io_src="graph?type=int_io&dev_id="+safe_dev_id+"&int="+safe_int+"&small&"+sec;
+    let pkt_src="graph?type=int_pkts&dev_id="+safe_dev_id+"&int="+safe_int+"&small&"+sec;
+    let ifspeed=1000000000;
+    if(dev["interfaces"][int]["ifSpeed"] != undefined && dev["interfaces"][int]["ifSpeed"] > 0) {
+      ifspeed=dev["interfaces"][int]["ifSpeed"];
+    };
+    io_src += "&max="+ifspeed;
+    pkt_src += "&max="+Math.floor(ifspeed/12000);
+    int_info_text += "<IMG src=\""+io_src+"\"/>&nbsp;<IMG src=\""+pkt_src+"\"/>&nbsp;"
   };
-  io_src += "&max="+ifspeed;
-  pkt_src += "&max="+Math.floor(ifspeed/12000);
-  int_info_text += "<IMG src=\""+io_src+"\"/>&nbsp;<IMG src=\""+pkt_src+"\"/>&nbsp;"
+
   int_info_text += int_labels(int,dev);
   int_info_text += "&nbsp;";
 
@@ -2999,8 +3044,9 @@ function interface_out() {
   $(".line_highlight").each(function() {
     let svg=$(this).find("svg");
     let line=svg.find("line");
+    let orig_stroke_width = Number($(this).data("stroke_width"));
 
-    let stroke_width = "1";
+    let stroke_width = orig_stroke_width;
     if(site == "l3" && !tp_show) stroke_width = "0";
 
     line.attr("stroke-width", stroke_width);
@@ -3087,9 +3133,6 @@ function interface_click(int, dev, e) {
       $("#btnGetColor").prop("disabled", false);
     } else {
       $("#btnGetColor").prop("disabled", true);
-    };
-    if($("#virtLinksWin").length > 0) {
-      virtLinksWin();
     };
   } else {
     interface_win(dev_id, int);
@@ -3214,6 +3257,7 @@ function add_device(dev_id) {
              data["devs"][dev_id]["interfaces"][int]["macs_count"] > 3 &&
              data["devs"][dev_id]["interfaces"][int]["ifType"] == 6
             ) ||
+            (data["devs"][dev_id]["virtual"] != undefined) ||
             false
         ) {
           temp_data["devs"][dev_id]["interfaces"][int]["_draw"]=1;
@@ -4254,6 +4298,11 @@ function draw_connection(link_id) {
   if(connections[link_id] === undefined) {
     return;
   };
+  let virtual = false;
+  if(site != "l3" && data["l2_links"][link_id]["virtual"] != undefined) {
+    virtual = true;
+  };
+
   for(let l in connections[link_id]["legs"]) {
     let leg=connections[link_id]["legs"][l];
     let x1, x2, y1, y2, len;
@@ -4337,9 +4386,14 @@ function draw_connection(link_id) {
       color="saddlebrown";
     };
 
-    let stroke_width = "1";
-    if(site == "l3" && !tp_show) stroke_width = "0";
-    draw_line(line_id, x1, y1, x2, y2, color, stroke_width);
+    let stroke_width = 1;
+    if(site == "l3" && !tp_show) stroke_width = 0;
+
+    if(!virtual) {
+      draw_line(line_id, x1, y1, x2, y2, color, stroke_width, undefined);
+    } else {
+      draw_line(line_id, x1, y1, x2, y2, color, stroke_width+1, "6,4");
+    };
 
     len=Math.sqrt( (x2-x1)*(x2-x1) + (y2-y1)*(y2-y1) );
 
@@ -4461,7 +4515,7 @@ function draw_connection(link_id) {
   };
 };
 
-function draw_line(line_id, x1, y1, x2, y2, color, width) {
+function draw_line(line_id, x1, y1, x2, y2, color, width, dasharray) {
 
   let cx,cy,fx,fy,tx,ty,w,h;
 
@@ -4495,7 +4549,17 @@ function draw_line(line_id, x1, y1, x2, y2, color, width) {
   w++;
   h++;
 
-  let link_html="<SVG style=\"display:block;\" width=\""+w+"\" height=\""+h+"\"><line x1=\""+fx+"\" y1=\""+fy+"\" x2=\""+tx+"\" y2=\""+ty+"\" stroke=\""+color+"\" stroke-width=\""+width+"\"/></SVG>";
+  let link_html="<SVG style=\"display:block;overflow:visible\" width=\""+w+"\" height=\""+h+"\">" +
+    "<line x1=\""+fx+"\" y1=\""+fy+"\" x2=\""+tx+"\" y2=\""+ty+"\"" +
+    " shape-rendering=\"crispEdges\"" +
+    " stroke=\""+color+"\" stroke-width=\""+width+"\""
+  ;
+
+  if(dasharray != undefined) {
+    link_html += " stroke-dasharray=\"" + dasharray + "\"";
+  };
+
+  link_html += "/></SVG>";
 
   $( document.getElementById(line_id) ).remove();
   let line=$(DIV, { id: line_id })
@@ -4506,6 +4570,7 @@ function draw_line(line_id, x1, y1, x2, y2, color, width) {
    .width("width", w)
    .height("height", h)
    .html(link_html)
+   .data("stroke_width", width)
    .appendTo( workspace )
   ;
 };
@@ -4838,6 +4903,7 @@ function link_highlight(link_id) {
       let line_id=connections[link_id]["legs"][l]["drawn"];
       let line_div=$(document.getElementById(line_id));
       line_div.addClass("line_highlight");
+      let orig_stroke_width = Number(line_div.data("stroke_width"));
       let svg=line_div.find("svg");
       let svg_width=svg.attr("width");
       let svg_height=svg.attr("height");
@@ -4854,7 +4920,7 @@ function link_highlight(link_id) {
       line_div.data("y2", y2);
       svg.attr("width", Number(svg_width)+3);
       svg.attr("height", Number(svg_height)+3);
-      line.attr("stroke-width", 3);
+      line.attr("stroke-width", orig_stroke_width + 2);
       if(Number(x1) == Number(x2) && Number(x1) == 0) {
         line.attr("x1", 1);
         line.attr("x2", 1);
@@ -5497,10 +5563,14 @@ $.fn.graph = function(gdata) {
   canvas
    .css({"display": "inline-block", "position": "relative" })
    .append( $(LABEL).addClass("len_ind").addClass("ns")
-     .css({"position": "absolute", "top": "0px", "left": "0px", "background-color": "#E0E0E080", "font-size": "x-small", "line-height": "90%"})
+     .css({"position": "absolute", "top": "0px", "left": "0px", "background-color": "#E0E0E080",
+       "font-size": "x-small", "line-height": "90%",
+     })
    )
    .append( $(LABEL).addClass("ind").addClass("ns")
-     .css({"position": "absolute", "top": "0px", "right": "0px", "background-color": "#E0E0E080", "font-size": "x-small", "line-height": "90%"})
+     .css({"position": "absolute", "top": "0px", "right": "0px", "background-color": "#E0E0E080",
+       "font-size": "x-small", "line-height": "90%",
+     })
      .hide()
    )
    .append( $(DIV).addClass("time").addClass("ns")
@@ -5561,7 +5631,9 @@ $.fn.graph = function(gdata) {
          show_start = show_end - r_len;
        };
 
-       $(this).parent().find(".ind").text(from_unix_time(show_start) + " - " + from_unix_time(show_end) + " : " + wdhm(show_end - show_start));
+       $(this).parent().find(".ind").text(from_unix_time(show_start) + " - " + from_unix_time(show_end) +
+         " : " + wdhm(show_end - show_start))
+       ;
 
        timer = setTimeout(function(elm, time_div) {
          if(document.contains(elm[0])) {
@@ -6016,7 +6088,8 @@ $.fn.graph = function(gdata) {
 
       canvas
        .css({"display": "inline-block", "width": im["image_width"]+"px", "height": im["image_height"]+"px",
-             "background-image": "url(\"graph?file=" + im["file"] + "&"+ unix_timestamp() + "\")", "position": "relative"
+             "background-image": "url(\"graph?file=" + im["file"] + "&"+ unix_timestamp() + "\")",
+             "position": "relative"
        })
       ;
 
@@ -6037,7 +6110,7 @@ $.fn.graph = function(gdata) {
 
 function interface_win(dev_id, int) {
   run_query({"action": "get_device", "dev_id": dev_id}, function(res) {
-    if(res["ok"]["no_data"] !== undefined) {
+    if(res["ok"]["fail"] !== undefined) {
       show_dialog("Устройство отсутствует в данных.");
       return;
     };
@@ -6265,14 +6338,16 @@ function interface_win(dev_id, int) {
       ;
     };
 
-    content
-     .append( $(DIV)
-       .graph({"type": "int_io", "dev_id": dev_id, "int": int})
-     )
-     .append( $(DIV)
-       .graph({"type": "int_pkts", "dev_id": dev_id, "int": int, "hide": true})
-     )
-    ;
+    if(data["devs"][dev_id]["virtual"] == undefined) {
+      content
+       .append( $(DIV)
+         .graph({"type": "int_io", "dev_id": dev_id, "int": int})
+       )
+       .append( $(DIV)
+         .graph({"type": "int_pkts", "dev_id": dev_id, "int": int, "hide": true})
+       )
+      ;
+    };
 
     let tabs = $(DIV).addClass("tabs")
      .css({"border-top": "1px solid lightgray", "margin-top": "0.3em"})
@@ -7980,4 +8055,645 @@ function neigs_results(ok) {
     ;
   };
   return ret;
+};
+
+function vDevsWindow() {
+  let list = [];
+  for(let dev_id in data["devs"]) {
+    if(data["devs"][dev_id]["virtual"] != undefined) {
+      list.push(data["devs"][dev_id]);
+    };
+  };
+
+  list.sort(function(a, b) { return num_compare(a["short_name"], b["short_name"]); });
+
+  let dlg = createWindow("vdevs", "Виртуальные устройства");
+  let content = dlg.find(".content");
+
+  let table = $(TABLE)
+    .append( $(THEAD)
+      .append( $(TR)
+        .append( $(TH).text("Имя") )
+        .append( $(TH).text("Портов") )
+        .append( $(TH).text("Локация") )
+        .append( $(TH) )
+      )
+    )
+    .appendTo(content)
+  ;
+
+  let tbody = $(TBODY).appendTo(table);
+
+  for(let i in list) {
+    let dev = list[i];
+    tbody.append( get_vdev_row(dev) );
+  };
+
+  $(TFOOT)
+    .append( $(TR)
+      .append( $(TD, {"colspan": table.find("THEAD").find("TH").length})
+        .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-plus"])
+          .click(function() {
+            let tbody = $(this).closest("TABLE").find("TBODY");
+            edit_vdev(undefined, function(vdev) {
+              tbody.append( get_vdev_row(vdev) );
+            })
+          })
+        )
+      )
+    )
+    .appendTo(table)
+  ;
+
+  dlg.trigger("recenter");
+};
+
+function get_vdev_row(vdev) {
+  let act_td = $(TD);
+
+  act_td
+    .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-edit"])
+      .css({"margin-right": "0.5em"})
+      .title("Редактировать")
+      .click(function() {
+        let row = $(this).closest("TR");
+        let dev_id = row.data("dev_id");
+
+        edit_vdev(data["devs"][dev_id], function(vdev) {
+          row.replaceWith(get_vdev_row(vdev));
+        });
+      })
+    )
+    .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-trash"])
+      .title("Удалить")
+      .click(function() {
+        let row = $(this).closest("TR");
+        show_confirm("Внимание, удаление устройства приведет к удалению виртуальных связей,\n"+
+          "если они есть\nОтмена будет невозможна", function() {
+            let dev_id = row.data("dev_id");
+
+            run_query({"action": "del_vdev", "vdev_id": dev_id}, function(res) {
+              if($(document.getElementById(dev_id)).length > 0) {
+                remove_from_map(dev_id, false);
+              } else {
+                $("#dev_list").find(".dev_in_list").each(function() {
+                  if( $(this).data("id") == dev_id ) {
+                    $(this).remove();
+                    return false;
+                  };
+                });
+                resort_dev_list();
+              };
+
+              delete(data["devs"][dev_id]);
+
+              for(let link_id in data["l2_links"]) {
+                if(data["l2_links"][link_id][0]["DevId"] == dev_id ||
+                   data["l2_links"][link_id][1]["DevId"] == dev_id
+                ) {
+                  wipe_l2_link(link_id);
+                };
+              };
+
+              row.remove();
+            });
+          }
+        );
+      })
+    )
+  ;
+
+  let tr = $(TR)
+    .data("dev_id", vdev["id"])
+    .append( $(TD).text(vdev["short_name"])
+      .title( vdev["sysDescr"] )
+    )
+    .append( $(TD).text(hash_length(vdev["interfaces"]))
+    )
+    .append( $(TD)
+      .append( get_tag({"id": "root", "data": {}, "children": data["sites"]}, vdev["site"]) )
+    )
+    .append( act_td )
+  ;
+
+  return tr;
+};
+
+function edit_vdev(vdev, donefunc) {
+
+  let buttons = [
+    {
+      'text': 'Сохранить',
+      'click': function() {
+        let dlg = $(this);
+        let donefunc = dlg.data("donefunc");
+        let vdev = dlg.data("vdev");
+        let is_new = dlg.data("is_new");
+
+        let prev_ports = vdev["interfaces_sorted"];
+        let prev_name = vdev["short_name"];
+
+        let short_name = dlg.find(".short_name").val();
+        if(!g_short_name_reg.test(short_name.trim())) {
+          dlg.find(".short_name").animateHighlight("red", 400);
+          return;
+        };
+
+        vdev["short_name"] = short_name.trim();
+        vdev["sysDescr"] = dlg.find(".sysDescr").val().trim();
+        vdev["model_short"] = dlg.find(".model_short").val().trim();
+        vdev["site"] = dlg.find(".site").val().trim();
+        vdev["sysLocation"] = dlg.find(".sysLocation").val().trim();
+        vdev["data_ip"] = dlg.find(".data_ip").val().trim();
+
+        let interfaces = {};
+        let err = false;
+
+        dlg.find(".interfaces").find(".tr").each(function() {
+          let ifName = $(this).find(".ifName").text().trim();
+          if(ifName == "" || ifName == undefined) {
+            err = true;
+            return false;
+          };
+          let ifAlias = $(this).find(".ifAlias").val().trim();
+          interfaces[ifName] = {
+            "ifName": ifName,
+            "ifAlias": ifAlias,
+            "ifDescr": ifName,
+            "ifAdminStatus": 1,
+            "ifOperStatus": 1,
+            "ifDelay": 1,
+            "ifSpeed": 1000000000,
+            "ifHighSpeed": 1000,
+            "ifIndex": 0,
+            "ifType": 6,
+            "safe_if_name": "none",
+          };
+        });
+
+        if(err) return;
+
+        vdev["interfaces"] = interfaces;
+        vdev["interfaces_sorted"] = keys(interfaces);
+        vdev["interfaces_sorted"].sort(num_compare);
+
+        let dev_id = vdev["id"];
+
+        run_query({"action": "save_vdev", "vdev_id": dev_id, "vdev_json": JSON.stringify(vdev)}, function(res) {
+          data["devs"][dev_id] = vdev;
+
+          if(is_new) {
+            device_to_list(dev_id);
+            resort_dev_list();
+          } else {
+            let new_ports = vdev["interfaces_sorted"];
+
+            let ports_changed = false;
+            for(let i in prev_ports) {
+              if(!in_array(new_ports, prev_ports[i])) {
+                ports_changed = true;
+                wipe_l2_link_by_dev_int(dev_id, prev_ports[i]);
+              };
+            };
+            for(let i in new_ports) {
+              if(!in_array(prev_ports, new_ports[i])) {
+                ports_changed = true;
+                break;
+              };
+            };
+
+            if(ports_changed || prev_name != short_name) {
+              if($(document.getElementById(dev_id)).length > 0) {
+                data_loaded(data, false);
+                //remove_from_map(dev_id);
+              } else {
+                $("#dev_list").find(".dev_in_list").each(function() {
+                  if( $(this).data("id") == dev_id ) {
+                    $(this).find(".short_name").text(short_name);
+                    return false;
+                  };
+                });
+              };
+            };
+          };
+
+          if(donefunc !== undefined) {
+            donefunc(vdev);
+          };
+          dlg.dialog("close");
+        });
+      }
+    },
+    {
+      'text': 'Отмена',
+      'click': function() {$(this).dialog( "close" );},
+    }
+  ];
+
+  let dlg = createWindow("vdev_edit", "Виртуальное устройство",  {"modal": true, "buttons": buttons});
+  let content = dlg.find(".content");
+
+  if(vdev == undefined) {
+    dlg.data("is_new", true);
+    vdev = {
+      "id": "vdev:" + gen_code(),
+      "data_ip": "",
+      "short_name": "",
+      "sysDescr": "",
+      "overall_status": "ok",
+      "interfaces_sorted": [],
+      "interfaces": {},
+      "last_seen": unix_timestamp(),
+      "model_short": "Virtual device",
+      "site": site,
+      "sysLocation": "",
+      "sysUpTimeStr": "Forever",
+      "virtual": 1,
+    };
+  } else {
+    dlg.data("is_new", false);
+  };
+
+  dlg.data("vdev", vdev);
+  dlg.data("donefunc", donefunc);
+
+  let table = $(TABLE).appendTo(content);
+
+  table
+    .append( $(TR)
+      .append( $(TD).text("Hostname:") )
+      .append( $(TD)
+        .append( $(INPUT).addClass("short_name")
+          .val(vdev["short_name"])
+          .title(String(g_short_name_reg))
+        )
+      )
+    )
+    .append( $(TR)
+      .append( $(TD).text("IP:") )
+      .append( $(TD)
+        .append( $(INPUT).addClass("data_ip")
+          .val(vdev["data_ip"])
+        )
+      )
+    )
+    .append( $(TR)
+      .append( $(TD).text("Описание:") )
+      .append( $(TD)
+        .append( $(TEXTAREA).addClass("sysDescr")
+          .val(vdev["sysDescr"])
+        )
+      )
+    )
+    .append( $(TR)
+      .append( $(TD).text("Модель:") )
+      .append( $(TD)
+        .append( $(INPUT).addClass("model_short")
+          .val(vdev["model_short"])
+        )
+      )
+    )
+    .append( $(TR)
+      .append( $(TD).text("Локация:") )
+      .append( $(TD)
+        .append( $(INPUT, {"type": "hidden"}).addClass("site")
+          .val(vdev["site"])
+        )
+        .append( get_tag({"id": "root", "data": {}, "children": data["sites"]}, vdev["site"]) )
+      )
+    )
+    .append( $(TR)
+      .append( $(TD).text("sysLocation:") )
+      .append( $(TD)
+        .append( $(INPUT).addClass("sysLocation")
+          .val(vdev["sysLocation"])
+        )
+      )
+    )
+  ;
+
+  let ports = $(DIV).addClass("table")
+    .append( $(DIV).addClass("thead")
+      .append( $(SPAN).addClass("th").text("ifName") )
+      .append( $(SPAN).addClass("th").text("Description") )
+      .append( $(SPAN).addClass("th").text("") )
+    )
+    .append( $(DIV).addClass("tbody").addClass("interfaces") )
+    .append( $(DIV).addClass("tfoot")
+      .append( $(SPAN).addClass("td")
+        .append( $(INPUT, {"placeholder": "Eth1/0/x"}).val("Eth1/0/").addClass("ifName")
+          .title(String(g_ifName_reg))
+        )
+      )
+      .append( $(SPAN).addClass("td")
+        .append( $(INPUT).addClass("ifAlias") )
+      )
+      .append( $(SPAN).addClass("td")
+        .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-plus"])
+          .click(function() {
+            let ifName = $(this).closest(".tfoot").find(".ifName").val();
+            if(ifName == undefined) return;
+            if(ifName == "Eth1/0/" || !g_ifName_reg.test(ifName)) {
+              $(this).closest(".tfoot").find(".ifName").animateHighlight("orange", 400);
+              return;
+            };
+            let ifAlias = $(this).closest(".tfoot").find(".ifAlias").val();
+            if(ifAlias == undefined) return;
+            ifName = String(ifName).trim();
+            let found = undefined;
+
+            $(this).closest(".table").find(".tbody").find(".ifName").each(function() {
+              let this_ifName = $(this).text();
+              if(this_ifName == ifName) {
+                found = $(this);
+                return false;
+              };
+            });
+
+            if(found != undefined) {
+              found[0].scrollIntoView();
+              found.animateHighlight("red", 500);
+              return;
+            };
+
+            $(this).closest(".table").find(".tbody")
+              .append( get_vdev_port(ifName, ifAlias) )
+            ;
+            $(this).closest(".tfoot").find(".ifName").val("Eth1/0/");
+            $(this).closest(".tfoot").find(".ifName").focus();
+          })
+        )
+      )
+    )
+  ;
+
+  for(let i in vdev["interfaces_sorted"]) {
+    let ifName = vdev["interfaces_sorted"][i];
+    ports.find(".interfaces").append( get_vdev_port(ifName, vdev["interfaces"][ifName]["ifAlias"]) );
+  };
+
+  table
+    .append( $(TR)
+      .append( $(TD, {"colspan": 2})
+        .append( ports )
+      )
+    )
+  ;
+
+  dlg.trigger("recenter");
+};
+
+function get_vdev_port(ifName, ifAlias) {
+  let ret = $(DIV).addClass("tr")
+    .append( $(SPAN).addClass("td").addClass("ifName").text(ifName) )
+    .append( $(SPAN).addClass("td")
+      .append( $(INPUT).addClass("ifAlias")
+        .val(ifAlias)
+      )
+    )
+    .append( $(SPAN).addClass("td")
+      .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-minus"])
+        .click(function() {
+          let row = $(this).closest(".tr");
+          show_confirm("Внимание, удаление порта приведет к удалению виртуальных связей,\n"+
+            "если они есть\nОтмена будет невозможна", function() { row.remove(); }
+          );
+        })
+      )
+    )
+  ;
+  return ret;
+};
+
+function wipe_l2_link(link_id) {
+  try {
+    for(let i = 0; i < 2; i++) {
+      let dev_id = data["l2_links"][link_id][i]["DevId"];
+      let int = data["l2_links"][link_id][i]["ifName"];
+
+      try {
+        let old_links = data["devs"][dev_id]["interfaces"][int]["l2_links"];
+        let new_links = [];
+        for(let l in old_links) {
+          if(old_links[l] != link_id) {
+            new_links.push(old_links[l]);
+          };
+        };
+        if(new_links.length > 0) {
+          data["devs"][dev_id]["interfaces"][int]["l2_links"] = new_links;
+        } else {
+          delete(data["devs"][dev_id]["interfaces"][int]["l2_links"]);
+        };
+      } catch(e) {
+        //ignore
+      };
+    };
+    delete(data["l2_links"][link_id]);
+  } catch(e) {
+    // ignore
+  };
+};
+
+function wipe_l2_link_by_dev_int(dev_id, ifName) {
+  for(let link_id in data["l2_links"]) {
+    if((data["l2_links"][link_id][0]["DevId"] == dev_id &&
+        data["l2_links"][link_id][0]["ifName"] == ifName) ||
+       (data["l2_links"][link_id][1]["DevId"] == dev_id &&
+        data["l2_links"][link_id][1]["ifName"] == ifName)
+    ) {
+      wipe_l2_link(link_id);
+    };
+  };
+};
+
+function vLinksWindow() {
+  let dlg = createWindow("vlink_win", "Виртуальная связь");
+  let content = dlg.find(".content");
+
+  if(dev_selected.length != 2) {
+    content.text("Выберете 2 (ДВА) устройства")
+      .css({"font-size": "large"})
+    ;
+
+    return;
+  };
+
+  let left_sel = $(SELECT)
+    .data("dev_id", dev_selected[0])
+    .append( $(OPTION).text("Выбрать интерфейс...").val("") )
+  ;
+
+  let right_sel = $(SELECT)
+    .data("dev_id", dev_selected[1])
+    .append( $(OPTION).text("Выбрать интерфейс...").val("") )
+  ;
+
+  for(let i in data["devs"][dev_selected[0]]["interfaces_sorted"]) {
+    let ifName = data["devs"][dev_selected[0]]["interfaces_sorted"][i];
+    left_sel.append( $(OPTION).text(ifName).val(ifName) );
+  };
+
+  for(let i in data["devs"][dev_selected[1]]["interfaces_sorted"]) {
+    let ifName = data["devs"][dev_selected[1]]["interfaces_sorted"][i];
+    right_sel.append( $(OPTION).text(ifName).val(ifName) );
+  };
+
+  content
+    .append( $(TABLE)
+      .append( $(TR)
+        .append( $(TD).text(data["devs"][dev_selected[0]]["short_name"]) )
+        .append( $(TD).text(data["devs"][dev_selected[1]]["short_name"]) )
+      )
+    )
+  ;
+
+  for(let link_id in data["l2_links"]) {
+    if(data["l2_links"][link_id]["virtual"] != undefined &&
+       ((data["l2_links"][link_id][0]["DevId"] == dev_selected[0] &&
+         data["l2_links"][link_id][1]["DevId"] == dev_selected[1]) ||
+        (data["l2_links"][link_id][1]["DevId"] == dev_selected[0] &&
+         data["l2_links"][link_id][0]["DevId"] == dev_selected[1])
+       )
+    ) {
+      let tr = $(TR).data("link_id", link_id);
+      if(data["l2_links"][link_id][0]["DevId"] == dev_selected[0]) {
+        tr
+          .append( $(TD).text(data["l2_links"][link_id][0]["ifName"]) )
+          .append( $(TD).text(data["l2_links"][link_id][1]["ifName"]) )
+        ;
+      } else {
+        tr
+          .append( $(TD).text(data["l2_links"][link_id][1]["ifName"]) )
+          .append( $(TD).text(data["l2_links"][link_id][0]["ifName"]) )
+        ;
+      };
+
+      tr
+        .append( $(TD)
+          .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-trash"])
+            .click(function() {
+              let link_id = $(this).closest("TR").data("link_id");
+              show_confirm("Подтвердите удаление связи.\nВнимание: отмена будет невозможна!", function() {
+                run_query({"action": "del_vlink", "vlink_id": link_id}, function(res) {
+                  wipe_l2_link(link_id);
+
+                  dlg.dialog("close");
+                  data_loaded(data, false);
+                });
+              });
+            })
+          )
+        )
+      ;
+      tr.appendTo( content.find("TABLE") );
+    };
+  };
+
+  content.find("TABLE")
+    .append( $(TR)
+      .append( $(TD)
+        .append( left_sel )
+      )
+      .append( $(TD)
+        .append( right_sel )
+      )
+    )
+    .append( $(TR)
+      .append( $(TD, {"colspan": 2})
+        .append( $(LABEL).addClass(["button"])
+          .css({"color": "gray"})
+          .text("Создать")
+          .click(function() {
+            let dlg = $(this).closest(".dialog_start");
+            let pairs = [];
+            $(this).closest("TABLE").find("SELECT").each(function() {
+              let dev_id = $(this).data("dev_id");
+              let ifName = $(this).val();
+              if(ifName != "") {
+                pairs.push({"DevId": dev_id, "ifName": ifName});
+              };
+            });
+            if(pairs.length == 2) {
+              pairs.sort(function(a, b) {
+                return String(a["DevId"]).localeCompare(b["DevId"]);
+              });
+
+              let link_id = String(pairs[0]["DevId"]) + "@" + String(pairs[0]["ifName"]) +
+                  "#" + String(pairs[1]["DevId"]) + "@" + String(pairs[1]["ifName"])
+              ;
+              let link_status = 1;
+              if(data["devs"][ pairs[0]["DevId"] ]["interfaces"][ pairs[0]["ifName"] ]["ifOperStatus"] != 1 ||
+                 data["devs"][ pairs[1]["DevId"] ]["interfaces"][ pairs[1]["ifName"] ]["ifOperStatus"] != 1
+              ) {
+                link_status = 2;
+              };
+              let link = { "0": pairs[0], "1": pairs[1], "status": link_status, "virtual": 1 };
+
+              if(data["l2_links"][link_id] != undefined) {
+                $(this).closest("TABLE").find("SELECT").animateHighlight("red", 500);
+                return;
+              };
+              run_query({"action": "save_vlink", "vlink_id": link_id, "vlink_json": JSON.stringify(link)},
+                function(res) {
+                  data["l2_links"][link_id] = link;
+
+                  let list0;
+                  try {
+                    list0 = data["devs"][ pairs[0]["DevId"] ]["interfaces"][ pairs[0]["ifName"] ]["l2_links"];
+                  } catch(e) {
+                    list0 = undefined;
+                  };
+                  if(list0 == undefined) list0 = [];
+
+                  list0 = append_once(list0, link_id);
+                  try {
+                    data["devs"][ pairs[0]["DevId"] ]["interfaces"][ pairs[0]["ifName"] ]["l2_links"] = list0;
+                  } catch(e) {
+                    //ignore
+                  };
+
+                  let list1;
+                  try {
+                    list1 = data["devs"][ pairs[1]["DevId"] ]["interfaces"][ pairs[1]["ifName"] ]["l2_links"];
+                  } catch(e) {
+                    list1 = undefined;
+                  };
+                  if(list1 == undefined) list1 = [];
+
+                  list1 = append_once(list1, link_id);
+                  try {
+                    data["devs"][ pairs[1]["DevId"] ]["interfaces"][ pairs[1]["ifName"] ]["l2_links"] = list1;
+                  } catch(e) {
+                    //ignore
+                  };
+
+
+                  dlg.dialog("close");
+                  data_loaded(data, false);
+                },
+              );
+            };
+          })
+        )
+      )
+    )
+  ;
+
+       
+
+  content.find("SELECT").on("change", function() {
+    let vals = 0;
+    $(this).closest("TR").find("SELECT").each(function() {
+      if($(this).val() != "") {
+        vals++;
+      };
+    });
+    if(vals == 2) {
+      $(this).closest("TABLE").find(".button").css({"color": "black"});
+    } else {
+      $(this).closest("TABLE").find(".button").css({"color": "gray"});
+    };
+  });
+
+  dlg.trigger("recenter");
 };

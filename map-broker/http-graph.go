@@ -138,7 +138,7 @@ func handleGraph(w http.ResponseWriter, req *http.Request) {
   var q M
 
   defer func() {
-    json := (q == nil && q["json"] != nil)
+    json := (q == nil || q["json"] != nil)
     handle_graph_error(dbg, recover(), w, req, json);
   } ()
 

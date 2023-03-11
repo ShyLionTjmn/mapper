@@ -790,7 +790,7 @@ MAIN_LOOP:
       if err == nil {
         //total_ips := uint64(len(dev_map))
         //fast_start := max_open_files > total_ips+20
-        fast_start := false
+        fast_start := true
         var wg_ sync.WaitGroup
         for ip, _ := range dev_map {
           if ip_reg.MatchString(ip) && dev_map.Vs(ip, "state") != "conflict" {

@@ -47,6 +47,7 @@ var g_site_reg *regexp.Regexp
 var g_proj_reg *regexp.Regexp
 var g_l2_sysloc_reg *regexp.Regexp
 var g_dev_id_reg *regexp.Regexp
+var g_vdev_id_reg *regexp.Regexp
 var g_map_key_reg *regexp.Regexp
 var g_file_key_reg *regexp.Regexp
 var g_shared_key_reg *regexp.Regexp
@@ -60,6 +61,7 @@ func init() {
   g_proj_reg = regexp.MustCompile(`^(?:all|nodata|\d+(?:,\d+)*)$`)
   g_l2_sysloc_reg = regexp.MustCompile(`(?:^|\W)l2(?:\W|$)`)
   g_dev_id_reg = regexp.MustCompile(`^(?:serial|name|lldp):[a-zA-Z0-9_\-\.]+$`)
+  g_vdev_id_reg = regexp.MustCompile(`^vdev:[a-zA-Z0-9_\-\.]+$`)
   g_map_key_reg = regexp.MustCompile(`^(?:loc|tps|colors|options)$`)
   g_file_key_reg = regexp.MustCompile(`^(?:|[0-9a-zA-Z]{10})$`)
   g_shared_key_reg = regexp.MustCompile(`^[0-9a-zA-Z]{10}$`)
@@ -74,6 +76,7 @@ func init() {
 
   gob.Register(M{})
   gob.Register(map[string]interface{}{})
+  gob.Register([]interface{}{})
 }
 
 func containsDotFile(name string) bool {
@@ -738,6 +741,40 @@ func handleAjax(w http.ResponseWriter, req *http.Request) {
 
     out["userinfo"] = out_userinfo
 
+    vdevs := M{}
+    vlinks := M{}
+
+    var vdevs_map map[string]string
+
+    vdevs_map, err = redis.StringMap(red.Do("HGETALL", "vdevs"))
+    if err == redis.ErrNil {
+      //ignore
+    } else if err != nil {
+      panic(err)
+    } else {
+      for vdev_id, vdev_data := range vdevs_map {
+        var vdev M
+        if err = json.Unmarshal([]byte(vdev_data), &vdev); err != nil { panic(err) }
+        vdev["last_seen"] = time.Now().Unix()
+        vdevs[vdev_id] = vdev
+      }
+    }
+
+    var vlinks_map map[string]string
+
+    vlinks_map, err = redis.StringMap(red.Do("HGETALL", "vlinks"))
+    if err == redis.ErrNil {
+      //ignore
+    } else if err != nil {
+      panic(err)
+    } else {
+      for vlink_id, vlink_data := range vlinks_map {
+        var vlink M
+        if err = json.Unmarshal([]byte(vlink_data), &vlink); err != nil { panic(err) }
+        vlinks[vlink_id] = vlink
+      }
+    }
+
     globalMutex.RLock()
     defer globalMutex.RUnlock()
 
@@ -1016,14 +1053,56 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
           }
         }
       }
-      out["l2_links"] = out_links
+      out["l2_links"] = out_links.Copy()
     } else {
       out["l3_links"] = data["l3_links"]
     }
 
-    out["devs"] = out_devs
+    out["devs"] = out_devs.Copy()
 
-    out["virtual_links"] = M{}
+    if g_num_reg.MatchString(req_site) {
+      for vdev_id, _ := range vdevs {
+        if g_num_reg.MatchString(vdevs.Vs(vdev_id, "site")) {
+          vdev_site := vdevs.Vs(vdev_id, "site")
+          if tag_has_root(vdev_site, req_site, 0) {
+            out.VM("devs")[vdev_id] = vdevs.VM(vdev_id)
+          }
+        }
+      }
+      for vlink_id, _ := range vlinks {
+        dev0 := vlinks.Vs(vlink_id, "0", "DevId")
+        if0 := vlinks.Vs(vlink_id, "0", "ifName")
+
+        dev1 := vlinks.Vs(vlink_id, "1", "DevId")
+        if1 := vlinks.Vs(vlink_id, "1", "ifName")
+
+        if out.EvM("devs", dev0, "interfaces", if0) && out.EvM("devs", dev1, "interfaces", if1) {
+          if out.Vi("devs", dev0, "interfaces", if0, "ifOperStatus") == int64(1) &&
+             out.Vi("devs", dev0, "interfaces", if0, "ifOperStatus") == int64(1) &&
+          true {
+            vlinks.VM(vlink_id)["status"] = 1
+          } else {
+            vlinks.VM(vlink_id)["status"] = 2
+          }
+
+          out.VM("l2_links")[vlink_id] = vlinks.VM(vlink_id)
+
+          list0 := []string{}
+          if out.EvA("devs", dev0, "interfaces", if0, "l2_links") {
+            list0 = out.VA("devs", dev0, "interfaces", if0, "l2_links").([]string)
+          }
+          list0 = StrAppendOnce(list0, vlink_id)
+          out.VM("devs", dev0, "interfaces", if0)["l2_links"] = list0
+
+          list1 := []string{}
+          if out.EvA("devs", dev1, "interfaces", if1, "l2_links") {
+            list1 = out.VA("devs", dev1, "interfaces", if1, "l2_links").([]string)
+          }
+          list1 = StrAppendOnce(list1, vlink_id)
+          out.VM("devs", dev1, "interfaces", if1)["l2_links"] = list1
+        }
+      }
+    }
 
     var map_hash_key_data string
     var map_hash_key_time string
@@ -1621,6 +1700,21 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
 
     if dev_id, err = get_p_string(q, "dev_id", nil); err != nil { panic(err) }
 
+    if g_vdev_id_reg.MatchString(dev_id) {
+      var vdev_json string
+      if vdev_json, err = redis.String(red.Do("HGET", "vdevs", dev_id)); err == redis.ErrNil {
+        out["fail"] = "no_data"
+      } else if err == nil {
+        var vdev M
+        if err = json.Unmarshal([]byte(vdev_json), &vdev); err != nil { panic(err) }
+        vdev["last_seen"] = time.Now().Unix()
+        out["dev"] = vdev
+      } else {
+        panic(err)
+      }
+      goto OUT
+    }
+
     globalMutex.RLock()
     defer globalMutex.RUnlock()
 
@@ -1674,6 +1768,87 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
 
     if out, err = search(search_for, q, red, 2*time.Second); err != nil { panic(err) }
 
+  } else if action == "save_vdev" {
+    var vdev_id string
+    if vdev_id, err = get_p_string(q, "vdev_id", g_vdev_id_reg); err != nil { panic(err) }
+
+    var vdev_json string
+    if vdev_json, err = get_p_string(q, "vdev_json", nil); err != nil { panic(err) }
+    if !strings.HasPrefix(vdev_json, "{") { panic("Not JSON") }
+
+    var vdev M
+    if err = json.Unmarshal([]byte(vdev_json), &vdev); err != nil { panic(err) }
+    if !g_num_reg.MatchString(vdev.Vs("site")) { panic("Bad vdev site") }
+
+    if _, err = red.Do("HSET", "vdevs", vdev_id, vdev_json); err != nil { panic(err) }
+
+    var vlinks_map map[string]string
+    vlinks_map, err = redis.StringMap(red.Do("HGETALL", "vlinks"))
+    if err == nil {
+      for vlink_id, vlink_data := range vlinks_map {
+        var vlink M
+        if err = json.Unmarshal([]byte(vlink_data), &vlink); err != nil { panic(err) }
+
+        if (vlink.Vs("0", "DevId") == vdev_id &&
+            !vdev.EvM("interfaces", vlink.Vs("0", "ifName") )) ||
+           (vlink.Vs("1", "DevId") == vdev_id &&
+            !vdev.EvM("interfaces", vlink.Vs("1", "ifName") )) ||
+        false {
+          if _, err = red.Do("HDEL", "vlinks", vlink_id); err != nil { panic(err) }
+        }
+      }
+    } else if err != redis.ErrNil {
+      panic(err)
+    }
+
+    out["done"] = 1
+
+  } else if action == "del_vdev" {
+    var vdev_id string
+    if vdev_id, err = get_p_string(q, "vdev_id", g_vdev_id_reg); err != nil { panic(err) }
+
+    if _, err = red.Do("HDEL", "vdevs", vdev_id); err != nil { panic(err) }
+
+    var vlinks_map map[string]string
+    vlinks_map, err = redis.StringMap(red.Do("HGETALL", "vlinks"))
+    if err == nil {
+      for vlink_id, vlink_data := range vlinks_map {
+        var vlink M
+        if err = json.Unmarshal([]byte(vlink_data), &vlink); err != nil { panic(err) }
+
+        if vlink.Vs("0", "DevId") == vdev_id ||
+           vlink.Vs("1", "DevId") == vdev_id ||
+        false {
+          if _, err = red.Do("HDEL", "vlinks", vlink_id); err != nil { panic(err) }
+        }
+      }
+    } else if err != redis.ErrNil {
+      panic(err)
+    }
+
+    out["done"] = 1
+
+  } else if action == "save_vlink" {
+    var vlink_id string
+    if vlink_id, err = get_p_string(q, "vlink_id", nil); err != nil { panic(err) }
+
+    var vlink_json string
+    if vlink_json, err = get_p_string(q, "vlink_json", nil); err != nil { panic(err) }
+    if !strings.HasPrefix(vlink_json, "{") { panic("Not JSON") }
+
+    if !json.Valid([]byte(vlink_json)) { panic("Bad JSON") }
+
+    if _, err = red.Do("HSET", "vlinks", vlink_id, vlink_json); err != nil { panic(err) }
+
+
+  } else if action == "del_vlink" {
+    var vlink_id string
+    if vlink_id, err = get_p_string(q, "vlink_id", nil); err != nil { panic(err) }
+
+    if _, err = red.Do("HDEL", "vlinks", vlink_id); err != nil { panic(err) }
+
+    out["done"] = 1
+
   } else if action == "query" {
     out["_query"] = q
     goto OUT
@@ -1692,13 +1867,6 @@ pre_marshal := time.Now()
 
   jenc := json.NewEncoder(w)
 
-/*
-  json, jerr := json.MarshalIndent(ok_out, "", "  ")
-  if jerr != nil {
-    panic(jerr)
-  }
-*/
-
   w.Header().Set("Content-Type", "text/javascript; charset=UTF-8")
   w.Header().Set("Cache-Control", "no-cache")
   w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -1708,8 +1876,6 @@ pre_marshal := time.Now()
   w.Header().Set("X-Debug-Marshal-Duration", fmt.Sprint(time.Now().Sub(pre_marshal).Abs()) )
   w.WriteHeader(http.StatusOK)
 
-  //w.Write(json)
-  //w.Write([]byte("\n"))
   err = jenc.Encode(ok_out)
   if err != nil {
     panic(err)
