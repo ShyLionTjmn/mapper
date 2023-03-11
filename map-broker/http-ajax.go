@@ -1712,25 +1712,55 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
       } else {
         panic(err)
       }
-      goto OUT
-    }
-
-    globalMutex.RLock()
-    defer globalMutex.RUnlock()
-
-    if !devs.EvM(dev_id) {
-      out["fail"] = "no_data"
     } else {
-      out["dev"] = devs.VM(dev_id).Copy()
 
-      for ifName, _ := range devs_macs.VM(dev_id) {
-        if out.EvM("dev", "interfaces", ifName) {
-          out.VM("dev", "interfaces", ifName)["macs"] = devs_macs.VM(dev_id, ifName).Copy()
+      globalMutex.RLock()
+
+      if !devs.EvM(dev_id) {
+        out["fail"] = "no_data"
+      } else {
+        out["dev"] = devs.VM(dev_id).Copy()
+
+        for ifName, _ := range devs_macs.VM(dev_id) {
+          if out.EvM("dev", "interfaces", ifName) {
+            out.VM("dev", "interfaces", ifName)["macs"] = devs_macs.VM(dev_id, ifName).Copy()
+          }
+        }
+        for ifName, _ := range devs_arp.VM(dev_id) {
+          if out.EvM("dev", "interfaces", ifName) {
+            out.VM("dev", "interfaces", ifName)["arp"] = devs_arp.VM(dev_id, ifName).Copy()
+          }
         }
       }
-      for ifName, _ := range devs_arp.VM(dev_id) {
-        if out.EvM("dev", "interfaces", ifName) {
-          out.VM("dev", "interfaces", ifName)["arp"] = devs_arp.VM(dev_id, ifName).Copy()
+      globalMutex.RUnlock()
+    }
+
+    var vlinks_map map[string]string
+
+    vlinks_map, err = redis.StringMap(red.Do("HGETALL", "vlinks"))
+    if err == redis.ErrNil {
+      //ignore
+    } else if err != nil {
+      panic(err)
+    } else {
+      for vlink_id, vlink_data := range vlinks_map {
+        var vlink M
+        if err = json.Unmarshal([]byte(vlink_data), &vlink); err != nil { panic(err) }
+        if vlink.Vs("0", "DevId") == dev_id && out.EvM("dev", "interfaces", vlink.Vs("0", "ifName")) {
+          list := []string{}
+          if out.EvA("dev", "interfaces", vlink.Vs("0", "ifName"), "l2_links") {
+            list = out.VA("dev", "interfaces", vlink.Vs("0", "ifName"), "l2_links").([]string)
+          }
+          list = StrAppendOnce(list, vlink_id)
+          out.VM("dev", "interfaces", vlink.Vs("0", "ifName"))["l2_links"] = list
+        }
+        if vlink.Vs("1", "DevId") == dev_id && out.EvM("dev", "interfaces", vlink.Vs("1", "ifName")) {
+          list := []string{}
+          if out.EvA("dev", "interfaces", vlink.Vs("1", "ifName"), "l2_links") {
+            list = out.VA("dev", "interfaces", vlink.Vs("1", "ifName"), "l2_links").([]string)
+          }
+          list = StrAppendOnce(list, vlink_id)
+          out.VM("dev", "interfaces", vlink.Vs("1", "ifName"))["l2_links"] = list
         }
       }
     }

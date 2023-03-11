@@ -808,17 +808,10 @@ function dev_list_stop(e, ui) {
     Y=Math.floor(Y/grid)*grid;
 
     map_data["loc"][id]={"x": X, "y": Y};
-    add_device(id);
     save_map("loc", id);
 
-    resort_dev_list();
-
-    build_connections();
-    device_drag(id, X,Y);
-
-    for(let link_id in connections) {
-      if(connections[link_id]["from_dev"] == id || connections[link_id]["to_dev"] == id) draw_connection(link_id);
-    };
+    data_loaded(data, false);
+    return;
   };
 };
 
@@ -1040,7 +1033,11 @@ $( document ).ready(function() {
             .css({"color": "darkred"})
            ;
            $(".vlink_btn").css({"color": "gray"});
-           $("#vlink_win").dialog("close");
+           
+           let w = $("#vlink_win");
+           if(w.length > 0 && w.find("TABLE").length == 0) {
+             $("#vlink_win").dialog("close");
+           };
          };
        })
      )
@@ -1099,6 +1096,7 @@ $( document ).ready(function() {
      e.stopPropagation();
      dev_select_border($(".device"), false);
      dev_selected = [];
+     vLinksWindow(true);
      $("#btnSetColor").prop("disabled", true);
      $("#btnGetColor").prop("disabled", true);
    })
@@ -2345,15 +2343,13 @@ function inv_ent(dev_id, key, count) {
 function device_click(ui, e) {
   let id=ui.parent().attr('id');
 
-  if(!allow_select) {
-    if(!e.shiftKey) {
-      device_win(id);
-    };
+  if(!e.ctrlKey && !e.shiftKey) {
+    device_win(id);
     return;
   };
 
   //device_clicked(data["devs"][id]);
-  if(data["devs"][id] != undefined && (allow_select || e.shiftKey)) {
+  if(data["devs"][id] != undefined && allow_select) {
     if(e.ctrlKey) {
       let i=dev_selected.indexOf(id);
       if(i < 0) {
@@ -2363,7 +2359,7 @@ function device_click(ui, e) {
         dev_selected.splice(i,1);
         dev_select_border($(document.getElementById(id)), false);
       };
-    } else {
+    } else if(e.shiftKey) {
       dev_select_border($(".device"), false);
       dev_select_border($(document.getElementById(id)), true);
       dev_selected=[id];
@@ -2379,6 +2375,7 @@ function device_click(ui, e) {
     } else {
       $("#btnGetColor").prop("disabled", true);
     };
+    vLinksWindow(true);
   };
 };
 
@@ -2499,7 +2496,9 @@ function device_drag_stop(e, ui) {
 
     for(let l in dev_links) {
       let link_id=dev_links[l];
-      if(dev_selected.indexOf( link_devs[link_id]["dev1"] ) >= 0 && dev_selected.indexOf( link_devs[link_id]["dev2"] ) >= 0) {
+      if(dev_selected.indexOf( link_devs[link_id]["dev1"] ) >= 0 &&
+         dev_selected.indexOf( link_devs[link_id]["dev2"] ) >= 0
+      ) {
         for(let tpi in map_data["tps"][link_id]) {
           map_data["tps"][link_id][tpi]["x"] += dX;
           map_data["tps"][link_id][tpi]["y"] += dY;
@@ -3134,6 +3133,7 @@ function interface_click(int, dev, e) {
     } else {
       $("#btnGetColor").prop("disabled", true);
     };
+    vLinksWindow(true);
   } else {
     interface_win(dev_id, int);
   };
@@ -8506,7 +8506,16 @@ function wipe_l2_link_by_dev_int(dev_id, ifName) {
   };
 };
 
-function vLinksWindow() {
+function vLinksWindow(sel_changed = false) {
+  if(sel_changed) {
+    let elm = $("#vlink_win");
+    if(elm.length == 0) {
+      return;
+    } else if(elm.find("TABLE").length > 0) {
+      return;
+    };
+  };
+
   let dlg = createWindow("vlink_win", "Виртуальная связь");
   let content = dlg.find(".content");
 
