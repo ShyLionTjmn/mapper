@@ -134,6 +134,24 @@ var g_short_name_reg = /^[0-9a-z_A-Z][0-9a-z_A-Z\-]*$/;
 var g_ifName_reg = /^[0-9a-z_A-Z][0-9a-z_A-Z\-\/# ]*$/;
 var g_num_reg = /^\d+$/;
 
+function unwind_list(list) {
+  let ret = [];
+
+  let parts = String(list).split(",");
+  for(let p in parts) {
+    let part = parts[p];
+    let range = part.split("-");
+    if(range.length == 1) {
+      ret.push(range);
+    } else {
+      for(let i = Number(range[0]); i <= Number(range[1]); i++) {
+        ret.push(String(i));
+      };
+    };
+  };
+  return ret;
+};
+
 function gen_code() {
   let code_chars="qwertyuiopasdfghjkzxcvbnmQWERTYUPASDFGHJKLZXCVBNM23456789";
   let code = "";
@@ -1083,6 +1101,14 @@ $( document ).ready(function() {
        vLinksWindow();
      })
    )
+   .append( $(LABEL).addClass(["button", "vlans_btn"])
+     .text("VLAN")
+     .title("Показать VLAN и перечень портов в них")
+     .click(function(e) {
+       e.stopPropagation();
+       VLANsWindow();
+     })
+   )
    .appendTo( $("BODY") )
   ;
 
@@ -1203,8 +1229,10 @@ $( document ).ready(function() {
 
     if(g_num_reg.test(site)) {
       $(".vdev_btn").show();
+      $(".vlink_btn").show();
     } else {
       $(".vdev_btn").hide();
+      $(".vlink_btn").hide();
     };
 
     let site_tag = get_tag({"id": "root", "children": data["sites"], "data": {}}, site);
@@ -2774,27 +2802,34 @@ function int_metrics(int, dev) {
     ) {
       labels["03_switchport"]={};
       if(dev["interfaces"][int]['portMode'] == 1) { //access
-        labels["03_switchport"]["short_text"]="A&nbsp;"+dev["interfaces"][int]['portPvid'];
-        labels["03_switchport"]["long_text"]="Access VLAN:&nbsp;"+dev["interfaces"][int]['portPvid'];
+        labels["03_switchport"]["short_text"]="A&nbsp;"+if_undef(dev["interfaces"][int]['portPvid'], "");
+        labels["03_switchport"]["long_text"]="Access VLAN:&nbsp;"+if_undef(dev["interfaces"][int]['portPvid'], "");
         if(dev["interfaces"][int]['portVvid'] != undefined && dev["interfaces"][int]['portVvid'] != 4096) {
-          labels["03_switchport"]["short_text"] += ", V "+dev["interfaces"][int]['portVvid'];
-          labels["03_switchport"]["long_text"] += "\nVoice VLAN: "+dev["interfaces"][int]['portVvid'];
+          labels["03_switchport"]["short_text"] += ", V "+if_undef(dev["interfaces"][int]['portVvid'], "");
+          labels["03_switchport"]["long_text"] += "\nVoice VLAN: "+if_undef(dev["interfaces"][int]['portVvid'], "");
         };
         labels["03_switchport"]["bg_color"]="#AAAAFF";
-      } else if(dev["interfaces"][int]['portMode'] == 2 && dev["interfaces"][int]['portTrunkVlans'] != undefined) { //trunk
-        labels["03_switchport"]["short_text"]="T&nbsp;"+dev["interfaces"][int]['portTrunkVlans']+"/"+dev["interfaces"][int]['portPvid'];
-        labels["03_switchport"]["long_text"]="Trunk PVID:&nbsp;"+dev["interfaces"][int]['portPvid']+
-                                   ",&nbsp;Allowed:&nbsp;"+dev["interfaces"][int]['portTrunkVlans'];
+      } else if(dev["interfaces"][int]['portMode'] == 2) { //trunk
+        labels["03_switchport"]["short_text"]="T&nbsp;"+if_undef(dev["interfaces"][int]['portTrunkVlans'], "")+
+          "/"+ if_undef(dev["interfaces"][int]['portPvid'], "")
+        ;
+        labels["03_switchport"]["long_text"]="Trunk PVID:&nbsp;"+if_undef(dev["interfaces"][int]['portPvid'], "")+
+                                   ",&nbsp;Allowed:&nbsp;"+if_undef(dev["interfaces"][int]['portTrunkVlans'], "")
+        ;
         labels["03_switchport"]["bg_color"]="#AAAAFF";
-      } else if(dev["interfaces"][int]['portMode'] == 3 && dev["interfaces"][int]['portHybridUntag'] != undefined && dev["interfaces"][int]['portHybridTag'] != undefined) { //hybrid
-        labels["03_switchport"]["short_text"]="H&nbsp;"+dev["interfaces"][int]['portHybridUntag']+"/"+dev["interfaces"][int]['portHybridTag']+"/"+dev["interfaces"][int]['portPvid'];
-        labels["03_switchport"]["long_text"]="Hybrid PVID:&nbsp;"+dev["interfaces"][int]['portPvid']+
-                                   ",&nbsp;Untag:&nbsp;"+dev["interfaces"][int]['portHybridUntag']+
-                                   ",&nbsp;Tag:&nbsp;"+dev["interfaces"][int]['portHybridTag'];
+      } else if(dev["interfaces"][int]['portMode'] == 3) { //hybrid
+        labels["03_switchport"]["short_text"]="H&nbsp;"+if_undef(dev["interfaces"][int]['portHybridUntag'], "")+
+          "/"+if_undef(dev["interfaces"][int]['portHybridTag'], "")+
+          "/"+if_undef(dev["interfaces"][int]['portPvid'], "")
+        ;
+        labels["03_switchport"]["long_text"]="Hybrid PVID:&nbsp;"+if_undef(dev["interfaces"][int]['portPvid'], "")+
+                                   ",&nbsp;Untag:&nbsp;"+if_undef(dev["interfaces"][int]['portHybridUntag'], "")+
+                                   ",&nbsp;Tag:&nbsp;"+if_undef(dev["interfaces"][int]['portHybridTag'], "")
+        ;
         labels["03_switchport"]["bg_color"]="#AAAAFF";
       } else { //unknown
         labels["03_switchport"]["short_text"]="U&nbsp;"+dev["interfaces"][int]['portPvid'];
-        labels["03_switchport"]["long_text"]="Unknown, PVID:&nbsp;"+dev["interfaces"][int]['portPvid'];
+        labels["03_switchport"]["long_text"]="Unknown, PVID:&nbsp;"+if_undef(dev["interfaces"][int]['portPvid'], "");
         labels["03_switchport"]["bg_color"]="#FFAAFF";
       };
     };
@@ -8707,6 +8742,213 @@ function vLinksWindow(sel_changed = false) {
       $(this).closest("TABLE").find(".button").css({"color": "gray"});
     };
   });
+
+  dlg.trigger("recenter");
+};
+
+function VLANsWindow(with_links = false) {
+  let dlg = createWindow("vlans_win", "VLAN");
+  let content = dlg.find(".content");
+
+  let vlans = {};
+
+  for(let dev_id in data["devs"]) {
+    if(data["devs"][dev_id]["interfaces"] != undefined &&
+       data["devs"][dev_id]["vlans"] != undefined
+    ) {
+      let dev_vlans = {};
+      for(let v in data["devs"][dev_id]["vlans"]) {
+        dev_vlans[ data["devs"][dev_id]["vlans"][v] ] = 1;
+      };
+      for(let ifName in data["devs"][dev_id]["interfaces"]) {
+        if((with_links || data["devs"][dev_id]["interfaces"][ifName]["l2_links"] == undefined) &&
+           data["devs"][dev_id]["interfaces"][ifName]["lag_members"] == undefined &&
+           data["devs"][dev_id]["interfaces"][ifName]["lag_parent"] == undefined &&
+           data["devs"][dev_id]["interfaces"][ifName]["pagp_members"] == undefined &&
+           data["devs"][dev_id]["interfaces"][ifName]["pagp_parent"] == undefined &&
+           true
+        ) {
+          let portMode = data["devs"][dev_id]["interfaces"][ifName]["portMode"];
+          let pvid = data["devs"][dev_id]["interfaces"][ifName]["portPvid"];
+          let trv = data["devs"][dev_id]["interfaces"][ifName]["portTrunkVlans"];
+          let htv = data["devs"][dev_id]["interfaces"][ifName]["portHybridTag"];
+          let huv = data["devs"][dev_id]["interfaces"][ifName]["portHybridUntag"];
+
+          if(pvid !== undefined) {
+            pvid = String(pvid);
+          };
+
+          let a = ifName.match(/^(?:Vlan|Vl|Po|Vlanif|.*\.)(\d+)$/);
+          if(a !== undefined && a !== null) {
+            let vlan = a[1];
+            if(vlan !== pvid && dev_vlans[vlan] != undefined) {
+              if(vlans[vlan] == undefined) { vlans[vlan] = {}; };
+              if(vlans[vlan][dev_id] == undefined) { vlans[vlan][dev_id] = {}; };
+              vlans[vlan][dev_id][ifName] = 1;
+            };
+          };
+
+          if(pvid != undefined && dev_vlans[pvid] != undefined) {
+            let vlan = pvid;
+            if(vlans[vlan] == undefined) { vlans[vlan] = {}; };
+            if(vlans[vlan][dev_id] == undefined) { vlans[vlan][dev_id] = {}; };
+            vlans[vlan][dev_id][ifName] = 1;
+          };
+
+          if(portMode == 2) {
+            if(trv !== undefined) {
+              let list = unwind_list(trv);
+              for(let v in list) {
+                let vlan = list[v];
+                if(vlan !== pvid && dev_vlans[vlan] != undefined) {
+                  if(vlans[vlan] == undefined) { vlans[vlan] = {}; };
+                  if(vlans[vlan][dev_id] == undefined) { vlans[vlan][dev_id] = {}; };
+                  vlans[vlan][dev_id][ifName] = 1;
+                };
+              };
+            };
+          } else if(portMode == 3) {
+            if(htv !== undefined) {
+              let list = unwind_list(htv);
+              for(let v in list) {
+                let vlan = list[v];
+                if(vlan !== pvid && dev_vlans[vlan] != undefined) {
+                  if(vlans[vlan] == undefined) { vlans[vlan] = {}; };
+                  if(vlans[vlan][dev_id] == undefined) { vlans[vlan][dev_id] = {}; };
+                  vlans[vlan][dev_id][ifName] = 1;
+                };
+              };
+            };
+            if(huv !== undefined) {
+              let list = unwind_list(huv);
+              for(let v in list) {
+                let vlan = list[v];
+                if(vlan !== pvid && dev_vlans[vlan] != undefined) {
+                  if(vlans[vlan] == undefined) { vlans[vlan] = {}; };
+                  if(vlans[vlan][dev_id] == undefined) { vlans[vlan][dev_id] = {}; };
+                  vlans[vlan][dev_id][ifName] = 1;
+                };
+              };
+            };
+          };
+        };
+      };
+    };
+  };
+
+  let vlan_list = keys(vlans);
+  vlan_list.sort(num_compare);
+
+  let cont = $(TABLE)
+  ;
+
+  for(let v in vlan_list) {
+    let vlan = vlan_list[v];
+
+    cont
+      .append( $(TBODY)
+        .append( $(TR)
+          .data("vlan", vlan)
+          .data("vlan_data", vlans[vlan])
+          .data("filled", false)
+          .click(function() {
+            let vlan = $(this).data("vlan");
+            let vdata = $(this).data("vlan_data");
+            let filled = $(this).data("filled");
+
+            if($(this).find("LABEL.ui-icon").hasClass("ui-icon-plus")) {
+              $(this).find("LABEL.ui-icon").removeClass("ui-icon-plus");
+              $(this).find("LABEL.ui-icon").addClass("ui-icon-minus");
+            } else {
+              $(this).find("LABEL.ui-icon").removeClass("ui-icon-minus");
+              $(this).find("LABEL.ui-icon").addClass("ui-icon-plus");
+            };
+
+            let vcont = $("#vlan_cont_"+vlan);
+            if(!filled) {
+              let dev_list = keys(vdata);
+
+              dev_list.sort(function(a, b) {
+                return(num_compare(data["devs"][a]["short_name"], data["devs"][b]["short_name"]));
+              });
+
+              for(let d in dev_list) {
+                let dev_id = dev_list[d];
+
+                let port_list = keys(vdata[dev_id]);
+                port_list.sort(num_compare);
+
+                vcont
+                  .append( $(TR)
+                    .append( $(TD, {"colspan": 3})
+                      .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-minus"])
+                        .css({"margin-left": "1em", "margin-right": "0.5em"})
+                        .data("dev_id", dev_id)
+                        .data("vlan", vlan)
+                        .click(function() {
+                          if($(this).hasClass("ui-icon-plus")) {
+                            $(this).removeClass("ui-icon-plus");
+                            $(this).addClass("ui-icon-minus");
+                          } else {
+                            $(this).removeClass("ui-icon-minus");
+                            $(this).addClass("ui-icon-plus");
+                          };
+                          let dev_id = $(this).data("dev_id");
+                          let vlan = $(this).data("vlan");
+
+                          $("." + $.escapeSelector("vlan_"+vlan+"_@_"+dev_id)).toggle();
+
+                        })
+                      )
+                      .append( $(SPAN)
+                        .text( data["devs"][dev_id]["short_name"] )
+                        .css({"position": "sticky", "background-color": "white", "top": "1.5em",
+                          "z-index": windows_z + 10,
+                        })
+                      )
+                    )
+                  )
+                ;
+
+                for(let p in port_list) {
+                  let ifName = port_list[p];
+
+                  vcont
+                    .append( $(TR).addClass("vlan_"+vlan+"_@_"+dev_id)
+                      .append( $(TD)
+                        .css({"padding-left": "2em"})
+                        .append( $(SPAN)
+                          .text(ifName)
+                        )
+                      )
+                      .append( $(TD)
+                        .append( int_labels(ifName, data["devs"][dev_id]) )
+                      )
+                      .append( $(TD)
+                        .text(data["devs"][dev_id]["interfaces"][ifName]["ifAlias"])
+                      )
+                    )
+                  ;
+                };
+              };
+
+              $(this).data("filled", true);
+            };
+            vcont.toggle();
+          })
+          .append( $(TD, {"colspan": 3})
+            .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-plus"]) )
+            .append( $(SPAN).text(" VLAN " + vlan)
+            )
+          )
+        )
+      )
+      .append( $(TBODY, {"id": "vlan_cont_"+vlan}).hide() )
+    ;
+
+  };
+
+  cont.appendTo(content);
 
   dlg.trigger("recenter");
 };

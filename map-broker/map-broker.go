@@ -177,6 +177,7 @@ func init() {
     "short_name": 1,
     "sysLocation": 1,
     "sysUpTimeStr": 1,
+    "vlans": 1,
   }
 
   g_dev_front_fields_l3 = M{

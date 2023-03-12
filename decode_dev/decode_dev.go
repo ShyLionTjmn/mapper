@@ -132,6 +132,46 @@ func vlans_list(s string) string {
   return ret
 }
 
+func port_list_8to1(s string) []string {
+  s_len := len(s)
+  ret := make([]string, 0)
+  if s_len%2 != 0 { return ret }
+
+  cur_port := int64(1)
+
+  for o := 0; o < s_len; o += 2 {
+    nibble, err := strconv.ParseUint(s[o:o+2], 16, 8)
+    if err != nil { return nil }
+    if (nibble & 0x80) != 0 {
+      ret = append(ret, strconv.FormatInt(cur_port+7, 10))
+    }
+    if (nibble & 0x40) != 0 {
+      ret = append(ret, strconv.FormatInt(cur_port+6, 10))
+    }
+    if (nibble & 0x20) != 0 {
+      ret = append(ret, strconv.FormatInt(cur_port+5, 10))
+    }
+    if (nibble & 0x10) != 0 {
+      ret = append(ret, strconv.FormatInt(cur_port+4, 10))
+    }
+    if (nibble & 0x08) != 0 {
+      ret = append(ret, strconv.FormatInt(cur_port+3, 10))
+    }
+    if (nibble & 0x04) != 0 {
+      ret = append(ret, strconv.FormatInt(cur_port+2, 10))
+    }
+    if (nibble & 0x02) != 0 {
+      ret = append(ret, strconv.FormatInt(cur_port+1, 10))
+    }
+    if (nibble & 0x01) != 0 {
+      ret = append(ret, strconv.FormatInt(cur_port+0, 10))
+    }
+    cur_port += 8
+  }
+
+  return ret
+}
+
 func port_list(s string) []string {
   s_len := len(s)
   ret := make([]string, 0)
@@ -156,6 +196,45 @@ func port_list(s string) []string {
     cur_port += 4
   }
 
+  return ret
+}
+
+func int_array_to_list(aa []int) string {
+  a_len := len(aa)
+  ret := ""
+
+  c := int(-1)
+  cs := ""
+  rng := false
+
+  for i := 0; i < a_len; i++ {
+    var a int
+    a = aa[i]
+    if c < 0 {
+      ret = strconv.FormatInt(int64(a), 10)
+    } else {
+      if a <= c {
+        return ""
+      }
+      if a == (c+1) {
+        if !rng {
+          ret += "-"
+          rng = true
+        }
+      } else {
+        if rng {
+          ret += cs
+          rng = false
+        }
+        ret += ","+strconv.FormatInt(int64(a), 10)
+      }
+    }
+    c = a
+    cs = strconv.FormatInt(int64(a), 10)
+  }
+  if rng {
+    ret += cs
+  }
   return ret
 }
 
@@ -480,6 +559,17 @@ func (d *Dev) Decode(raw M) error {
 // fix raw data
   if raw.EvM("vlanNames") && !raw.Evs("vlanNames", "1") {
     raw["vlanNames"].(M)["1"] = "default"
+  }
+
+  if raw.EvM("vlanNames") {
+    vlans_list := []string{}
+    for vlan := range raw.VM("vlanNames") {
+      vlans_list = append(vlans_list, vlan)
+    }
+
+    sort.Sort(StrByNum(vlans_list))
+
+    dev["vlans"] = vlans_list
   }
 
   if raw.EvM("ifIndexToPort") {
@@ -1657,7 +1747,8 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
 
 
   // Stupid NSGATE puts mgmt IP data onto switchport while having CPU port
-  if strings.Index(dev.Vs("sysObjectID"), ".1.3.6.1.4.1.4808.301.1.70") == 0 && dev.EvM("interfaces", "Port.1") && dev.EvM("interfaces", "CPU port") {
+  if strings.Index(dev.Vs("sysObjectID"), ".1.3.6.1.4.1.4808.301.1.70") == 0 && dev.EvM("interfaces", "Port.1") &&
+     dev.EvM("interfaces", "CPU port") {
     if dev.EvM("interfaces", "Port.1", "ips") {
       dev["interfaces"].(M)["CPU port"].(M)["ips"] = dev.VM("interfaces", "Port.1", "ips")
       delete(dev["interfaces"].(M)["Port.1"].(M), "ips")
@@ -1667,6 +1758,91 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
       delete(dev["interfaces"].(M)["Port.1"].(M), "arp_table")
     }
   }
+  if raw.EvM("3comPortMode") {
+    for port, _ := range raw.VM("3comPortMode") {
+      var port_mode int64
+      switch raw.Vi("3comPortMode", port) {
+      case int64(1): //trunk
+        port_mode = int64(2)
+      case int64(2): //access
+        port_mode = int64(1)
+      case int64(3): //hybrid
+        port_mode = int64(3)
+      default:
+        port_mode = raw.Vi("3comPortMode", port)
+      }
+
+      if ifIndex, ok := raw.Vse("portToIfIndex", port); ok && dev.Evs("ifName", ifIndex) {
+        if ifName, ok := dev.Vse("ifName", ifIndex); ok && dev.EvM("interfaces", ifName) {
+          dev.VM("interfaces", ifName)["portMode"] = port_mode
+        }
+      }
+    }
+
+    port_untagged_vlans := make(map[string][]int)
+    port_tagged_vlans := make(map[string][]int)
+
+    if raw.EvM("3comUntaggedPorts") {
+      for vlan_s, _ := range raw.VM("3comUntaggedPorts") {
+        vlan, _ := strconv.ParseInt(vlan_s, 10, 16)
+        list := port_list_8to1(raw.Vs("3comUntaggedPorts", vlan_s))
+        for _, port := range list {
+          if port_untagged_vlans[port] == nil {
+            port_untagged_vlans[port] = []int{}
+          }
+          port_untagged_vlans[port] = append(port_untagged_vlans[port], int(vlan))
+        }
+      }
+    }
+    if raw.EvM("3comTaggedPorts") {
+      for vlan_s, _ := range raw.VM("3comTaggedPorts") {
+        vlan, _ := strconv.ParseInt(vlan_s, 10, 64)
+        list := port_list_8to1(raw.Vs("3comTaggedPorts", vlan_s))
+        for _, port := range list {
+          if port_tagged_vlans[port] == nil {
+            port_tagged_vlans[port] = []int{}
+          }
+          port_tagged_vlans[port] = append(port_tagged_vlans[port], int(vlan))
+        }
+      }
+    }
+
+    for ifName, _ := range dev.VM("interfaces") {
+      if port, ok := dev.Vse("interfaces", ifName, "portIndex"); ok {
+        port_mode := dev.Vi("interfaces", ifName, "portMode")
+
+        if port_mode == 1 { // access
+          if port_untagged_vlans[port] != nil && len(port_untagged_vlans[port]) == 1 {
+            dev.VM("interfaces", ifName)["portPvid"] = int64(port_untagged_vlans[port][0])
+          }
+        } else if port_mode == 2 {
+          if port_untagged_vlans[port] != nil && len(port_untagged_vlans[port]) == 1 {
+            dev.VM("interfaces", ifName)["portPvid"] = int64(port_untagged_vlans[port][0])
+          }
+          if port_tagged_vlans[port] != nil {
+            list := port_tagged_vlans[port]
+            sort.Ints(list)
+            dev.VM("interfaces", ifName)["portTrunkVlans"] = int_array_to_list(list)
+          }
+        } else if port_mode == 3 {
+          if port_untagged_vlans[port] != nil && len(port_untagged_vlans[port]) == 1 {
+            dev.VM("interfaces", ifName)["portPvid"] = int64(port_untagged_vlans[port][0])
+          }
+          if port_untagged_vlans[port] != nil {
+            list := port_untagged_vlans[port]
+            sort.Ints(list)
+            dev.VM("interfaces", ifName)["portHybridUntag"] = int_array_to_list(list)
+          }
+          if port_tagged_vlans[port] != nil {
+            list := port_tagged_vlans[port]
+            sort.Ints(list)
+            dev.VM("interfaces", ifName)["portHybridTag"] = int_array_to_list(list)
+          }
+        }
+      }
+    }
+  }
+
 
   cpu_num := int64(0)
 
