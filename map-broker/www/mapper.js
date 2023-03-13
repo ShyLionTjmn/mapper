@@ -6862,6 +6862,107 @@ $.fn.searchHighlight_dev = function(dev_id) {
   return this;
 };
 
+$.fn.searchHighlight_int = function(dev_id, ifName) {
+  $(this)
+    .data("sh_dev_id", dev_id)
+    .data("sh_ifName", ifName)
+    .hover(
+      function(e) {
+        e.stopPropagation();
+        let dev_id = $(this).data("sh_dev_id");
+        let ifName = $(this).data("sh_ifName");
+
+        let elm = $("#"+$.escapeSelector( ifName + "@" + dev_id ));
+        if(elm.length > 0) {
+          elm.addClass("search_highlight");
+
+          let elm_offset = elm.offset();
+          let elm_width = elm.width();
+          let elm_height = elm.height();
+          let w_scroll_left = $(window).scrollLeft();
+          let w_scroll_top = $(window).scrollTop();
+          let w_width = $(window).width();
+          let w_height = $(window).height();
+
+          if(elm_offset.left >= w_width + w_scroll_left) {
+            $("BODY")
+              .append( $(DIV).addClass("dev_int_dir_"+ifName + "@" + dev_id)
+                .css({"position": "fixed", "right": "0.5em", "width": "0.5em", "top": "0.5em", "bottom": "0.5em",
+                      "background-color": "orange", "z-index": windows_z + 1000000,
+                })
+              )
+            ;
+          } else if((elm_offset.left + elm_width) <= w_scroll_left) {
+            $("BODY")
+              .append( $(DIV).addClass("dev_int_dir_"+ifName + "@" + dev_id)
+                .css({"position": "fixed", "left": "0.5em", "width": "0.5em", "top": "0.5em", "bottom": "0.5em",
+                      "background-color": "orange", "z-index": windows_z + 1000000,
+                })
+              )
+            ;
+          };
+
+          if(elm_offset.top >= w_height + w_scroll_top) {
+            $("BODY")
+              .append( $(DIV).addClass("dev_int_dir_"+ifName + "@" + dev_id)
+                .css({"position": "fixed", "bottom": "0.5em", "height": "0.5em", "left": "0.5em", "right": "0.5em",
+                      "background-color": "orange", "z-index": windows_z + 1000000,
+                })
+              )
+            ;
+          } else if((elm_offset.top + elm_height) <= w_scroll_top) {
+            $("BODY")
+              .append( $(DIV).addClass("dev_int_dir_"+ifName + "@" + dev_id)
+                .css({"position": "fixed", "top": "0.5em", "height": "0.5em", "left": "0.5em", "right": "0.5em",
+                      "background-color": "orange", "z-index": windows_z + 1000000,
+                })
+              )
+            ;
+          };
+
+          $(".dialog_start").each(function() {
+            let wg = $(this).dialog("widget");
+
+            let wg_width = wg.width();
+            let wg_height = wg.height();
+
+            let wg_offset = wg.offset();
+
+            if(wg_offset.left <= elm_offset.left &&
+               (wg_offset.left + wg_width) >= (elm_offset.left + elm_width) &&
+               wg_offset.top <= elm_offset.top &&
+               (wg_offset.top + wg_height) >= (elm_offset.top + elm_height) &&
+               true
+            ) {
+              wg.addClass("search_highlight");
+            };
+
+          });
+
+        };
+      },
+      function(e) {
+        e.stopPropagation();
+        let dev_id = $(this).data("sh_dev_id");
+        let ifName = $(this).data("sh_ifName");
+
+        let selector = $.escapeSelector( ifName + "@" + dev_id );
+        let elm = $("#" + selector);
+        if(elm.length > 0) {
+          elm.removeClass("search_highlight");
+        };
+        $(".dev_int_dir_" + selector ).remove();
+        $(".dialog_start").each(function() {
+          let wg = $(this).dialog("widget");
+          wg.removeClass("search_highlight");
+        });
+
+      }
+    )
+  ;
+  return this;
+};
+
 function ip_results(ok) {
   if(ok["ips"] === undefined) return $([]);
 
@@ -8900,10 +9001,14 @@ function VLANsWindow(with_links = false) {
 
                         })
                       )
-                      .append( $(SPAN)
+                      .append( $(LABEL)
+                        .css({"border": "1px solid black"})
                         .text( data["devs"][dev_id]["short_name"] )
-                        .css({"position": "sticky", "background-color": "white", "top": "1.5em",
-                          "z-index": windows_z + 10,
+                        .searchHighlight_dev(dev_id)
+                        .data("dev_id", dev_id)
+                        .click(function() {
+                          let dev_id = $(this).data("dev_id");
+                          device_win(dev_id);
                         })
                       )
                     )
@@ -8917,8 +9022,18 @@ function VLANsWindow(with_links = false) {
                     .append( $(TR).addClass("vlan_"+vlan+"_@_"+dev_id)
                       .append( $(TD)
                         .css({"padding-left": "2em"})
-                        .append( $(SPAN)
+                        .append( $(LABEL)
+                          .css({"border": "1px solid black"})
+                          .searchHighlight_dev(dev_id)
+                          .searchHighlight_int(dev_id, ifName)
                           .text(ifName)
+                          .data("dev_id", dev_id)
+                          .data("ifName", ifName)
+                          .click(function() {
+                            let dev_id = $(this).data("dev_id");
+                            let ifName = $(this).data("ifName");
+                            interface_win(dev_id, ifName);
+                          })
                         )
                       )
                       .append( $(TD)
@@ -8938,7 +9053,7 @@ function VLANsWindow(with_links = false) {
           })
           .append( $(TD, {"colspan": 3})
             .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-plus"]) )
-            .append( $(SPAN).text(" VLAN " + vlan)
+            .append( $(SPAN).text(" VLAN " + vlan + "  ("+keys(vlans[vlan]).length+" устройств)")
             )
           )
         )
