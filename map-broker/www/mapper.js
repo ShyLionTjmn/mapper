@@ -2234,6 +2234,127 @@ function device_win(dev_id) {
       section.appendTo( tabs_content );
     };
 
+    if(dev["sites"] !== undefined) {
+      tabs_div
+       .append( $(LABEL).text("Локации").addClass(["button"])
+         .click(function() {
+           let dev_id = $(this).closest(".dialog_start").data("dev_id");
+           let state = !get_win_part("dev_win_" + dev_id, "sites", false);
+           $(this).closest(".dialog_start").find(".sites").toggle(state);
+           set_win_part("dev_win_" + dev_id, "sites", state);
+         })
+       )
+      ;
+
+      let section = $(DIV).addClass("sites")
+        .addClass("table")
+        .toggle(get_win_part("dev_win_" + dev_id, "sites", false))
+        .append( $(DIV).addClass("thead")
+          .append( $(SPAN).addClass("th").text("Локация") )
+          .append( $(SPAN).addClass("th").text("На основании") )
+        )
+      ;
+
+      dev["sites"].sort(function(a, b) {
+        if(a["site"] != b["site"]) return num_compare(a["site"], b["site"]);
+        return num_compare(a["by"], b["by"]);
+      });
+
+      for(let i in dev["sites"]) {
+        let row_site = dev["sites"][i]["site"];
+
+        section
+          .append( $(DIV).addClass("tr")
+            .append( $(SPAN).addClass("td")
+              .append( get_tag({"id": "root", "data": {}, "children": data["sites"]}, row_site) )
+              .append( row_site == site ? $(LABEL) : $(LABEL)
+                .addClass(["button", "ui-icon", "ui-icon-linkext"])
+                .title("Перейти")
+                .css({"margin": "0 0.5em"})
+                .data("site", row_site)
+                .click(function() {
+                  let row_site = $(this).data("site");
+                  window.location = "?action=get_front&site="+row_site+"&proj="+proj+"&file_key="+(DEBUG?"&debug":"");
+                })
+              )
+            )
+            .append( $(SPAN).addClass("td")
+              .append( $(SPAN).text(dev["sites"][i]["by"]) )
+              .append( $(A, {"target": "blank",
+                             "href": "/ipdb/?action=link&ip="+(String(dev["sites"][i]["by"]).split("/")[0]),
+                })
+                .text("IPDB")
+                .css({"margin-left": "0.5em"})
+              )
+            )
+          )
+        ;
+      };
+
+      section.appendTo( tabs_content );
+    };
+
+    if(dev["projects"] !== undefined) {
+      tabs_div
+       .append( $(LABEL).text("Инф.системы").addClass(["button"])
+         .click(function() {
+           let dev_id = $(this).closest(".dialog_start").data("dev_id");
+           let state = !get_win_part("dev_win_" + dev_id, "projects", false);
+           $(this).closest(".dialog_start").find(".projects").toggle(state);
+           set_win_part("dev_win_" + dev_id, "projects", state);
+         })
+       )
+      ;
+
+      let section = $(DIV).addClass("projects")
+        .addClass("table")
+        .toggle(get_win_part("dev_win_" + dev_id, "projects", false))
+        .append( $(DIV).addClass("thead")
+          .append( $(SPAN).addClass("th").text("Инф. система") )
+          .append( $(SPAN).addClass("th").text("На основании") )
+        )
+      ;
+
+      dev["projects"].sort(function(a, b) {
+        if(a["proj"] != b["proj"]) return num_compare(a["proj"], b["proj"]);
+        return num_compare(a["by"], b["by"]);
+      });
+
+      for(let i in dev["projects"]) {
+        let row_project = dev["projects"][i]["proj"];
+
+        section
+          .append( $(DIV).addClass("tr")
+            .append( $(SPAN).addClass("td")
+              .append( get_tag({"id": "root", "data": {}, "children": data["projects"]}, row_project) )
+              .append( row_project == proj ? $(LABEL) : $(LABEL)
+                .addClass(["button", "ui-icon", "ui-icon-linkext"])
+                .title("Перейти")
+                .css({"margin": "0 0.5em"})
+                .data("proj", row_project)
+                .click(function() {
+                  let row_proj = $(this).data("proj");
+                  window.location = "?action=get_front&site="+site+"&proj="+row_proj+"&file_key="+(DEBUG?"&debug":"");
+                })
+              )
+            )
+            .append( $(SPAN).addClass("td")
+              .append( $(SPAN).text(dev["projects"][i]["by"]) )
+              .append( $(A, {"target": "blank",
+                             "href": "/ipdb/?action=link&ip="+(String(dev["projects"][i]["by"]).split("/")[0]),
+                })
+                .text("IPDB")
+                .css({"margin-left": "0.5em"})
+              )
+            )
+          )
+        ;
+      };
+
+      section.appendTo( tabs_content );
+    };
+
+
     content.append( tabs_div );
     content.append( tabs_content );
 
@@ -6348,6 +6469,12 @@ function interface_win(dev_id, int) {
            .append( $(A, {"target": "blank", "href": "telnet://"+ip}).text("TELNET")
              .css({"margin-right": "0.5em"})
            )
+           .append( $(A, {"target": "blank", "href": "http://"+ip+"/"}).text("HTTP")
+             .css({"margin-right": "0.5em"})
+           )
+           .append( $(A, {"target": "blank", "href": "https://"+ip+"/"}).text("HTTPS")
+             .css({"margin-right": "0.5em"})
+           )
            .append( $(A, {"target": "blank", "href": "/ipdb/?action=link&ip="+ip}).text("IPDB")
            )
            .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-copy"])
@@ -8851,6 +8978,17 @@ function VLANsWindow(with_links = false) {
   let dlg = createWindow("vlans_win", "VLAN");
   let content = dlg.find(".content");
 
+  content
+    .append( $(DIV)
+      .append( $(LABEL, {"for": "vlans_with_links"}).text("Показывать порты со связями: ") )
+      .append( $(INPUT, {"id": "vlans_with_links", "type": "checkbox", "checked": with_links})
+        .on("change", function() {
+          VLANsWindow($(this).is(":checked"));
+        })
+      )
+    )
+  ;
+
   let vlans = {};
 
   for(let dev_id in data["devs"]) {
@@ -9002,7 +9140,7 @@ function VLANsWindow(with_links = false) {
                         })
                       )
                       .append( $(LABEL)
-                        .css({"border": "1px solid black"})
+                        .css({"border": "1px solid black", "padding": "0 0.2em"})
                         .text( data["devs"][dev_id]["short_name"] )
                         .searchHighlight_dev(dev_id)
                         .data("dev_id", dev_id)
@@ -9023,7 +9161,7 @@ function VLANsWindow(with_links = false) {
                       .append( $(TD)
                         .css({"padding-left": "2em"})
                         .append( $(LABEL)
-                          .css({"border": "1px solid black"})
+                          .css({"border": "1px solid black", "padding": "0 0.2em"})
                           .searchHighlight_dev(dev_id)
                           .searchHighlight_int(dev_id, ifName)
                           .text(ifName)

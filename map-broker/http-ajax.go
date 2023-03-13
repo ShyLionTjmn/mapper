@@ -1731,6 +1731,74 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
             out.VM("dev", "interfaces", ifName)["arp"] = devs_arp.VM(dev_id, ifName).Copy()
           }
         }
+
+        dev := out.VM("dev")
+
+        dev_ips := make([]string, 0)
+        dev_nets := make([]string, 0)
+
+        for ifName, _ := range dev.VM("interfaces") {
+          if ifas, var_ok := dev.Vie("interfaces", ifName, "ifAdminStatus"); var_ok && ifas == 1 {
+            for ip, ipdata_h := range dev.VM("interfaces", ifName, "ips") {
+              if !strings.HasPrefix(ip, "127.") {
+                dev_ips = append(dev_ips, ip)
+                dev_nets = append(dev_nets, ipdata_h.(M)["net"].(string))
+                masklen := ipdata_h.(M).Vu("masklen")
+                if masklen == 32 {
+                  if ip_long, var_ok := V4ip2long(ip); !var_ok {
+                    panic("bad ip: " + ip)
+                  } else {
+                    for m := uint32(31); m > 0; m -- {
+                      net := fmt.Sprintf("%s/%d", V4long2ip(Ip4net(ip_long, m)), m)
+                      dev_nets = append(dev_nets, net)
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        dev_sites := []M{}
+
+        for _, ip := range dev_ips {
+          if tag_id, ex := ip2site[ip]; ex {
+            dev_sites = append(dev_sites, M{ "site": tag_id, "by": ip })
+          }
+        }
+
+        for _, net := range dev_nets {
+          if net2site.EvM(net) {
+            dev_sites = append(dev_sites, M{ "site": net2site.Vs(net, "tag_id"), "by": net })
+          }
+        }
+
+        if len(dev_sites) > 0 {
+          out.VM("dev")["sites"] = dev_sites
+        }
+
+        dev_projects := []M{}
+
+        for _, ip := range dev_ips {
+          if tag_ids, ex := ip2projects[ip]; ex {
+            for _, tag_id := range tag_ids {
+              dev_projects = append(dev_projects, M{ "proj": tag_id, "by": ip })
+            }
+          }
+        }
+
+        for _, net := range dev_nets {
+          if tag_ids, ex := net2projects[net]; ex {
+            for _, tag_id := range tag_ids {
+              dev_projects = append(dev_projects, M{ "proj": tag_id, "by": net })
+            }
+          }
+        }
+
+        if len(dev_projects) > 0 {
+          out.VM("dev")["projects"] = dev_projects
+        }
+
       }
       globalMutex.RUnlock()
     }
