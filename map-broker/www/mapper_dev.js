@@ -856,6 +856,12 @@ function get_tag_path(tag_data, tag_id, counter) {
   return null;
 };
 
+function get_tag_name(tag_data, tag_id) {
+  let path = get_tag_path(tag_data, tag_id, 0);
+  if(path === null || path.length == 0) return "";
+  return(if_undef(path[path.length - 1]["text"], ""));
+};
+
 function get_tag(tag_data, tag_id) {
   let ret = $(LABEL).addClass("tag")
    .css({"white-space": "pre", "z-index": windows_z - 1})
@@ -954,6 +960,11 @@ $( document ).ready(function() {
          .css({"margin-left": "0.5em"})
          .title("Выбрать локацию и проект")
          .click(selectLocation)
+       )
+       .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-list"])
+         .css({"margin-left": "0.5em"})
+         .title("Список имеющихся раскладок")
+         .click(selectLayout)
        )
      )
      .append( $(SPAN, {"id": "filename"})
@@ -1062,7 +1073,7 @@ $( document ).ready(function() {
    //)
    .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-archive"])
      //.css({"position": "absolute", "top": "0px", "left": "6em"})
-     .title("Файловые операции")
+     .title("Управление раскладками")
      .click(function(e) {
        e.stopPropagation();
        showFileWindow();
@@ -1181,6 +1192,12 @@ $( document ).ready(function() {
     proj = getUrlParameter("proj", "all");
     file_key = getUrlParameter("file_key", "");
     query = {"action": "get_front", "site": site, "proj": proj, "file_key": file_key};
+
+    let load_default = getUrlParameter("load_default", "");
+    if(load_default != "" && file_key == "") {
+      query["load_default"] = 1;
+      window.history.pushState({}, window.title, String(window.location).replace("&load_default=1", ""));
+    };
   } else {
     query = {"action": "get_front", "shared": shared};
   };
@@ -1209,20 +1226,38 @@ $( document ).ready(function() {
       let dlg = createWindow("shared", "Общий доступ");
 
       dlg.find(".content")
-       .text("Вы загрузили карту, созданую другим пользователем.\nДля внесения изменений сохранитие себе копию в меню файловых операций.")
+       .text("Вы загрузили раскладку, созданую другим пользователем.\n"+
+         "Для внесения изменений сохранитие себе копию в меню управления раскладками."
+       )
        .css({"white-space": "pre"})
        .trigger("recenter")
       ;
 
-      $("#filename").text("Чужая карта").css({"color": "gray"});
+      $("#filename").text("Чужая раскладка").css({"color": "gray"})
+        .title("Для внесения изменений сохранитие себе копию в меню управления раскладками.")
+      ;
     } else {
       allow_select = get_local("allow_select", allow_select);
       $("#allow_select").trigger("recalc");
 
       if(file_key == "") {
-        $("#filename").text("Основная карта");
+        if(res["ok"]["default_map"] != undefined) {
+          $("#filename").text("Раскладка по умолчанию").css({"color": "darkgreen"})
+            .title("Раскладка создана другим пользователем и будет показываться до тех пор\n"+
+              "пока вы не внесете изменение в расположение объектов."
+            )
+          ;
+        } else if(res["ok"]["is_default_map_owner"] != undefined) {
+          $("#filename").text("Для всех по умолчанию").css({"color": "darkgreen"})
+            .title("Другие пользователи, которые впервые откроют текущую локацию, увидят вашу раскладку")
+          ;
+        } else {
+          $("#filename").hide();
+        };
       } else {
-        $("#filename").text(res["ok"]["files_list"][file_key]["name"]);
+        $("#filename").text(res["ok"]["files_list"][file_key]["name"])
+          .title("Дополнительная раскладка")
+        ;
       };
       $("#filename").css({"color": "black"});
     };
@@ -1258,6 +1293,13 @@ function data_loaded(new_data, really=true) {
   if(really) {
     map_data = new_data["map"]; //{loc, tps, colors, options}
     data["files_list"] = new_data["files_list"];
+
+    let copy_keys = ["files_list", "is_default_map_owner", "default_map", "has_default_map"];
+    for(let k in copy_keys) {
+      if(new_data[ copy_keys[k] ] != undefined) {
+        data[ copy_keys[k] ] = new_data[ copy_keys[k] ];
+      };
+    };
   };
 
   dev_selected = [];
@@ -5174,12 +5216,21 @@ function save_map(key, id, fk, md) {
     query = {"action": "save_map", "file_key": save_fk, "save_data": JSON.stringify(save_data)};
   };
 
+  if(data["default_map"] != undefined && save_fk == "") {
+    save_data = md;
+    query = {"action": "save_map", "file_key": save_fk, "save_data": JSON.stringify(save_data)};
+  };
+
   query["site"] = site;
   query["proj"] = proj;
   run_query(query, function() {
     if(fk === undefined) {
       file_saved = unix_timestamp();
       g_unsaved = false;
+    };
+    if(data["default_map"] != undefined) {
+      $("#filename").text("").title("").hide();
+      delete(data["default_map"]);
     };
   });
 };
@@ -5209,7 +5260,7 @@ function get_file_row(fk) {
     name_td
      .append( $(LABEL).addClass(["ui-icon", "ui-icon-check"])
        .css({"color": "green"})
-       .title("Текущая загруженная карта")
+       .title("Текущая загруженная раскладка")
      )
     ;
   } else {
@@ -5221,8 +5272,8 @@ function get_file_row(fk) {
 
   if(fk === "") {
     name_td
-     .append( $(LABEL).text("Основная карта")
-       .title("Карта, которая загружается при выборе локации и проекта, по умолчанию")
+     .append( $(LABEL).text("Основная раскладка")
+       .title("Раскладка, которая загружается при выборе локации и проекта, по умолчанию")
      )
     ;
   } else {
@@ -5236,6 +5287,17 @@ function get_file_row(fk) {
        .val(map_name)
        .inputStop(500)
        .on("input_stop", function() {
+         let tr = $(this).closest("TR");
+         let fk = tr.data("id");
+
+         let new_name = String($(this).val()).trim();
+         if(new_name == "") return;
+
+         let query = {"action": "rename_map", "file_key": fk, "site": site, "proj": proj, "name": new_name};
+
+         run_query(query, function(res) {
+           data["files_list"][fk]["name"] = new_name;
+         });
        })
      )
     ;
@@ -5245,7 +5307,7 @@ function get_file_row(fk) {
 
   act_td
    .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-extlink"])
-     .title("Загрузить карту")
+     .title("Загрузить раскладку")
      .click(function() {
        let tr = $(this).closest("TR");
        let fk = tr.data("id");
@@ -5322,10 +5384,12 @@ function get_file_row(fk) {
   };
 
 
-  if(fk !== file_key) {
+  if(fk !== file_key ||
+     (fk == "" && file_key == "" && data["default_map"] != undefined)
+  ) {
     act_td
      .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-save"])
-       .title("Сохранить текущую карту в этот файл")
+       .title("Сохранить текущую раскладку в эту")
        .click(function() {
          let tr = $(this).closest("TR");
          let fk = tr.data("id");
@@ -5340,13 +5404,13 @@ function get_file_row(fk) {
 
   act_td
    .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-erase"])
-     .title("Очистить карту")
+     .title("Очистить раскладку")
      .click(function() {
        let tr = $(this).closest("TR");
        let fk = tr.data("id");
        let text = "Подтвердите удаление данных.";
        if(data["files_list"][fk]["shared"] !== undefined) {
-         text += "\nК очищаемой карте предоставлен общий доступ.";
+         text += "\nК очищаемой раскладке предоставлен общий доступ.";
        };
        show_confirm_checkbox(text, function() {
          save_map(undefined, undefined, fk, {});
@@ -5358,19 +5422,19 @@ function get_file_row(fk) {
    )
   ;
 
-  if(fk != "") {
+  if(/*fk != ""*/true) {
     act_td
      .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-trash"])
-       .title("Удалить данные карты")
+       .title("Удалить данные раскладки")
        .click(function() {
          let tr = $(this).closest("TR");
          let fk = tr.data("id");
          let text = "Подтвердите удаление данных.";
          if(fk === file_key) {
-           text += "\nВы удаляете текущую карту. После удаления будет загружена Основная карта.";
+           text += "\nВы удаляете текущую раскладку. После удаления будет загружена Основная раскладка или раскладка по умолчанию, если Основной нет.";
          };
          if(data["files_list"][fk]["shared"] !== undefined) {
-           text += "\n\nК удаляемой карте предоставлен общий доступ.\nПосле удаления, ссылка общего доступа станет недоступна.";
+           text += "\n\nК удаляемой раскладке предоставлен общий доступ.\nПосле удаления, ссылка общего доступа станет недоступна.";
          };
          show_confirm_checkbox(text, function() {
            let query = {"action": "del_map", "file_key": fk, "site": site, "proj": proj};
@@ -5394,20 +5458,69 @@ function get_file_row(fk) {
     ;
   };
 
+  if(fk == "" && data["is_default_map_owner"] == undefined &&
+     data["default_map"] == undefined
+  ) {
+    act_td
+     .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-star-h"])
+       .title("Установить раскладкой по умолчанию для всех пользователей")
+       .click(function() {
+         let tr = $(this).closest("TR");
+
+         show_confirm("Подтвердите выполнение действия", function() {
+           run_query({"action": "set_default_map", "site": site, "proj": proj}, function(res) {
+             if(!shared && file_key == "") {
+               data["is_default_map_owner"] = 1;
+               showFileWindow();
+             };
+           })
+         });
+       })
+     )
+    ;
+  };
+
   act_td.find("LABEL.button").css({"margin-right": "0.5em"});
 
   return tr;
 };
 
 function showFileWindow() {
-  let dlg = createWindow("files", "Управление файлами", {modal: true});
+  let dlg = createWindow("files", "Управление раскладками", {modal: true});
 
   let content = dlg.find(".content");
+
+  if(data["is_default_map_owner"] != undefined) {
+    content
+      .append( $(DIV)
+        .css({"padding-bottom": "0.2em"})
+        .text("Вы владелец раскладки по умолчанию")
+        .title("Другие пользователи, которые впервые откроют текущую локацию, увидят вашу раскладку")
+      )
+    ;
+  } else if(data["has_default_map"] != undefined && data["default_map"] == undefined) {
+    content
+      .append( $(DIV)
+        .css({"padding-bottom": "0.2em"})
+        .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-download"])
+          .title("Загрузить раскладку по умолчанию")
+          .click(function() {
+            window.location = "?action=get_front&site="+site+"&proj="+proj+"&file_key="+
+              "&load_default=1"+
+              (DEBUG?"&debug":"")
+            ;
+          })
+        )
+        .append( $(SPAN).text(" Загрузить раскладку по умолчанию") )
+      )
+    ;
+  };
+
 
   let table = $(TABLE).addClass("fixed_head_table")
    .append( $(THEAD)
      .append( $(TR)
-       .append( $(TH).text("Имя файла") )
+       .append( $(TH).text("Имя раскладки") )
        .append( $(TH).text("Операция") )
      )
    )
@@ -5420,7 +5533,7 @@ function showFileWindow() {
        )
        .append( $(TD)
          .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-copy"])
-           .title("Сохранить копию текущей карты под новым именем")
+           .title("Сохранить копию текущей раскладки под новым именем")
            .click(function(e) {
              e.stopPropagation();
              let new_name = String($(".new_file_name").val()).trim();
@@ -5453,7 +5566,7 @@ function showFileWindow() {
            })
          )
          .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-plus"])
-           .title("Создать пустой файл")
+           .title("Создать пустую раскладку")
            .click(function(e) {
              e.stopPropagation();
              let new_name = String($(".new_file_name").val()).trim();
@@ -9346,4 +9459,122 @@ function VLANsWindow(with_links = false) {
   cont.appendTo(content);
 
   dlg.trigger("recenter");
+};
+
+function tag_compare(base, tag_a, tag_b) {
+  if(tag_a === tag_b) return 0;
+
+  if(tag_a === "all") return -1;
+  if(tag_b === "all") return 1;
+  if(tag_a === "nodata") return -1;
+  if(tag_b === "nodata") return 1;
+  if(tag_a === "l3") return -1;
+  if(tag_b === "l3") return 1;
+
+  let path_a = get_tag_path(base, tag_a, 0);
+  let path_b = get_tag_path(base, tag_b, 0);
+
+  if(path_a === null) return -1;
+  if(path_b === null) return 1;
+
+  let a_labels = [];
+  for(let i in path_a) {
+    if( path_a[i]["flags"] !== undefined &&
+        ((path_a[i]["flags"] & F_IN_LABEL) > 0 || String(path_a[i]["id"]) === String(tag_a))
+    ) {
+      a_labels.push(path_a[i]["text"]);
+    };
+  };
+
+  let b_labels = [];
+  for(let i in path_b) {
+    if( path_b[i]["flags"] !== undefined &&
+        ((path_b[i]["flags"] & F_IN_LABEL) > 0 || String(path_b[i]["id"]) === String(tag_b))
+    ) {
+      b_labels.push(path_b[i]["text"]);
+    };
+  };
+
+  for(let i = 0; (i < a_labels.length) && (i < b_labels.length); i++) {
+    if(a_labels[i] != b_labels[i]) return num_compare(a_labels[i], b_labels[i]);
+  };
+
+  return a_labels.length - b_labels.length;
+};
+
+function selectLayout(others = false) {
+  run_query({"action": "list_maps", "others": others?"1":"0"}, function(res) {
+    res["ok"]["list"].sort(function(a, b) {
+      if(a["site"] != b["site"]) {
+        return tag_compare({"id": "root", "children": data["sites"], "data": {}}, a["site"], b["site"]);
+      };
+      if(a["proj"] != b["proj"]) {
+        return tag_compare({"id": "root", "children": data["projects"], "data": {}}, a["proj"], b["proj"]);
+      };
+
+      return num_compare(a["file_name"], b["file_name"]);
+    });
+
+    let dlg = createWindow("layouts", "Раскладки");
+    let content = dlg.find(".content");
+/*
+    content
+      .append( $(DIV)
+        .append( $(LABEL, {"for": "layouts_others"}).text("Показывать чужие раскладки: ") )
+        .append( $(INPUT, {"id": "layouts_others", "type": "checkbox", "checked": others})
+          .on("change", function() { selectLayout( $(this).is(":checked") ); })
+        )
+      )
+    ;
+*/
+    let table = $(DIV).addClass("table").appendTo(content);
+
+    table
+      .append( $(DIV).addClass("thead")
+        .append( $(SPAN).addClass("th")
+          .append( $(SPAN).text("Локация") )
+        )
+        .append( $(SPAN).addClass("th")
+          .append( $(SPAN).text("Инф.система") )
+        )
+        .append( $(SPAN).addClass("th")
+        )
+      )
+    ;
+
+    for(let i in res["ok"]["list"]) {
+      let row = res["ok"]["list"][i];
+
+      let tr = $(DIV).addClass("tr")
+        .addClass("data_row")
+        .data("data", row)
+        .append( $(SPAN).addClass("td")
+          .css({"padding": "0.2em 0.2em"})
+          .append( get_tag({"id": "root", "children": data["sites"], "data": {}}, row["site"]) )
+        )
+        .append( $(SPAN).addClass("td")
+          .css({"padding": "0.2em 0.2em"})
+          .append( get_tag({"id": "root", "children": data["projects"], "data": {}}, row["proj"]) )
+        )
+        .append( $(SPAN).addClass("td")
+          .css({"padding": "0.2em 0.2em"})
+          .text( row["file_name"] )
+        )
+        .append( $(SPAN).addClass("td")
+          .css({"padding": "0.2em 0.2em"})
+          .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-linkext"])
+            .click(function() {
+              let row = $(this).closest(".data_row").data("data");
+              window.location = "?action=get_front&site="+row["site"]+"&proj="+row["proj"]+
+                "&file_key="+row["file_key"]+(DEBUG?"&debug":"")
+              ;
+            })
+          )
+        )
+      ;
+      tr.appendTo( table );
+    };
+
+    dlg.trigger("recenter");
+  });
 };

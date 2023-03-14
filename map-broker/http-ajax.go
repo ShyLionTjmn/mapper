@@ -54,6 +54,8 @@ var g_shared_key_reg *regexp.Regexp
 
 var g_mac_oui_reg *regexp.Regexp
 
+var g_file_list_reg *regexp.Regexp
+
 func init() {
   g_num_reg = regexp.MustCompile(`^\d+$`)
   g_num_list_reg = regexp.MustCompile(`^\d+(?:,\d+)*$`)
@@ -73,6 +75,8 @@ func init() {
   g_graph_cpu_name_reg = regexp.MustCompile(`^[a-z0-9 \/.,;:\-]+$`)
 
   g_mac_oui_reg = regexp.MustCompile(`^([a-fA-F0-9])([a-fA-F0-9])[\-:\.]?([a-fA-F0-9])([a-fA-F0-9])[\-:\.]?([a-fA-F0-9])([a-fA-F0-9])(?:[\-:\.]?(?:[a-fA-F0-9][a-fA-F0-9])){3}$`)
+
+  g_file_list_reg = regexp.MustCompile(`.*_(\d+|all|nodata|l3)_(\d+|all|nodata)\.([a-zA-Z0-9]*)\.(name|data)$`)
 
   gob.Register(M{})
   gob.Register(map[string]interface{}{})
@@ -705,7 +709,7 @@ func handleAjax(w http.ResponseWriter, req *http.Request) {
     } else {
       var share_json []byte
       if share_json, err = redis.Bytes(red.Do("HGET", "maps", "shared."+shared_key)); err != nil && err != redis.ErrNil { panic(err) }
-      if err != nil { panic("Ссылка не найдена. Возможно пользователь уже удалил карту или закрыл доступ.") }
+      if err != nil { panic("Ссылка не найдена. Возможно пользователь уже удалил раскладку или закрыл доступ.") }
 
       var share_data M
       if err = json.Unmarshal(share_json, &share_data); err != nil { panic(err) }
@@ -1130,9 +1134,38 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
 
     _ = map_hash_key_time
 
+    var default_owner string
+    default_owner, err = redis.String(red.Do("HGET", "maps", "default_"+req_site+"_"+req_proj+".owner"))
+
+    if err == nil {
+      if default_owner == user_sub {
+        out["is_default_map_owner"] = 1
+      } else {
+        out["has_default_map"] = 1
+      }
+    } else if err != redis.ErrNil {
+      panic(err)
+    }
+
+
     var map_data []byte
     if map_data, err = redis.Bytes(red.Do("HGET", "maps", map_hash_key_data)); err != nil && err != redis.ErrNil {
       panic(err)
+    }
+
+    if (err != nil || q["load_default"] != nil) &&
+       req_file_key == "" && shared_key == "" &&
+    true {
+      //try default map
+      if map_data, err = redis.Bytes(red.Do("HGET", "maps", "default_"+req_site+"_"+req_proj+".data"));
+      err != nil && err != redis.ErrNil {
+        panic(err)
+      }
+      if err == nil {
+        out["default_map"] = 1
+      } else if q["load_default"] != nil {
+        panic("No default layout")
+      }
     }
 
     empty_map := M{
@@ -1273,6 +1306,34 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
     out_files_list[""].(M)["name"] = ""
 
     out["files_list"] = out_files_list
+  } else if action == "set_default_map" {
+    //TODO rights check
+    var req_site string
+    var req_proj string
+
+    if req_site, err = get_p_string(q, "site", g_site_reg); err != nil { panic(err) }
+    if req_proj, err = get_p_string(q, "proj", g_proj_reg); err != nil { panic(err) }
+
+    map_hash_key_data := user_sub+"_"+req_site+"_"+req_proj+"..data"
+    map_hash_key_time := user_sub+"_"+req_site+"_"+req_proj+"..time"
+
+    _, err = red.Do("HGET", "maps", map_hash_key_time)
+    if err == redis.ErrNil { panic("Исходной раскладки нет в БД") }
+    if err != nil { panic(err) }
+
+    var map_data []byte
+    map_data, err = redis.Bytes(red.Do("HGET", "maps", map_hash_key_data))
+    if err == redis.ErrNil { panic("Исходной раскладки нет в БД") }
+    if err != nil { panic(err) }
+
+    default_key := "default_" + req_site + "_" + req_proj
+
+    if _, err = red.Do("HSET", "maps", default_key + ".owner", user_sub); err != nil { panic(err) }
+    if _, err = red.Do("HSET", "maps", default_key + ".data", map_data); err != nil { panic(err) }
+    if _, err = red.Do("HSET", "maps", default_key + ".time", ts); err != nil { panic(err) }
+
+    out["done"] = 1
+
   } else if action == "save_map_key_id" {
     var map_key string
     var id string
@@ -1334,6 +1395,15 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
     if _, err = red.Do("HSET", "maps", map_hash_key_data, out_buff.Bytes()); err != nil { panic(err) }
     if _, err = red.Do("HSET", "maps", map_hash_key_time, ts); err != nil { panic(err) }
 
+    if req_file_key == "" {
+      def_owner, err := redis.String(red.Do("HGET", "maps", "default_" + req_site+"_"+req_proj+".owner"))
+      if err == redis.ErrNil || (err == nil && def_owner == user_sub) {
+        red.Do("HSET", "maps", "default_" + req_site+"_"+req_proj+".owner", user_sub)
+        red.Do("HSET", "maps", "default_" + req_site+"_"+req_proj+".data", out_buff.Bytes())
+        red.Do("HSET", "maps", "default_" + req_site+"_"+req_proj+".time", ts)
+      }
+    }
+
     out["done"] = 1
 
   } else if action == "del_map_key_id" {
@@ -1390,6 +1460,15 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
     if _, err = red.Do("HSET", "maps", map_hash_key_data, out_buff.Bytes()); err != nil { panic(err) }
     if _, err = red.Do("HSET", "maps", map_hash_key_time, ts); err != nil { panic(err) }
 
+    if req_file_key == "" {
+      def_owner, err := redis.String(red.Do("HGET", "maps", "default_" + req_site+"_"+req_proj+".owner"))
+      if err == redis.ErrNil || (err == nil && def_owner == user_sub) {
+        red.Do("HSET", "maps", "default_" + req_site+"_"+req_proj+".owner", user_sub)
+        red.Do("HSET", "maps", "default_" + req_site+"_"+req_proj+".data", out_buff.Bytes())
+        red.Do("HSET", "maps", "default_" + req_site+"_"+req_proj+".time", ts)
+      }
+    }
+
     out["done"] = 1
 
   } else if action == "save_map_key" {
@@ -1440,6 +1519,15 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
     if _, err = red.Do("HSET", "maps", map_hash_key_data, out_buff.Bytes()); err != nil { panic(err) }
     if _, err = red.Do("HSET", "maps", map_hash_key_time, ts); err != nil { panic(err) }
 
+    if req_file_key == "" {
+      def_owner, err := redis.String(red.Do("HGET", "maps", "default_" + req_site+"_"+req_proj+".owner"))
+      if err == redis.ErrNil || (err == nil && def_owner == user_sub) {
+        red.Do("HSET", "maps", "default_" + req_site+"_"+req_proj+".owner", user_sub)
+        red.Do("HSET", "maps", "default_" + req_site+"_"+req_proj+".data", out_buff.Bytes())
+        red.Do("HSET", "maps", "default_" + req_site+"_"+req_proj+".time", ts)
+      }
+    }
+
     out["done"] = 1
 
   } else if action == "del_map_key" {
@@ -1486,6 +1574,15 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
     if _, err = red.Do("HSET", "maps", map_hash_key_data, out_buff.Bytes()); err != nil { panic(err) }
     if _, err = red.Do("HSET", "maps", map_hash_key_time, ts); err != nil { panic(err) }
 
+    if req_file_key == "" {
+      def_owner, err := redis.String(red.Do("HGET", "maps", "default_" + req_site+"_"+req_proj+".owner"))
+      if err == redis.ErrNil || (err == nil && def_owner == user_sub) {
+        red.Do("HSET", "maps", "default_" + req_site+"_"+req_proj+".owner", user_sub)
+        red.Do("HSET", "maps", "default_" + req_site+"_"+req_proj+".data", out_buff.Bytes())
+        red.Do("HSET", "maps", "default_" + req_site+"_"+req_proj+".time", ts)
+      }
+    }
+
     out["done"] = 1
 
   } else if action == "save_map" {
@@ -1526,6 +1623,15 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
     if _, err = red.Do("HSET", "maps", map_hash_key_data, out_buff.Bytes()); err != nil { panic(err) }
     if _, err = red.Do("HSET", "maps", map_hash_key_time, ts); err != nil { panic(err) }
 
+    if req_file_key == "" {
+      def_owner, err := redis.String(red.Do("HGET", "maps", "default_" + req_site+"_"+req_proj+".owner"))
+      if err == redis.ErrNil || (err == nil && def_owner == user_sub) {
+        red.Do("HSET", "maps", "default_" + req_site+"_"+req_proj+".owner", user_sub)
+        red.Do("HSET", "maps", "default_" + req_site+"_"+req_proj+".data", out_buff.Bytes())
+        red.Do("HSET", "maps", "default_" + req_site+"_"+req_proj+".time", ts)
+      }
+    }
+
     out["done"] = 1
 
   } else if action == "del_map" {
@@ -1556,6 +1662,15 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
 
     for _, key := range map_keys {
       if _, err = red.Do("HDEL", "maps", key); err != nil { panic(err) }
+    }
+
+    if req_file_key == "" {
+      def_owner, err := redis.String(red.Do("HGET", "maps", "default_" + req_site+"_"+req_proj+".owner"))
+      if err == nil && def_owner == user_sub {
+        red.Do("HDEL", "maps", "default_" + req_site+"_"+req_proj+".owner")
+        red.Do("HDEL", "maps", "default_" + req_site+"_"+req_proj+".data")
+        red.Do("HDEL", "maps", "default_" + req_site+"_"+req_proj+".time")
+      }
     }
 
     out["done"] = 1
@@ -1626,6 +1741,24 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
     out["file"] = out_file
     out["done"] = 1
 
+  } else if action == "rename_map" {
+    var req_site string
+    var req_proj string
+    var req_file_key string
+    var new_name string
+
+    if req_site, err = get_p_string(q, "site", g_site_reg); err != nil { panic(err) }
+    if req_proj, err = get_p_string(q, "proj", g_proj_reg); err != nil { panic(err) }
+    if req_file_key, err = get_p_string(q, "file_key", g_file_key_reg); err != nil { panic(err) }
+    if new_name, err = get_p_string(q, "name", "\\w"); err != nil { panic(err) }
+
+    map_hash_key_prefix := user_sub+"_"+req_site+"_"+req_proj+"."+req_file_key+"."
+
+    _, err = red.Do("HGET", "maps", map_hash_key_prefix+"name")
+    if err == nil {
+      if _, err = red.Do("HSET", "maps", map_hash_key_prefix+"name", new_name); err != nil { panic(err) }
+    }
+
   } else if action == "share_map" {
     var req_site string
     var req_proj string
@@ -1694,6 +1827,40 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
     if _, err = red.Do("HDEL", "maps", "shared."+shared_key); err != nil { panic(err) }
 
     out["done"] = 1
+
+  } else if action == "list_maps" {
+    var keys []string
+    ret := []M{}
+
+    if keys, err = redis.Strings(red.Do("HKEYS", "maps")); err != nil && err != redis.ErrNil { panic(err) }
+    if err == nil {
+      for _, key := range keys {
+        if strings.HasPrefix(key, user_sub + "_") &&
+           (strings.HasSuffix(key, ".name") || strings.HasSuffix(key, "..data")) &&
+        true {
+          a := g_file_list_reg.FindStringSubmatch(key)
+          if a != nil {
+            file_site := a[1]
+            file_proj := a[2]
+            file_key := a[3]
+            ext := a[4]
+            var file_name string
+            if file_key != "" && ext == "name" {
+              file_name, err = redis.String(red.Do("HGET", "maps", key))
+              if err != nil { panic(err) }
+            }
+            ret = append(ret, M{
+              "site": file_site,
+              "proj": file_proj,
+              "file_name": file_name,
+              "file_key": file_key,
+            })
+          }
+        }
+      }
+    }
+
+    out["list"] = ret
 
   } else if action == "data" {
     globalMutex.RLock()
