@@ -101,9 +101,6 @@ var opt_u string //unix socket
 const TRY_OPEN_FILES uint64=65536
 var max_open_files uint64
 
-var g_dev_front_fields_l2  M
-var g_dev_front_fields_l3  M
-
 func init() {
   data["l2_links"] = make(M) // exported map with actual links. Keep link with down (2) state if both devices in db and no neighbours and any of it is down or interface is down
   data["l3_links"] = make(M)
@@ -127,106 +124,6 @@ func init() {
   flag.StringVar(&opt_u, "u", BROKER_UNIX_SOCKET, "Broker Unix socket")
 
   flag.Parse()
-
-  g_dev_front_fields_l2 = M{
-    "safe_dev_id": 1,
-    "CiscoConfChange": 1,
-    "CiscoConfSave": 1,
-    "CPUs": 1,
-    "memoryUsed": 1,
-    "memorySize": 1,
-    "data_ip": 1,
-    "id": 1,
-    "interfaces_sorted": 1,
-    "interfaces": M{
-      "*": M{
-        "safe_if_name": 1,
-        "ifAdminStatus": 1,
-        "ifAlias": 1,
-        "ifDescr": 1,
-        "ifHighSpeed": 1,
-        "ifInCRCErrors": 1,
-        "ifIndex": 1,
-        "ifName": 1,
-        "ifOperStatus": 1,
-        "ifSpeed": 1,
-        "ifType": 1,
-        "ips": 1,
-        "l2_links": 1,
-        "tunnelSrcIfName": 1,
-        "portMode": 1,
-        "portTrunkVlans": 1,
-        "portPvid": 1,
-        "portVvid": 1,
-        "portHybridTag": 1,
-        "portHybridUntag": 1,
-        "lag_parent": 1,
-        "lag_members": 1,
-        "pagp_parent": 1,
-        "pagp_members": 1,
-        "macs_count": 1,
-        "arp_count": 1,
-        "lldp_count": 1,
-        "cdp_count": 1,
-      },
-    },
-    "last_seen": 1,
-    "model_short": 1,
-    "overall_status": 1,
-    "run": 1,
-    "short_name": 1,
-    "sysLocation": 1,
-    "sysUpTimeStr": 1,
-    "vlans": 1,
-  }
-
-  g_dev_front_fields_l3 = M{
-    "safe_dev_id": 1,
-    "CiscoConfChange": 1,
-    "CiscoConfSave": 1,
-    "CPUs": 1,
-    "memoryUsed": 1,
-    "memorySize": 1,
-    "data_ip": 1,
-    "id": 1,
-    "interfaces_sorted": 1,
-    "interfaces": M{
-      "*": M{
-        "safe_if_name": 1,
-        "eigrpIfPeerCount": 1,
-        "eigrpIfPkts": 1,
-        "eigrp_found_count": 1,
-        "ifAdminStatus": 1,
-        "ifAlias": 1,
-        "ifDescr": 1,
-        "ifDelay": 1,
-        "ifHighSpeed": 1,
-        "ifInCRCErrors": 1,
-        "ifIndex": 1,
-        "ifName": 1,
-        "ifOperStatus": 1,
-        "ifSpeed": 1,
-        "ifType": 1,
-        "ips": 1,
-        "tunnelSrcIfName": 1,
-        "lag_parent": 1,
-        "lag_members": 1,
-        "pagp_parent": 1,
-        "pagp_members": 1,
-        "macs_count": 1,
-        "arp_count": 1,
-        "lldp_count": 1,
-        "cdp_count": 1,
-      },
-    },
-    "last_seen": 1,
-    "model_short": 1,
-    "overall_status": 1,
-    "run": 1,
-    "short_name": 1,
-    "sysLocation": 1,
-    "sysUpTimeStr": 1,
-  }
 }
 
 var red_state_mutex = &sync.Mutex{}

@@ -289,3 +289,6 @@ table.dataTable tfoot td {
 .search_highlight {
   outline: 5px solid orange !important;
 }
+.collapsed {
+  height: 0px;
+}

@@ -127,8 +127,8 @@ var tp_show = false;
 
 var userinfo = {};
 
-var default_graph_size = "500x150";
-var graph_sizes_list = ["500x70", default_graph_size, "800x100", "800x200", "1000x150", "1000x300", "1600x180", "1600x350"];
+var default_graph_size = "500x70";
+var graph_sizes_list = ["500x70", "500x150", "800x100", "800x200", "1000x150", "1000x300", "1600x180", "1600x350"];
 
 var g_short_name_reg = /^[0-9a-z_A-Z][0-9a-z_A-Z\-]*$/;
 var g_ifName_reg = /^[0-9a-z_A-Z][0-9a-z_A-Z\-\/# ]*$/;
@@ -1520,16 +1520,17 @@ function device_win(dev_id) {
     let dlg_options = {
       _close: function() {
         let dlg = $(this).closest(".ui-dialog").find(".dialog_start");
-        let dev_id = dlg.data("dev_id");
+        let win_id = dlg.data("win_id");
 
-        delete(win_parts["dev_win_" + dev_id]);
+        delete(win_parts[win_id]);
 
         dlg.dialog("close");
       },
     };
 
+    let win_id = "dev_win_" + dev_id;
 
-    let dlg = createWindow("dev_win_"+dev_id, dev["short_name"], dlg_options);
+    let dlg = createWindow(win_id, dev["short_name"], dlg_options);
 
     dlg.dialog("widget").find(".ui-dialog-titlebar")
      .append( $(BUTTON).addClass(["ui-button", "ui-corner-all", "ui-widget", "ui-button-icon-only", "ui-dialog-titlebar-close"])
@@ -1540,13 +1541,15 @@ function device_win(dev_id) {
        .click(function() {
          let dlg = $(this).closest(".ui-dialog").find(".dialog_start");
          let dev_id = dlg.data("dev_id");
-         set_win_part("dev_win_" + dev_id, "scroll", dlg.scrollTop());
+         let win_id = dlg.data("win_id");
+         set_win_part(win_id, "scroll", dlg.scrollTop());
          device_win(dev_id);
        })
      )
     ;
     let content = dlg.find(".content");
     dlg.data("dev_id", dev_id);
+    dlg.data("win_id", win_id);
     data["devs"][dev_id] = dev;
 
     let last_seen=new Date(dev["last_seen"]*1000)
@@ -1688,23 +1691,32 @@ function device_win(dev_id) {
         gdata["cpu_key" + cpui] = dev["CPUs"][cpui]["_graph_key"];
       };
 
+      gdata["win_part_id"] = win_id;
+      gdata["win_part_key"] = "cpu";
+
       cpu_mem_div
        .append( $(LABEL).text("CPUs: ") )
        .append( $(IMG, {"src": src}).title("1 Min Load:\n"+img_title_a.join("\n"))
          .css({"border": "1px solid gray"})
          .click(function() {
+           let win_id = $(this).closest(".dialog_start").data("win_id");
            let big = $(this).closest(".dialog_start").find(".cpu_big");
            if(big.hasClass("collapsed")) {
              big.removeClass("collapsed").css({"height": "auto"});
+             set_win_part(win_id, "show_cpu_graph", true);
            } else {
              big.addClass("collapsed").css({"height": "0px"});
+             set_win_part(win_id, "show_cpu_graph", false);
            };
          })
        )
       ;
 
+      let show_cpu_graph = get_win_part(win_id, "show_cpu_graph", false);
+
       cpu_mem_big_div
-       .append( $(DIV).addClass("cpu_big").css({"height": "0px", "overflow": "hidden"}).addClass("collapsed")
+       .append( $(DIV).addClass("cpu_big").css({"overflow": "hidden"})
+         .addClass(show_cpu_graph ? [] : "collapsed")
          .graph(gdata)
        )
       ;
@@ -1728,11 +1740,14 @@ function device_win(dev_id) {
          .title("Занято "+GMK(dev["memoryUsed"]) + (dev["memorySize"] !== undefined ? " из " + GMK(dev["memorySize"]) : "" )) 
          .css({"border": "1px solid gray"})
          .click(function() {
+           let win_id = $(this).closest(".dialog_start").data("win_id");
            let big = $(this).closest(".dialog_start").find(".mem_big");
            if(big.hasClass("collapsed")) {
              big.removeClass("collapsed").css({"height": "auto"});
+             set_win_part(win_id, "show_mem_graph", true);
            } else {
              big.addClass("collapsed").css({"height": "0px"});
+             set_win_part(win_id, "show_mem_graph", false);
            };
          })
        )
@@ -1743,8 +1758,14 @@ function device_win(dev_id) {
         gdata["max"] = dev["memorySize"];
       };
 
+      gdata["win_part_id"] = win_id;
+      gdata["win_part_key"] = "mem";
+
+      let show_mem_graph = get_win_part(win_id, "show_mem_graph", false);
+
       cpu_mem_big_div
-       .append( $(DIV).addClass("mem_big").css({"height": "0px", "overflow": "hidden"}).addClass("collapsed")
+       .append( $(DIV).addClass("mem_big").css({"overflow": "hidden"})
+         .addClass(show_mem_graph ? [] : "collapsed")
          .graph(gdata)
        )
       ;
@@ -1761,16 +1782,16 @@ function device_win(dev_id) {
     tabs_div
      .append( $(LABEL).text("Interfaces").addClass(["button"])
        .click(function() {
-         let dev_id = $(this).closest(".dialog_start").data("dev_id");
-         let state = !get_win_part("dev_win_" + dev_id, "interfaces", false);
+         let win_id = $(this).closest(".dialog_start").data("win_id");
+         let state = !get_win_part(win_id, "interfaces", false);
          $(this).closest(".dialog_start").find(".interfaces").toggle(state);
-         set_win_part("dev_win_" + dev_id, "interfaces", state);
+         set_win_part(win_id, "interfaces", state);
        })
      )
     ;
 
     let ifcs_div = $(DIV).addClass("interfaces").addClass("table")
-     .toggle(get_win_part("dev_win_" + dev_id, "interfaces", false))
+     .toggle(get_win_part(win_id, "interfaces", false))
     ;
 
     for(let i in dev["interfaces_sorted"]) {
@@ -1838,16 +1859,16 @@ function device_win(dev_id) {
       tabs_div
        .append( $(LABEL).text("Inventory").addClass(["button"])
          .click(function() {
-           let dev_id = $(this).closest(".dialog_start").data("dev_id");
-           let state = !get_win_part("dev_win_" + dev_id, "inventory", false);
+           let win_id = $(this).closest(".dialog_start").data("win_id");
+           let state = !get_win_part(win_id, "inventory", false);
            $(this).closest(".dialog_start").find(".inventory").toggle(state);
-           set_win_part("dev_win_" + dev_id, "inventory", state);
+           set_win_part(win_id, "inventory", state);
          })
        )
       ;
 
       let inventory = $(DIV).addClass("inventory")
-       .toggle(get_win_part("dev_win_" + dev_id, "inventory", false))
+       .toggle(get_win_part(win_id, "inventory", false))
       ;
 
       for(let key in dev["invEntParent"]) {
@@ -1863,16 +1884,16 @@ function device_win(dev_id) {
       tabs_div
        .append( $(LABEL).text("TopTalkers").addClass(["button"])
          .click(function() {
-           let dev_id = $(this).closest(".dialog_start").data("dev_id");
-           let state = !get_win_part("dev_win_" + dev_id, "toptalkers", false);
+           let win_id = $(this).closest(".dialog_start").data("win_id");
+           let state = !get_win_part(win_id, "toptalkers", false);
            $(this).closest(".dialog_start").find(".toptalkers").toggle(state);
-           set_win_part("dev_win_" + dev_id, "toptalkers", state);
+           set_win_part(win_id, "toptalkers", state);
          })
        )
       ;
 
       let section = $(DIV).addClass("toptalkers")
-       .toggle(get_win_part("dev_win_" + dev_id, "toptalkers", false))
+       .toggle(get_win_part(win_id, "toptalkers", false))
       ;
 
       let dupes = {};
@@ -2238,17 +2259,17 @@ function device_win(dev_id) {
       tabs_div
        .append( $(LABEL).text("Локации").addClass(["button"])
          .click(function() {
-           let dev_id = $(this).closest(".dialog_start").data("dev_id");
-           let state = !get_win_part("dev_win_" + dev_id, "sites", false);
+           let win_id = $(this).closest(".dialog_start").data("win_id");
+           let state = !get_win_part(win_id, "sites", false);
            $(this).closest(".dialog_start").find(".sites").toggle(state);
-           set_win_part("dev_win_" + dev_id, "sites", state);
+           set_win_part(win_id, "sites", state);
          })
        )
       ;
 
       let section = $(DIV).addClass("sites")
         .addClass("table")
-        .toggle(get_win_part("dev_win_" + dev_id, "sites", false))
+        .toggle(get_win_part(win_id, "sites", false))
         .append( $(DIV).addClass("thead")
           .append( $(SPAN).addClass("th").text("Локация") )
           .append( $(SPAN).addClass("th").text("На основании") )
@@ -2298,17 +2319,17 @@ function device_win(dev_id) {
       tabs_div
        .append( $(LABEL).text("Инф.системы").addClass(["button"])
          .click(function() {
-           let dev_id = $(this).closest(".dialog_start").data("dev_id");
-           let state = !get_win_part("dev_win_" + dev_id, "projects", false);
+           let win_id = $(this).closest(".dialog_start").data("win_id");
+           let state = !get_win_part(win_id, "projects", false);
            $(this).closest(".dialog_start").find(".projects").toggle(state);
-           set_win_part("dev_win_" + dev_id, "projects", state);
+           set_win_part(win_id, "projects", state);
          })
        )
       ;
 
       let section = $(DIV).addClass("projects")
         .addClass("table")
-        .toggle(get_win_part("dev_win_" + dev_id, "projects", false))
+        .toggle(get_win_part(win_id, "projects", false))
         .append( $(DIV).addClass("thead")
           .append( $(SPAN).addClass("th").text("Инф. система") )
           .append( $(SPAN).addClass("th").text("На основании") )
@@ -2360,7 +2381,7 @@ function device_win(dev_id) {
 
     dlg.trigger("recenter");
 
-    dlg.scrollTop(get_win_part("dev_win_" + dev_id, "scroll", 0));
+    dlg.scrollTop(get_win_part(win_id, "scroll", 0));
   });
 };
 
@@ -2371,20 +2392,42 @@ function inv_ent(dev_id, key, count) {
   ret.css({"padding-left": count+"em"});
 
   let self_div = $(DIV)
-   .css({"background-color": "azure", "padding": "0.05em 0.5em", "border": "1px solid gray", "display": "inline-block"})
+   .css({"background-color": "azure", "padding": "0.05em 0.5em",
+         "border": "1px solid gray", "display": "inline-block",
+   })
    .appendTo( ret )
   ;
 
-  let name = data["devs"][dev_id]["invEntName"] !== undefined ? String(data["devs"][dev_id]["invEntName"][key]).trim() : "";
-  let descr = data["devs"][dev_id]["invEntDescr"] !== undefined ? String(data["devs"][dev_id]["invEntDescr"][key]).trim() : "";
-  let fru = data["devs"][dev_id]["invEntCRU"] !== undefined ? data["devs"][dev_id]["invEntCRU"][key] : undefined;
-  let fw_rev = data["devs"][dev_id]["invEntFwRev"] !== undefined ? String(data["devs"][dev_id]["invEntFwRev"][key]).trim() : "";
-  let hw_rev = data["devs"][dev_id]["invEntHwRev"] !== undefined ? String(data["devs"][dev_id]["invEntHwRev"][key]).trim() : "";
-  let sw_rev = data["devs"][dev_id]["invEntSwRev"] !== undefined ? String(data["devs"][dev_id]["invEntSwRev"][key]).trim() : "";
-  let mfg = data["devs"][dev_id]["invEntMfg"] !== undefined ? String(data["devs"][dev_id]["invEntMfg"][key]).trim() : "";
-  let model = data["devs"][dev_id]["invEntModel"] !== undefined ? String(data["devs"][dev_id]["invEntModel"][key]).trim() : "";
-  let serial = data["devs"][dev_id]["invEntSerial"] !== undefined ? String(data["devs"][dev_id]["invEntSerial"][key]).trim() : "";
-  let type = data["devs"][dev_id]["invEntType"] !== undefined ? data["devs"][dev_id]["invEntType"][key] : undefined;
+  let name = data["devs"][dev_id]["invEntName"] !== undefined ?
+    String(data["devs"][dev_id]["invEntName"][key]).trim() : ""
+  ;
+  let descr = data["devs"][dev_id]["invEntDescr"] !== undefined ?
+    String(data["devs"][dev_id]["invEntDescr"][key]).trim() : ""
+  ;
+  let fru = data["devs"][dev_id]["invEntCRU"] !== undefined ?
+    data["devs"][dev_id]["invEntCRU"][key] : undefined
+  ;
+  let fw_rev = data["devs"][dev_id]["invEntFwRev"] !== undefined ?
+    String(data["devs"][dev_id]["invEntFwRev"][key]).trim() : ""
+  ;
+  let hw_rev = data["devs"][dev_id]["invEntHwRev"] !== undefined ?
+    String(data["devs"][dev_id]["invEntHwRev"][key]).trim() : ""
+  ;
+  let sw_rev = data["devs"][dev_id]["invEntSwRev"] !== undefined ?
+    String(data["devs"][dev_id]["invEntSwRev"][key]).trim() : ""
+  ;
+  let mfg = data["devs"][dev_id]["invEntMfg"] !== undefined ?
+    String(data["devs"][dev_id]["invEntMfg"][key]).trim() : ""
+  ;
+  let model = data["devs"][dev_id]["invEntModel"] !== undefined ?
+    String(data["devs"][dev_id]["invEntModel"][key]).trim() : ""
+  ;
+  let serial = data["devs"][dev_id]["invEntSerial"] !== undefined ?
+    String(data["devs"][dev_id]["invEntSerial"][key]).trim() : ""
+  ;
+  let type = data["devs"][dev_id]["invEntType"] !== undefined ?
+    data["devs"][dev_id]["invEntType"][key] : undefined
+  ;
 
   let type_text = "Undef";
 
@@ -2953,6 +2996,15 @@ function int_metrics(int, dev) {
         labels["03_switchport"]["long_text"]="Unknown, PVID:&nbsp;"+if_undef(dev["interfaces"][int]['portPvid'], "");
         labels["03_switchport"]["bg_color"]="#FFAAFF";
       };
+    } else if(dev["interfaces"][int]["routedVlan"] !== undefined) {
+      labels["03_switchport"]={};
+      labels["03_switchport"]["short_text"] = "R " + dev["interfaces"][int]["routedVlan"];
+      labels["03_switchport"]["long_text"] = "Routed VLAN " + dev["interfaces"][int]["routedVlan"] +
+        (dev["interfaces"][int]["routedVlanParent"] == undefined ? "" : ", Parent: " +
+          dev["interfaces"][int]["routedVlanParent"]
+        )
+      ;
+      labels["03_switchport"]["bg_color"]="#BABAFF";
     };
 
     if(dev["interfaces"][int]["lldp_count"] != undefined) {
@@ -3068,7 +3120,7 @@ function int_labels(int, dev) {
   let k=keys(labels).sort();
   for(let i in k) {
     let key=k[i];
-    ret += "&nbsp;<LABEL style=\"background-color: "+labels[key]["bg_color"]+"; border: 1px black solid\" title=\""+labels[key]["long_text"]+"\">"+labels[key]["short_text"]+"</LABEL>";
+    ret += "&nbsp;<LABEL style=\"padding: 0 0.2em; background-color: "+labels[key]["bg_color"]+"; border: 1px black solid\" title=\""+labels[key]["long_text"]+"\">"+labels[key]["short_text"]+"</LABEL>";
   };
   return ret;
 };
@@ -5663,6 +5715,11 @@ $.fn.graph = function(gdata) {
   cont.data("gdata", gdata);
   cont.css({"border-top": "1px solid lightgray", "margin-top": "0.2em"});
 
+  let win_part_id = gdata["win_part_id"];
+  let win_part_key = gdata["win_part_key"];
+
+  let win_part_data = get_win_part(win_part_id, win_part_key, {});
+
   let sync = "sync_" + gdata["dev_id"];
 
   let head_text;
@@ -5687,6 +5744,8 @@ $.fn.graph = function(gdata) {
   let show = true;
   if(gdata["hide"] === true) show = false;
 
+  show = if_undef(win_part_data["show"], show);
+
   let canvas = $(DIV).addClass("canvas");
   let controls = $(DIV).addClass("control");
 
@@ -5699,13 +5758,28 @@ $.fn.graph = function(gdata) {
        .title("Свернуть/развернуть")
        .click(function() {
          let collapsable = $(this).closest(".graph").find(".collapse");
+         let gdata = $(this).closest(".graph").data("gdata");
+
+         let win_part_id = gdata["win_part_id"];
+         let win_part_key = gdata["win_part_key"];
+
+
+         let new_state;
          if(collapsable.data("show")) {
            collapsable.css("height", "0px");
            collapsable.data("show", false);
+           new_state = false;
          } else {
            collapsable.css("height", "auto");
            collapsable.data("show", true);
+           new_state = true;
          };
+         if(win_part_id != undefined && win_part_key != undefined) {
+           let win_part_data = get_win_part(win_part_id, win_part_key, {});
+           win_part_data["show"] = new_state;
+           set_win_part(win_part_id, win_part_key, win_part_data);
+         };
+
        })
      )
    )
@@ -5937,7 +6011,7 @@ $.fn.graph = function(gdata) {
     size_sel.append( $(OPTION).text(graph_sizes_list[i]).val(graph_sizes_list[i]) );
   };
 
-  size_sel.val(get_local("graph_WxH", default_graph_size));
+  size_sel.val(if_undef(win_part_data["graph_WxH"], default_graph_size));
 
   controls
    .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-arrowthick-1-w"])
@@ -6145,7 +6219,15 @@ $.fn.graph = function(gdata) {
        let g = $(this).closest(".graph");
        let a = String($(this).val()).split("x");
 
-       save_local("graph_WxH", $(this).val());
+       let gdata = g.data("gdata");
+
+       let win_part_id = gdata["win_part_id"];
+       let win_part_key = gdata["win_part_key"];
+       if(win_part_id != undefined && win_part_key != undefined) {
+         let win_part_data = get_win_part(win_part_id, win_part_key, {});
+         win_part_data["graph_WxH"] = $(this).val();
+         set_win_part(win_part_id, win_part_key, win_part_data);
+       };
 
        $("."+$.escapeSelector(g.data("sync"))).each(function() {
          let gd = $(this).data("gdata");
@@ -6195,7 +6277,12 @@ $.fn.graph = function(gdata) {
     let safe_dev_id = data["devs"][ gdata["dev_id"] ]["safe_dev_id"];
     let query = {"json": 1, "type": gdata["type"], "dev_id": safe_dev_id};
 
-    let graph_WxH = get_local("graph_WxH", default_graph_size);
+    let win_part_id = gdata["win_part_id"];
+    let win_part_key = gdata["win_part_key"];
+
+    let win_part_data = get_win_part(win_part_id, win_part_key, {});
+
+    let graph_WxH = if_undef(win_part_data["graph_WxH"], default_graph_size);
     let a = String(graph_WxH).split("x");
 
     if(gdata["max"] !== undefined) {
@@ -6281,12 +6368,44 @@ function interface_win(dev_id, int) {
     let int_info = res["ok"]["dev"]["interfaces"][int];
     data["devs"][dev_id] = res["ok"]["dev"];
 
-    let dlg = createWindow("int_win_"+int+"@"+dev_id,
-      data["devs"][dev_id]["short_name"] + ": " + int
-    );
+    let win_id = "int_win_"+int+"@"+dev_id;
+
+    let dlg_options = {
+      _close: function() {
+        let dlg = $(this).closest(".ui-dialog").find(".dialog_start");
+        let win_id = dlg.data("win_id");
+
+        delete(win_parts[win_id]);
+
+        dlg.dialog("close");
+      },
+    };
+
+    let dlg = createWindow(win_id, data["devs"][dev_id]["short_name"] + ": " + int, dlg_options);
+
+    dlg.dialog("widget").find(".ui-dialog-titlebar")
+     .append( $(BUTTON).addClass(["ui-button", "ui-corner-all", "ui-widget",
+         "ui-button-icon-only", "ui-dialog-titlebar-close"]
+       )
+       .css({"right": "4em", "height": "20px", "font-size": "x-small"})
+       .append( $(SPAN).addClass(["ui-button-icon", "ui-icon", "ui-icon-reload"])
+       )
+       .append( $(SPAN).addClass(["ui-button-icon-space"]) )
+       .click(function() {
+         let dlg = $(this).closest(".ui-dialog").find(".dialog_start");
+         let dev_id = dlg.data("dev_id");
+         let win_id = dlg.data("win_id");
+         let ifName = dlg.data("int");
+         set_win_part(win_id, "scroll", dlg.scrollTop());
+         interface_win(dev_id, ifName);
+       })
+     )
+    ;
 
     dlg.data("dev_id", dev_id);
     dlg.data("int", int);
+
+    dlg.data("win_id", win_id);
 
     let im = int_metrics(int, data["devs"][dev_id]);
 
@@ -6294,22 +6413,13 @@ function interface_win(dev_id, int) {
     content
      .append( $(DIV)
        .css({"white-space": "nowrap"})
-       .append( $(LABEL).css({"background-color": im["00_ifstatus"]["bg_color"], "border": "1px black solid"})
-         .text( im["00_ifstatus"]["short_text"] )
-         .title( im["00_ifstatus"]["long_text"] )
-         .css({"margin-right": "0.3em"})
-       )
+       .append( int_labels(int, data["devs"][dev_id]) )
+     )
+     .append( $(DIV)
+       .css({"white-space": "nowrap"})
        .append( $(SPAN).text(int_info["ifDescr"] != "" ? int_info["ifDescr"] : int) )
        .append( $(SPAN)
          .css({"float": "right", "margin-left": "2em"})
-         .append( im["03_switchport"] == undefined ? $(LABEL) : $(LABEL).html(im["03_switchport"]["short_text"])
-           .title(String(im["03_switchport"]["long_text"]).replaceAll("&nbsp;", " "))
-           .css({"border": "1px solid black", "margin-right": "1em", "background-color": im["03_switchport"]["bg_color"]})
-         )
-         .append( int_info["routedVlan"] == undefined ? $(LABEL) : $(LABEL).text("VLAN: "+int_info["routedVlan"])
-           .css({"border": "1px solid black", "margin-right": "1em"})
-           .title( int_info["routedVlanParent"] == undefined ? "" : "Parent: "+int_info["routedVlanParent"])
-         )
          .append( $(LABEL).text("BW: ") )
          .append( $(SPAN).text(im["02_speed"]["short_text"]) )
          .append( int_info["ifDelay"] == undefined ? $(LABEL) : $(LABEL).text(" DLY: ") )
@@ -6507,10 +6617,14 @@ function interface_win(dev_id, int) {
     if(data["devs"][dev_id]["virtual"] == undefined) {
       content
        .append( $(DIV)
-         .graph({"type": "int_io", "dev_id": dev_id, "int": int})
+         .graph({"type": "int_io", "dev_id": dev_id, "int": int,
+                 "win_part_id": win_id, "win_part_key": "int_io"
+         })
        )
        .append( $(DIV)
-         .graph({"type": "int_pkts", "dev_id": dev_id, "int": int, "hide": true})
+         .graph({"type": "int_pkts", "dev_id": dev_id, "int": int, "hide": true,
+                 "win_part_id": win_id, "win_part_key": "int_pkts"
+         })
        )
       ;
     };
@@ -6530,13 +6644,17 @@ function interface_win(dev_id, int) {
       tabs
        .append( $(LABEL).text("CDP").addClass("button")
          .click(function() {
-           $(this).closest(".dialog_start").find(".cdp_neighbours").toggle();
+           let win_id = $(this).closest(".dialog_start").data("win_id");
+           let state = !get_win_part(win_id, "cdp", false);
+           set_win_part(win_id, "cdp", state);
+           $(this).closest(".dialog_start").find(".cdp_neighbours").toggle(state);
          })
        )
       ;
 
-      let neighbours = $(DIV).addClass("table").addClass("cdp_neighbours").hide()
-       .css({"border-top": "1px solid lightgray", "margin-top": "0.5em"})
+      let neighbours = $(DIV).addClass("table").addClass("cdp_neighbours")
+        .toggle(get_win_part(win_id, "cdp", false))
+        .css({"border-top": "1px solid lightgray", "margin-top": "0.5em"})
       ;
       let tbody = $(DIV).addClass("tbody").appendTo(neighbours);
 
@@ -6567,13 +6685,13 @@ function interface_win(dev_id, int) {
            )
          )
          .append( $(SPAN).addClass("td").text(ni["cdpRemAddrDecoded"])
-           .title( ni["cdpRemCapsDecoded"] !== undefined ? ni["cdpRemCapsDecoded"] : "")
+           .title( ni["cdpRemCapsDecoded"] !== undefined ? "CAPS: " + ni["cdpRemCapsDecoded"] : "")
          )
          .append( $(SPAN).addClass("td").text(ni["cdpRemDevId"])
-           .title( ni["cdpRemSoftware"] !== undefined ? ni["cdpRemSoftware"] : "")
+           .title( ni["cdpRemSoftware"] !== undefined ? "SW: " + ni["cdpRemSoftware"] : "")
          )
          .append( $(SPAN).addClass("td").text(ni["cdpRemIfName"])
-           .title( ni["cdpRemPlatform"] !== undefined ? ni["cdpRemPlatform"] : "")
+           .title( ni["cdpRemPlatform"] !== undefined ? "Platform: " + ni["cdpRemPlatform"] : "")
          )
         ;
         tr.appendTo(tbody);
@@ -6590,12 +6708,16 @@ function interface_win(dev_id, int) {
       tabs
        .append( $(LABEL).text("LLDP").addClass("button")
          .click(function() {
-           $(this).closest(".dialog_start").find(".lldp_neighbours").toggle();
+           let win_id = $(this).closest(".dialog_start").data("win_id");
+           let state = !get_win_part(win_id, "lldp", false);
+           set_win_part(win_id, "lldp", state);
+           $(this).closest(".dialog_start").find(".lldp_neighbours").toggle(state);
          })
        )
       ;
 
-      let neighbours = $(DIV).addClass("table").addClass("lldp_neighbours").hide()
+      let neighbours = $(DIV).addClass("table").addClass("lldp_neighbours")
+       .toggle(get_win_part(win_id, "lldp", false))
        .css({"border-top": "1px solid lightgray", "margin-top": "0.5em"})
       ;
       let tbody = $(DIV).addClass("tbody").appendTo(neighbours);
@@ -6637,13 +6759,14 @@ function interface_win(dev_id, int) {
            )
          )
          .append( $(SPAN).addClass("td").text(ip)
-           .title( ni["RemSysCapsDecoded"] !== undefined ? ni["RemSysCapsDecoded"] : "")
+           .title( ni["RemSysCapsDecoded"] !== undefined ? "CAPS: " + ni["RemSysCapsDecoded"] : "")
          )
-         .append( $(SPAN).addClass("td").text(ni["RemSysName"] !== undefined ? ni["RemSysName"] : "no name advertized")
-           .title( ni["RemSysDescr"] !== undefined ? ni["RemSysDescr"] : "")
+         .append( $(SPAN).addClass("td")
+           .text(ni["RemSysName"] !== undefined ? ni["RemSysName"] : "no name advertized")
+           .title( ni["RemSysDescr"] !== undefined ? "Descr: " + ni["RemSysDescr"] : "")
          )
          .append( $(SPAN).addClass("td").text(ni["RemPortId"])
-           .title( ni["RemPortDescr"] !== undefined ? ni["RemPortDescr"] : "")
+           .title( ni["RemPortDescr"] !== undefined ? "PortDescr: " + ni["RemPortDescr"] : "")
          )
         ;
         tr.appendTo(tbody);
@@ -6656,12 +6779,16 @@ function interface_win(dev_id, int) {
       tabs
        .append( $(LABEL).text("MACs "+int_info["macs_count"]).addClass("button")
          .click(function() {
-           $(this).closest(".dialog_start").find(".macs").toggle();
+           let win_id = $(this).closest(".dialog_start").data("win_id");
+           let state = !get_win_part(win_id, "macs", false);
+           set_win_part(win_id, "macs", state);
+           $(this).closest(".dialog_start").find(".macs").toggle(state);
          })
        )
       ;
 
-      let sect = $(DIV).addClass("table").addClass("macs").hide()
+      let sect = $(DIV).addClass("table").addClass("macs")
+        .toggle(get_win_part(win_id, "macs", false))
         .css({"border-top": "1px solid lightgray", "margin-top": "0.5em"})
         .append( $(DIV).addClass("thead")
           .append( $(SPAN).addClass("th").text("VLAN") )
@@ -6711,12 +6838,16 @@ function interface_win(dev_id, int) {
       tabs
        .append( $(LABEL).text("ARP "+hash_length(int_info["arp"])).addClass("button")
          .click(function() {
-           $(this).closest(".dialog_start").find(".arp").toggle();
+           let win_id = $(this).closest(".dialog_start").data("win_id");
+           let state = !get_win_part(win_id, "arp", false);
+           set_win_part(win_id, "arp", state);
+           $(this).closest(".dialog_start").find(".arp").toggle(state);
          })
        )
       ;
 
-      let sect = $(DIV).addClass("table").addClass("arp").hide()
+      let sect = $(DIV).addClass("table").addClass("arp")
+        .toggle(get_win_part(win_id, "arp", false))
         .css({"border-top": "1px solid lightgray", "margin-top": "0.5em"})
         .append( $(DIV).addClass("thead")
           .append( $(SPAN).addClass("th").text("IP") )
@@ -6758,6 +6889,8 @@ function interface_win(dev_id, int) {
       };
       sect.appendTo(tab_items);
     };
+
+    dlg.scrollTop(get_win_part(win_id, "scroll", 0));
   });
 };
 
@@ -9017,13 +9150,22 @@ function VLANsWindow(with_links = false) {
             pvid = String(pvid);
           };
 
-          let a = ifName.match(/^(?:Vlan|Vl|Po|Vlanif|.*\.)(\d+)$/);
-          if(a !== undefined && a !== null) {
-            let vlan = a[1];
+          if(data["devs"][dev_id]["interfaces"][ifName]["routedVlan"] !== undefined) {
+            let vlan = String(data["devs"][dev_id]["interfaces"][ifName]["routedVlan"]);
             if(vlan !== pvid && dev_vlans[vlan] != undefined) {
               if(vlans[vlan] == undefined) { vlans[vlan] = {}; };
               if(vlans[vlan][dev_id] == undefined) { vlans[vlan][dev_id] = {}; };
               vlans[vlan][dev_id][ifName] = 1;
+            };
+          } else {
+            let a = ifName.match(/^(?:Vlan|Vl|Po|Vlanif|.*\.)(\d+)$/);
+            if(a !== undefined && a !== null) {
+              let vlan = a[1];
+              if(vlan !== pvid && dev_vlans[vlan] != undefined) {
+                if(vlans[vlan] == undefined) { vlans[vlan] = {}; };
+                if(vlans[vlan][dev_id] == undefined) { vlans[vlan][dev_id] = {}; };
+                vlans[vlan][dev_id][ifName] = 1;
+              };
             };
           };
 

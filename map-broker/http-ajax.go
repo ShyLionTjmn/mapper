@@ -516,13 +516,7 @@ func handle_error(r interface{}, w http.ResponseWriter, req *http.Request) {
   return
 }
 
-func front_dev(dev M, is_l2 bool) (M) {
-  var fields M
-  if is_l2 {
-    fields = g_dev_front_fields_l2
-  } else {
-    fields = g_dev_front_fields_l3
-  }
+func front_dev(dev M, fields M) (M) {
 
   var go_deep func(M, M, int) (M)
   go_deep = func(data M, fields_map M, count int) (M) {
@@ -774,6 +768,23 @@ func handleAjax(w http.ResponseWriter, req *http.Request) {
         vlinks[vlink_id] = vlink
       }
     }
+
+    var fields M
+    var fields_json []byte
+
+    if req_site == "l3" {
+      fields_json, err = redis.Bytes(red.Do("GET", "broker.l3_fields"))
+    } else {
+      fields_json, err = redis.Bytes(red.Do("GET", "broker.l2_fields"))
+    }
+
+    if err == redis.ErrNil {
+      panic("broker fields not set in redis db")
+    } else if err != nil {
+      panic(err)
+    }
+
+    if err = json.Unmarshal(fields_json, &fields); err != nil { panic(err) }
 
     globalMutex.RLock()
     defer globalMutex.RUnlock()
@@ -1032,7 +1043,7 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
 
       if site_match && proj_match {
         if q["full"] == nil {
-          out_devs[dev_id] = front_dev(dev, req_site != "l3")
+          out_devs[dev_id] = front_dev(dev, fields)
         } else {
           out_devs[dev_id] = dev
         }
