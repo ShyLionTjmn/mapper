@@ -134,6 +134,10 @@ var g_short_name_reg = /^[0-9a-z_A-Z][0-9a-z_A-Z\-]*$/;
 var g_ifName_reg = /^[0-9a-z_A-Z][0-9a-z_A-Z\-\/# ]*$/;
 var g_num_reg = /^\d+$/;
 
+function escapeRegex(string) {
+    return string.replace(/[/\-\\^$*+?.()|[\]{}]/g, '\\$&');
+};
+
 function escapeHtml(unsafe) {
     return unsafe
          .replace(/&/g, "&amp;")
@@ -2423,6 +2427,27 @@ function device_win(dev_id) {
           )
         ;
       };
+
+      section.appendTo( tabs_content );
+    };
+
+    if(dev["config"] !== undefined) {
+      tabs_div
+       .append( $(LABEL).text("Конфигурация").addClass(["button"])
+         .click(function() {
+           let win_id = $(this).closest(".dialog_start").data("win_id");
+           let state = !get_win_part(win_id, "config", false);
+           $(this).closest(".dialog_start").find(".config").toggle(state);
+           set_win_part(win_id, "config", state);
+         })
+       )
+      ;
+
+      let section = $(DIV).addClass("config")
+        .addClass("wsp")
+        .toggle(get_win_part(win_id, "config", false))
+        .text(dev["config"])
+      ;
 
       section.appendTo( tabs_content );
     };
@@ -7012,6 +7037,55 @@ function interface_win(dev_id, int) {
       };
       sect.appendTo(tab_items);
     };
+
+    if(data["devs"][dev_id]["config"] !== undefined && int_info["ifDescr"] != undefined && int_info["ifDescr"] != "") {
+
+      let lines = String(data["devs"][dev_id]["config"]).split("\n");
+
+      let if_lines = [];
+
+      let if_sect = false;
+
+      let sect_reg = new RegExp("^interface "+escapeRegex(int_info["ifDescr"])+"$");
+      let sect_space = new RegExp("^ ");
+
+      for(let l in lines) {
+        let line = lines[l];
+        if(sect_reg.test(line)) {
+          if_sect = true;
+          if_lines.push(line);
+        } else if(if_sect) {
+          if(sect_space.test(line)) {
+            if_lines.push(line);
+          } else {
+            if_sect = false;
+          };
+        };
+      };
+
+      if(if_lines.length > 0) {
+
+        tabs
+         .append( $(LABEL).text("Конфигурация").addClass(["button"])
+           .click(function() {
+             let win_id = $(this).closest(".dialog_start").data("win_id");
+             let state = !get_win_part(win_id, "config", false);
+             $(this).closest(".dialog_start").find(".config").toggle(state);
+             set_win_part(win_id, "config", state);
+           })
+         )
+        ;
+
+        let section = $(DIV).addClass("config")
+          .addClass("wsp")
+          .toggle(get_win_part(win_id, "config", false))
+          .text(if_lines.join("\n"))
+        ;
+
+        section.appendTo( tab_items );
+      };
+    };
+
 
     dlg.scrollTop(get_win_part(win_id, "scroll", 0));
   });
