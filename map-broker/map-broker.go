@@ -97,6 +97,7 @@ var opt_n bool
 var opt_d bool
 var opt_w string //www root
 var opt_u string //unix socket
+var opt_C string //devs config dir DEVS_CONFIGS_DIR
 
 const TRY_OPEN_FILES uint64=65536
 var max_open_files uint64
@@ -122,6 +123,7 @@ func init() {
   flag.IntVar(&opt_v, "v", 0, "set verbosity level")
   flag.StringVar(&opt_w, "w", WWW_ROOT, "www root")
   flag.StringVar(&opt_u, "u", BROKER_UNIX_SOCKET, "Broker Unix socket")
+  flag.StringVar(&opt_C, "C", DEVS_CONFIGS_DIR, " devices configs dir")
 
   flag.Parse()
 }

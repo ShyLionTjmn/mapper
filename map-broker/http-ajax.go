@@ -2010,6 +2010,15 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
         }
       }
     }
+
+    config_filename := opt_C + "/" + out.Vs("dev", "short_name") + ".config"
+
+    if stat, err := os.Stat(config_filename); err == nil && !stat.IsDir() {
+      if file_data, err := os.ReadFile(config_filename); err == nil {
+        out.VM("dev")["config"] = strings.ReplaceAll(string(file_data), "\r", "")
+      }
+    }
+
   } else if action == "mac_vendor" {
     var mac_str string
     if mac_str, err = get_p_string(q, "mac", nil); err != nil { panic(err) }

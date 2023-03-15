@@ -134,6 +134,15 @@ var g_short_name_reg = /^[0-9a-z_A-Z][0-9a-z_A-Z\-]*$/;
 var g_ifName_reg = /^[0-9a-z_A-Z][0-9a-z_A-Z\-\/# ]*$/;
 var g_num_reg = /^\d+$/;
 
+function escapeHtml(unsafe) {
+    return unsafe
+         .replace(/&/g, "&amp;")
+         .replace(/</g, "&lt;")
+         .replace(/>/g, "&gt;")
+         .replace(/"/g, "&quot;")
+         .replace(/'/g, "&#039;");
+};
+
 function unwind_list(list) {
   let ret = [];
 
@@ -258,6 +267,7 @@ $.fn.mac_info = function(mac) {
 };
 
 $.fn.ip_info = function(ip) {
+  if(ip == undefined || ip == "") return this;
   $(this).data("ip_info.ip", ip);
   $(this).tooltip({
     classes: { "ui-tooltip": "ui-corner-all ui-widget-shadow wsp tooltip" },
@@ -9041,23 +9051,39 @@ function vLinksWindow(sel_changed = false) {
   };
 
   let left_sel = $(SELECT)
+    .css({"font-family": "monospace", "font-size": "larger"})
     .data("dev_id", dev_selected[0])
     .append( $(OPTION).text("Выбрать интерфейс...").val("") )
   ;
 
   let right_sel = $(SELECT)
+    .css({"font-family": "monospace", "font-size": "larger"})
     .data("dev_id", dev_selected[1])
     .append( $(OPTION).text("Выбрать интерфейс...").val("") )
   ;
 
   for(let i in data["devs"][dev_selected[0]]["interfaces_sorted"]) {
     let ifName = data["devs"][dev_selected[0]]["interfaces_sorted"][i];
-    left_sel.append( $(OPTION).text(ifName).val(ifName) );
+    let text = data["devs"][dev_selected[0]]["interfaces"][ifName]["ifOperStatus"] == 1?"&nbsp;":"&#x21A7;";
+    text += " " + escapeHtml(ifName);
+    if(data["devs"][dev_selected[0]]["interfaces"][ifName]["ifAlias"] != undefined &&
+       data["devs"][dev_selected[0]]["interfaces"][ifName]["ifAlias"] != ""
+    ) {
+      text += " ("+escapeHtml(data["devs"][dev_selected[0]]["interfaces"][ifName]["ifAlias"])+")";
+    };
+    left_sel.append( $(OPTION).html(text).val(ifName) );
   };
 
   for(let i in data["devs"][dev_selected[1]]["interfaces_sorted"]) {
     let ifName = data["devs"][dev_selected[1]]["interfaces_sorted"][i];
-    right_sel.append( $(OPTION).text(ifName).val(ifName) );
+    let text = data["devs"][dev_selected[1]]["interfaces"][ifName]["ifOperStatus"] == 1?"&nbsp;":"&#x21A7;";
+    text += " " + escapeHtml(ifName);
+    if(data["devs"][dev_selected[1]]["interfaces"][ifName]["ifAlias"] != undefined &&
+       data["devs"][dev_selected[1]]["interfaces"][ifName]["ifAlias"] != ""
+    ) {
+      text += " ("+escapeHtml(data["devs"][dev_selected[1]]["interfaces"][ifName]["ifAlias"])+")";
+    };
+    right_sel.append( $(OPTION).html(text).val(ifName) );
   };
 
   content
