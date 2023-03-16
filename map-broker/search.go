@@ -574,6 +574,7 @@ func ip_info(ip string, red redis.Conn, timeout time.Duration, skip_lookups bool
 
   for net, _ := range net2name {
     if net2name.Vu(net, "first") <= uint64(v4ip) && net2name.Vu(net, "last") >= uint64(v4ip) {
+      res["net_cidr"] = net
       res["net"] = net2name.Vs(net, "name")
     }
   }
