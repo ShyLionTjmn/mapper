@@ -1379,6 +1379,21 @@ func process_ip_data(wg *sync.WaitGroup, ip string, startup bool) {
 
 
         }
+
+        old_arp_time, oat := old.Vue("arp_time")
+        new_arp_time, nat := dev.Vue("arp_time")
+
+        if oat && nat && old_arp_time < new_arp_time && devs_arp.EvM(dev_id, ifName) {
+          for ip, _ := range devs_arp.VM(dev_id, ifName) {
+            if devs_arp.Vs(dev_id, ifName, ip) != "000000000000" {
+              g_arp_chan <- ArpLog{
+                Ip: ip,
+                Mac: devs_arp.Vs(dev_id, ifName, ip),
+                Time: new_arp_time/1000,
+              }
+            }
+          }
+        }
       } //dev.interfaces
 
       for ifName, _ := range old.VM("interfaces") {

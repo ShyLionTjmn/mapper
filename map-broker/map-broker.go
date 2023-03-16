@@ -70,6 +70,8 @@ var ip_neighbours_rule string
 var ip_neighbours_fields []string
 var ip_neighbours_ignored map[string]struct{}
 
+var g_arp_chan chan ArpLog
+
 var ip2name = make(map[string]string)
 var ip2site = make(map[string]string)
 var net2site = M{}
@@ -101,6 +103,12 @@ var opt_C string //devs config dir DEVS_CONFIGS_DIR
 
 const TRY_OPEN_FILES uint64=65536
 var max_open_files uint64
+
+type ArpLog struct {
+  Ip string
+  Mac string
+  Time uint64
+}
 
 func init() {
   data["l2_links"] = make(M) // exported map with actual links. Keep link with down (2) state if both devices in db and no neighbours and any of it is down or interface is down
@@ -172,6 +180,78 @@ func read_devlist (red redis.Conn) (M, error) {
   }
 
   return ret, nil
+}
+
+func arp_logger(stop_ch chan string, log_chan chan ArpLog, wg *sync.WaitGroup) {
+  defer wg.Done()
+
+  var db *sql.DB
+  var st *sql.Stmt
+
+  defer func() {
+    if db != nil { db.Close() }
+  } ()
+
+  defer func() {
+    if st != nil { st.Close() }
+  } ()
+
+  var query string
+  var err error
+
+  stop_signalled := false
+
+  for !stop_signalled {
+    select {
+    case <- stop_ch:
+      stop_signalled = true
+    case data := <-log_chan:
+      //fmt.Println("arp_logger got data: ", data)
+      if ip, ok := V4ip2long(data.Ip); ok {
+        if db == nil {
+          db, err = sql.Open("mysql", IPDB_DSN)
+          if err != nil {
+            //fmt.Println("arp_logger db connect error: ", err)
+            db = nil
+          } else {
+            query = "INSERT INTO v4arps SET" +
+                    " v4arp_ip=?" +
+                    ",v4arp_mac=?" +
+                    ",v4arp_last_mac_flip=0" +
+                    ",ts=?" +
+                    ",v4arp_added=?" +
+                    " ON DUPLICATE KEY UPDATE" +
+                    " v4arp_last_mac_flip="+
+                      "IF(v4arp_mac != VALUES(v4arp_mac) AND ts < VALUES(ts),VALUES(ts),v4arp_last_mac_flip)" +
+                    ",v4arp_prev_mac="+
+                      "IF(v4arp_mac != VALUES(v4arp_mac) AND ts < VALUES(ts),v4arp_mac,v4arp_prev_mac)"+
+                    ",v4arp_mac_flip_count="+
+                      "IF(v4arp_mac != VALUES(v4arp_mac) AND ts < VALUES(ts),v4arp_mac_flip_count+1,v4arp_mac_flip_count)" +
+                    ",v4arp_mac=IF(ts < VALUES(ts),VALUES(v4arp_mac),v4arp_mac)" +
+                    ",ts=IF(ts < VALUES(ts), VALUES(ts), ts)" +
+                    ""
+
+            st, err = db.Prepare(query)
+            if err != nil {
+              //fmt.Println("arp_logger prepare error: ", err)
+              st = nil
+              db.Close()
+              db = nil
+            }
+          }
+        }
+
+        if db != nil {
+          _, err = st.Exec(ip, data.Mac, data.Time, data.Time)
+          if err != nil {
+            //fmt.Println("arp_logger exec error: ", err)
+          }
+        }
+      } else {
+        //fmt.Println("arp_logger bad ip: ", data.Ip)
+      }
+    }
+  }
 }
 
 func png_cache_cleaner(stop_ch chan string, wg *sync.WaitGroup) {
@@ -345,8 +425,14 @@ func main() {
   stop_channels = append(stop_channels, png_stop_ch)
 
   wg.Add(1)
-
   go png_cache_cleaner(png_stop_ch, &wg)
+
+  g_arp_chan = make(chan ArpLog, 1000)
+  arp_stop := make(chan string, 1)
+  stop_channels = append(stop_channels, arp_stop)
+
+  wg.Add(1)
+  go arp_logger(arp_stop, g_arp_chan, &wg)
 
 MAIN_LOOP:
   for {

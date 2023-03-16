@@ -1299,6 +1299,17 @@ $( document ).ready(function() {
 
     data_loaded(res["ok"]);
 
+    let search_string = getUrlParameter("search", "");
+    if(search_string != "") {
+      let loc = window.location;
+      let url = new URL(loc);
+      let params = url.searchParams;
+      params.delete("search");
+
+      window.history.pushState({}, window.title, url);
+
+      showSearchWindow(search_string);
+    };
     //createWindow("test", "Test window", undefined);
   });
 });

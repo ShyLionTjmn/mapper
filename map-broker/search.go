@@ -62,6 +62,8 @@ func search(search_for string, q M, red redis.Conn, timeout time.Duration) (M, e
 
   reg_search := q.Vi("reg")
 
+  zero_mac := false
+
   if _, var_ok = V4ip2long(search_for); var_ok && reg_search != 1 {
     ips_list = append(ips_list, search_for)
     origin = search_for
@@ -71,6 +73,9 @@ func search(search_for string, q M, red redis.Conn, timeout time.Duration) (M, e
     macs_list = append(macs_list, mac)
     origin = mac
     origin_type = "mac"
+    if mac == "000000000000" {
+      zero_mac = true
+    }
   } else {
     origin = search_for
     origin_type = "free"
@@ -243,7 +248,7 @@ INV:    for _, key := range []string{ "invEntModel", "invEntSerial" } {
   var err error
   for _, ip := range ips_list {
     if ips[ip] == nil {
-      ips[ip], err = ip_info(ip, red, timeout, origin_type == "free")
+      ips[ip], err = ip_info(ip, red, timeout, origin_type == "free" || zero_mac)
       if err != nil { return nil, err }
     }
   }
