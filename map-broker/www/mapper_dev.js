@@ -1665,7 +1665,53 @@ function device_win(dev_id) {
          })
          .css({"float": "right", "margin-left": "1em"})
        )
-       .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-info"])
+       .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-bullets"])
+         .title("События")
+         .css({"float": "right", "margin-left": "1em"})
+         .data("dev_id", dev_id)
+         .click(function() {
+           let dev_id = $(this).data("dev_id");
+           devEvents(dev_id);
+         })
+       )
+       .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-trash"])
+         .title("Удалить устройство из БД")
+         .data("dev_id", dev_id)
+         .click(function() {
+           let dev_id = $(this).data("dev_id");
+           show_confirm("Подтвердите удаление устройства из БД.\nВнимание! Отмена будет невозможна!\n"+
+                        "Если устройство в сети, оно может быть обнаружено повторно.",
+             function() {
+               run_query({"action": "wipe_dev", "dev_id": dev_id}, function(res) {
+
+                 if($(document.getElementById(dev_id)).length > 0) {
+                   remove_from_map(dev_id, false);
+                 } else {
+                   $("#dev_list").find(".dev_in_list").each(function() {
+                     if( $(this).data("id") == dev_id ) {
+                       $(this).remove();
+                       return false;
+                     };
+                   });
+                   resort_dev_list();
+                 };
+
+                 delete(data["devs"][dev_id]);
+ 
+                 for(let link_id in data["l2_links"]) {
+                   if(data["l2_links"][link_id][0]["DevId"] == dev_id ||
+                      data["l2_links"][link_id][1]["DevId"] == dev_id
+                   ) {
+                     wipe_l2_link(link_id);
+                   };
+                 };
+               })
+             },
+           )
+         })
+         .css({"float": "right", "margin-left": "1em"})
+       )
+       .append( !DEBUG ? $(LABEL) : $(LABEL).addClass(["button", "ui-icon", "ui-icon-info"])
          .css({"float": "right", "margin-left": "1em"})
          .data("data", jstr(dev))
          .click(function() {
@@ -6690,12 +6736,18 @@ function interface_win(dev_id, int) {
 
       content
        .append( $(DIV)
-         .css({"border-top": "1px solid lightgray", "padding-top": "0.1em", "padding-bottom": "0.1em", "margin-top": "0.2em", "margin-bottom": "0.2em"})
+         .css({"border-top": "1px solid lightgray", "padding-top": "0.1em", "padding-bottom": "0.1em",
+           "margin-top": "0.2em", "margin-bottom": "0.2em"}
+         )
          .append( $(LABEL).text(encap).title(encap_title)
-           .css({"border": "1px solid black", "margin-right": "0.5em", "padding-left": "0.2em", "padding-right": "0.2em"})
+           .css({"border": "1px solid black", "margin-right": "0.5em", "padding-left": "0.2em",
+             "padding-right": "0.2em"}
+           )
          )
          .append( $(LABEL).text(sec).title(sec_title)
-           .css({"border": "1px solid black", "margin-right": "0.5em", "padding-left": "0.2em", "padding-right": "0.2em"})
+           .css({"border": "1px solid black", "margin-right": "0.5em", "padding-left": "0.2em",
+             "padding-right": "0.2em"}
+           )
          )
          .append( $(LABEL).text("Src: ")
          )
@@ -6713,7 +6765,9 @@ function interface_win(dev_id, int) {
 
     content
      .append( $(DIV)
-       .css({"border": "1px solid lightgray", "padding-top": "0.1em", "padding-bottom": "0.1em", "margin-top": "0.2em", "margin-bottom": "0.2em"})
+       .css({"border": "1px solid lightgray", "padding-top": "0.1em", "padding-bottom": "0.1em",
+         "margin-top": "0.2em", "margin-bottom": "0.2em"}
+       )
        .append( $(SPAN).text(int_info["ifAlias"]) )
      )
     ;
@@ -9645,16 +9699,6 @@ function selectLayout(others = false) {
 
     let dlg = createWindow("layouts", "Раскладки");
     let content = dlg.find(".content");
-/*
-    content
-      .append( $(DIV)
-        .append( $(LABEL, {"for": "layouts_others"}).text("Показывать чужие раскладки: ") )
-        .append( $(INPUT, {"id": "layouts_others", "type": "checkbox", "checked": others})
-          .on("change", function() { selectLayout( $(this).is(":checked") ); })
-        )
-      )
-    ;
-*/
     let table = $(DIV).addClass("table").appendTo(content);
 
     table
@@ -9705,4 +9749,338 @@ function selectLayout(others = false) {
 
     dlg.trigger("recenter");
   });
+};
+
+function devEvents(dev_id) {
+  run_query({"action": "dev_events", "dev_id": dev_id}, function(res) {
+    let win_id = "events_" + dev_id;
+    let short_name;
+    if(data["devs"][dev_id] != undefined) {
+      short_name = data["devs"][dev_id]["short_name"];
+    } else {
+      short_name = "";
+    };
+    let dlg = createWindow(win_id, "События " + short_name);
+    let content = dlg.find(".content");
+
+    let table = $(DIV).addClass("table").appendTo(content);
+
+    for(let i in res["ok"]["events"]) {
+      let row = event_row(dev_id, res["ok"]["events"][i]);
+      if(row != undefined ) {
+        table.append( row );
+      };
+    };
+
+    dlg.trigger("recenter");
+  });
+};
+
+function event_row(dev_id, event_json) {
+  let ret = $(DIV).addClass("tr");
+  let ev;
+
+  try {
+    ev = JSON.parse(event_json);
+  } catch(e) {
+    ret
+      .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-error"])
+        .data("text", "Ошибка раскодирования JSON\n" + event_json)
+        .click(function() {
+          show_dialog( $(this).data("text") );
+        })
+      )
+    ;
+    return ret;
+  };
+
+  if(ev["event"] == "if_key_reset") return undefined;
+  
+  ret
+    .append( $(SPAN).addClass("td")
+      .append( !DEBUG ? $(LABEL) : $(LABEL)
+        .addClass(["button", "ui-icon", "ui-icon-info"])
+        .data("text", jstr(ev))
+        .click(function() {
+          show_dialog( $(this).data("text") );
+        })
+      )
+      .append( $(SPAN).text( from_unix_time( ev["time"] ) ) )
+    )
+  ;
+
+  switch(ev["event"]) {
+  case "key_change":
+    ret
+      .append( $(SPAN).addClass("td")
+        .append( $(LABEL).addClass(["ui-icon", "ui-icon-arrow-2-e-w"])
+          .title("Изменение переменной")
+          .css({"color": "blue", "margin-right": "0.5em"})
+        )
+        .append( $(SPAN).text( ev["key"]) )
+      )
+      .append( $(SPAN).addClass("td")
+        .append( $(SPAN).text(ev["fields"]["old_value"])
+          .css({"max-width": "20em", "display": "inline-block"})
+        )
+        .append( $(LABEL).addClass(["ui-icon", "ui-icon-arrow-1-e"]) )
+        .append( $(SPAN).text(ev["fields"]["new_value"])
+          .css({"max-width": "20em", "display": "inline-block"})
+        )
+      )
+    ;
+    break;
+  case "if_key_change":
+    ret
+      .append( $(SPAN).addClass("td")
+        .append( $(LABEL).addClass(["ui-icon", "ui-icon-arrow-2-e-w"])
+          .title("Изменение переменной интерфейса")
+          .css({"color": "blue", "margin-right": "0.5em"})
+        )
+        .append( $(LABEL).text( ev["key"] )
+          .css({"padding": "0 0.2em", "border": "1px solid black"})
+          .data("dev_id", dev_id)
+          .data("ifName", ev["key"])
+          .click(function() {
+            interface_win( $(this).data("dev_id"), $(this).data("ifName") );
+          })
+          .hover(
+            function (e) {
+              e.stopPropagation();
+              let int = $(this).data("ifName");
+              let dev_id = $(this).data("dev_id");
+              interface_in(int, data["devs"][dev_id])
+            },
+            interface_out
+          )
+        )
+      )
+      .append( $(SPAN).addClass("td")
+        .append( $(SPAN).text(ev["fields"]["key"] + ": ") )
+        .append( $(SPAN).text(ev["fields"]["old_value"]) )
+        .append( $(LABEL).addClass(["ui-icon", "ui-icon-arrow-1-e"]) )
+        .append( $(SPAN).text(ev["fields"]["new_value"]) )
+      )
+    ;
+    break;
+  case "lldp_port_nei_gone":
+    ret
+      .append( $(SPAN).addClass("td")
+        .append( $(LABEL).addClass(["ui-icon", "ui-icon-circle-b-minus"])
+          .title("LLDP сосед пропал")
+          .css({"color": "blue", "margin-right": "0.5em"})
+        )
+        .append( $(SPAN).text( "LLDP" ) )
+      )
+      .append( $(SPAN).addClass("td")
+        .append( $(SPAN)
+          .text( if_undef(ev["fields"]["RemSysName"], "") +
+            " " + if_undef(ev["fields"]["RemPortDescr"],
+                           if_undef(ev["fields"]["RemPortId"], "")
+                  )
+          )
+          .css({"margin-right": "0.5em"})
+        )
+        .append( $(LABEL)
+          .addClass(["button", "ui-icon", "ui-icon-info"])
+          .data("text", jstr(ev["fields"]))
+          .click(function() {
+            show_dialog( $(this).data("text") );
+          })
+        )
+      )
+    ;
+    break;
+  case "lldp_port_nei_new":
+    ret
+      .append( $(SPAN).addClass("td")
+        .append( $(LABEL).addClass(["ui-icon", "ui-icon-circle-b-plus"])
+          .title("LLDP сосед появился")
+          .css({"color": "blue", "margin-right": "0.5em"})
+        )
+        .append( $(SPAN).text( "LLDP" ) )
+      )
+      .append( $(SPAN).addClass("td")
+        .append( $(SPAN)
+          .text( if_undef(ev["fields"]["RemSysName"], "") +
+            " " + if_undef(ev["fields"]["RemPortDescr"],
+                           if_undef(ev["fields"]["RemPortId"], "")
+                  )
+          )
+          .css({"margin-right": "0.5em"})
+        )
+        .append( $(LABEL)
+          .addClass(["button", "ui-icon", "ui-icon-info"])
+          .data("text", jstr(ev["fields"]))
+          .click(function() {
+            show_dialog( $(this).data("text") );
+          })
+        )
+      )
+    ;
+    break;
+  case "cdp_port_nei_gone":
+    ret
+      .append( $(SPAN).addClass("td")
+        .append( $(LABEL).addClass(["ui-icon", "ui-icon-circle-b-minus"])
+          .title("CDP сосед пропал")
+          .css({"color": "blue", "margin-right": "0.5em"})
+        )
+        .append( $(SPAN).text( "CDP" ) )
+      )
+      .append( $(SPAN).addClass("td")
+        .append( $(SPAN)
+          .text( ev["fields"]["cdpRemDevId"] + " " + ev["fields"]["cdpRemIfName"] )
+          .css({"margin-right": "0.5em"})
+        )
+        .append( $(LABEL)
+          .addClass(["button", "ui-icon", "ui-icon-info"])
+          .data("text", jstr(ev["fields"]))
+          .click(function() {
+            show_dialog( $(this).data("text") );
+          })
+        )
+      )
+    ;
+    break;
+  case "cdp_port_nei_new":
+    ret
+      .append( $(SPAN).addClass("td")
+        .append( $(LABEL).addClass(["ui-icon", "ui-icon-circle-b-plus"])
+          .title("CDP сосед появился")
+          .css({"color": "blue", "margin-right": "0.5em"})
+        )
+        .append( $(SPAN).text( "CDP" ) )
+      )
+      .append( $(SPAN).addClass("td")
+        .append( $(SPAN)
+          .text( ev["fields"]["cdpRemDevId"] + " " + ev["fields"]["cdpRemIfName"] )
+          .css({"margin-right": "0.5em"})
+        )
+        .append( $(LABEL)
+          .addClass(["button", "ui-icon", "ui-icon-info"])
+          .data("text", jstr(ev["fields"]))
+          .click(function() {
+            show_dialog( $(this).data("text") );
+          })
+        )
+      )
+    ;
+    break;
+  case "if_key_reset":
+    ret
+      .append( $(SPAN).addClass("td")
+        .append( $(LABEL).addClass(["ui-icon", "ui-icon-arrowrefresh-1-s"])
+          .title("Сброс счетчика")
+          .css({"color": "blue", "margin-right": "0.5em"})
+        )
+        .append( $(LABEL).text( ev["key"] )
+          .css({"padding": "0 0.2em", "border": "1px solid black"})
+          .data("dev_id", dev_id)
+          .data("ifName", ev["key"])
+          .click(function() {
+            interface_win( $(this).data("dev_id"), $(this).data("ifName") );
+          })
+          .hover(
+            function (e) {
+              e.stopPropagation();
+              let int = $(this).data("ifName");
+              let dev_id = $(this).data("dev_id");
+              interface_in(int, data["devs"][dev_id])
+            },
+            interface_out
+          )
+        )
+      )
+      .append( $(SPAN).addClass("td")
+        .append( $(SPAN)
+          .text(ev["fields"]["key"] + ": ")
+        )
+        .append( $(SPAN).text(ev["fields"]["old_value"]) )
+        .append( $(LABEL).addClass(["ui-icon", "ui-icon-arrow-1-e"]) )
+        .append( $(SPAN).text(ev["fields"]["new_value"]) )
+      )
+    ;
+    break;
+  case "if_gone":
+    ret
+      .append( $(SPAN).addClass("td")
+        .append( $(LABEL).addClass(["ui-icon", "ui-icon-circle-b-minus"])
+          .title("Интерфейс пропал")
+          .css({"color": "blue", "margin-right": "0.5em"})
+        )
+        .append( $(LABEL).text( ev["key"] )
+          .css({"padding": "0 0.2em", "border": "1px solid black"})
+        )
+      )
+    ;
+    break;
+  case "if_new":
+    ret
+      .append( $(SPAN).addClass("td")
+        .append( $(LABEL).addClass(["ui-icon", "ui-icon-circle-b-plus"])
+          .title("Интерфейс появился")
+          .css({"color": "blue", "margin-right": "0.5em"})
+        )
+        .append( $(LABEL).text( ev["key"] )
+          .css({"padding": "0 0.2em", "border": "1px solid black"})
+        )
+      )
+    ;
+    break;
+  case "if_ip_gone":
+    ret
+      .append( $(SPAN).addClass("td")
+        .append( $(LABEL).addClass(["ui-icon", "ui-icon-arrow-2-e-w"])
+          .title("Пропал IP адрес")
+          .css({"color": "blue", "margin-right": "0.5em"})
+        )
+        .append( $(LABEL).text( ev["key"] )
+          .css({"padding": "0 0.2em", "border": "1px solid black"})
+        )
+      )
+      .append( $(SPAN).addClass("td")
+        .append( $(LABEL).addClass(["ui-icon", "ui-icon-circle-b-minus"])
+          .title("Пропал IP адрес")
+          .css({"color": "blue", "margin-right": "0.5em"})
+        )
+        .append( $(SPAN).text("IP: ") )
+        .append( $(LABEL).text( ev["fields"]["ip"]+" / "+ev["fields"]["mask"] )
+        )
+      )
+    ;
+    break;
+  case "if_ip_new":
+    ret
+      .append( $(SPAN).addClass("td")
+        .append( $(LABEL).addClass(["ui-icon", "ui-icon-arrow-2-e-w"])
+          .title("Добавлен IP адрес")
+          .css({"color": "blue", "margin-right": "0.5em"})
+        )
+        .append( $(LABEL).text( ev["key"] )
+          .css({"padding": "0 0.2em", "border": "1px solid black"})
+        )
+      )
+      .append( $(SPAN).addClass("td")
+        .append( $(LABEL).addClass(["ui-icon", "ui-icon-circle-b-plus"])
+          .title("Добавлен IP адрес")
+          .css({"color": "blue", "margin-right": "0.5em"})
+        )
+        .append( $(SPAN).text("IP: ") )
+        .append( $(LABEL).text( ev["fields"]["ip"]+" / "+ev["fields"]["mask"] )
+        )
+      )
+    ;
+    break;
+  default:
+    ret
+      .append( $(SPAN).addClass("td")
+        .text( ev["event"] )
+        .title("Обработчик события еще не добавлен")
+      )
+    ;
+  };
+
+
+  return ret;
 };

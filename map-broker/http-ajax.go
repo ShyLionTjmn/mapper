@@ -2134,6 +2134,29 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
 
     out["done"] = 1
 
+  } else if action == "wipe_dev" {
+    //TODO add access check
+    var dev_id string
+
+    if dev_id, err = get_p_string(q, "dev_id", g_dev_id_reg); err != nil { panic(err) }
+    globalMutex.Lock()
+    defer globalMutex.Unlock()
+
+    var data_ip string
+    if data_ip, var_ok = devs.Vse(dev_id, "data_ip"); var_ok {
+      red.Do("HDEL", "devs_list", data_ip)
+    }
+
+    wipe_dev(dev_id)
+
+    out["done"] = 1
+
+  } else if action == "dev_events" {
+    var dev_id string
+    if dev_id, err = get_p_string(q, "dev_id", nil); err != nil { panic(err) }
+
+    if out["events"], err = redis.Strings(red.Do("LRANGE", "log." + dev_id, "0", "-1")); err != nil { panic(err) }
+
   } else if action == "query" {
     out["_query"] = q
     goto OUT

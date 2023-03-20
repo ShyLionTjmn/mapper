@@ -516,7 +516,7 @@ function getUrlParameter(sParam, defval) {
 };
 
 function if_undef(value, def) {
-  if(value === undefined) return def;
+  if(value === undefined || value === "") return def;
   return value;
 };
 

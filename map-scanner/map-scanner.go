@@ -548,16 +548,21 @@ ITEM:     for ii := 0; ii < len(ws.job[jgi].Items); ii++ {
 
               if (ws.job[jgi].Items[ii].Options & ioPerVlanIndex) == 0 {
                 //debugPub(red, ws, debug, "perVlan", "option not set")
-                key_value, err = getTableFunc(client, ws.job[jgi].Items[ii].Oid, ws.job[jgi].Items[ii].Value_type, func() {
-                  debugPub(red, ws, debug, ws.job[jgi].Items[ii].Key, "beat")
-                  if last_report_time.Add(time.Second).Before(time.Now()) {
-                    last_report_time = time.Now()
-                    report_time := last_report_time.Unix()
-                    queue_report := fmt.Sprintf("%d:%d:run:get table data, %s", report_time, report_time, key_info)
-                    red.Do("HSET", queues_key, fmt.Sprint(ws.queue), queue_report)
-                  }
-                })
-
+                key_value, err = getTableFunc(client, ws.job[jgi].Items[ii].Oid,
+                                              ws.job[jgi].Items[ii].Value_type,
+                  func() {
+                    debugPub(red, ws, debug, ws.job[jgi].Items[ii].Key, "beat")
+                    if last_report_time.Add(time.Second).Before(time.Now()) {
+                      last_report_time = time.Now()
+                      report_time := last_report_time.Unix()
+                      queue_report := fmt.Sprintf("%d:%d:run:get table data, %s", report_time, report_time,
+                        key_info,
+                      )
+                      red.Do("HSET", queues_key, fmt.Sprint(ws.queue), queue_report)
+                    }
+                    //end of func
+                  },
+                )
               } else {
                 debugPub(red, ws, debug, "perVlan", "option set")
                 perVlanField := ws.job[jgi].Items[ii].Opt_values[ioPerVlanIndex]
@@ -574,15 +579,20 @@ VLANS:            for vlan_id, _ := range perVlanField_i.(map[string]string) {
                     debugPub(red, ws, debug, "perVlan", "walking vlan:", vlan_id)
                     var temp_key_value map[string]string
                     temp_key_value, err = getTableFunc(client, ws.job[jgi].Items[ii].Oid,
-                                                  ws.job[jgi].Items[ii].Value_type, func() {
-                      debugPub(red, ws, debug, ws.job[jgi].Items[ii].Key, "beat")
-                      if last_report_time.Add(time.Second).Before(time.Now()) {
-                        last_report_time = time.Now()
-                        report_time := last_report_time.Unix()
-                        queue_report := fmt.Sprintf("%d:%d:run:get table data, %s", report_time, report_time, key_info)
-                        red.Do("HSET", queues_key, fmt.Sprint(ws.queue), queue_report)
-                      }
-                    })
+                                                  ws.job[jgi].Items[ii].Value_type,
+                      func() {
+                        debugPub(red, ws, debug, ws.job[jgi].Items[ii].Key, "beat")
+                        if last_report_time.Add(time.Second).Before(time.Now()) {
+                          last_report_time = time.Now()
+                          report_time := last_report_time.Unix()
+                          queue_report := fmt.Sprintf("%d:%d:run:get table data, %s", report_time,
+                            report_time, key_info,
+                          )
+                          red.Do("HSET", queues_key, fmt.Sprint(ws.queue), queue_report)
+                        }
+                        //end of func
+                      },
+                    )
 
                     if err == nil {
                       debugPub(red, ws, debug, "perVlan", "walking vlan:", vlan_id, "Done")

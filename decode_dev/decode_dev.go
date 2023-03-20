@@ -535,25 +535,27 @@ func (d *Dev) Decode(raw M) error {
   d.Dev = make(M)
   var dev = d.Dev
 
-  var dev_id string
-
   var i64 int64
 
   if raw.Evs("locChassisId") && len(raw.Vs("locChassisId")) > 0 {
     s := strings.ToLower(raw.Vs("locChassisId"))
-    dev_id = "lldp:"+s
     raw["locChassisId"] = s
   } else if raw.Evs("BDCOMlocChassisId") && len(raw.Vs("BDCOMlocChassisId")) > 0 {
     s := strings.ReplaceAll(strings.ToLower(raw.Vs("BDCOMlocChassisId")), ".", "")
-    dev_id = "lldp:"+s
     raw["locChassisId"] = s
     raw["locChassisIdSubtype"] = "4"
-  } else if raw.Evs("serial") && len(raw.Vs("serial")) > 0 {
-    dev_id = "serial:"+raw.Vs("serial")
-  } else if raw.Evs("sysName") && len(raw.Vs("sysName")) > 0 {
-    dev_id = "name:"+strings.ToLower(raw.Vs("sysName"))
-  } else {
-    dev_id = "ip:"+d.Dev_ip
+  } else if strings.HasPrefix(raw.Vs("sysObjectID"), ".1.3.6.1.4.1.12356.101.1") { //Fortigate
+    var ha_if_index string
+    for index, _ := range raw.VM("ifName") {
+      if raw.Vs("ifName", index) == "ha" || raw.Vs("ifName", index) == "ha1" {
+        ha_if_index = index
+        break
+      }
+    }
+    if ha_mac, ok := raw.Vse("ifPhysAddr", ha_if_index); ok && len(ha_mac) == 12 {
+      raw["locChassisId"] = ha_mac
+      raw["locChassisIdSubtype"] = "4"
+    }
   }
 
 // fix raw data
@@ -588,7 +590,6 @@ func (d *Dev) Decode(raw M) error {
     raw["memoryUsed"] = raw.Vi("memoryUsedK")*1024
   }
 //
-  dev["id"] = dev_id
   dev["data_ip"] = d.Dev_ip
 
   var sysName string
@@ -749,17 +750,21 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
       //$dev_if_index{$dev_id}{$ifName} = $ifIndex;
       //$dev_if_name{$dev_id}{$ifIndex} = $ifName;
 
-      for _, attr := range []string { "ifAlias", "ifType", "ifSpeed", "ifHighSpeed", "ifAdminStatus", "ifOperStatus", "ifInOctets", "ifOutOctets",
-                                      "ifInErrors", "ifInCRCErrors", "ifDelay", "oltRxPower", "onuVendor", "onuModel", "onuRxPower", "onuStatus",
-                                      "onuDistance", "onuMAC", "ifHCInOctets", "ifHCOutOctets", "ifInMulticastPkts", "ifInBroadcastPkts", "ifOutMulticastPkts",
-                                      "ifOutBroadcastPkts", "ifLastChange", "ifPhysAddr", "ifInUnicastPkts", "ifOutUnicastPkts", "portMacCountLimitCurNum",
-                                      "portMacCountLimitConfigNum", "ifDescr",
+      for _, attr := range []string {
+        "ifAlias", "ifType", "ifSpeed", "ifHighSpeed", "ifAdminStatus", "ifOperStatus",
+        "ifInOctets", "ifOutOctets", "ifInErrors", "ifInCRCErrors", "ifDelay", "oltRxPower",
+        "onuVendor", "onuModel", "onuRxPower", "onuStatus", "onuDistance", "onuMAC", "ifHCInOctets",
+        "ifHCOutOctets", "ifInMulticastPkts", "ifInBroadcastPkts", "ifOutMulticastPkts", "ifOutBroadcastPkts",
+        "ifLastChange", "ifPhysAddr", "ifInUnicastPkts", "ifOutUnicastPkts", "portMacCountLimitCurNum",
+        "portMacCountLimitConfigNum", "ifDescr",
       } {
         if raw.EvA(attr, ifIndex_str) {
           attr_val := raw.VA(attr, ifIndex_str)
-          if attr == "ifInErrors" || attr == "ifInOctets" || attr == "ifOutOctets" || attr == "ifInMulticastPkts" || attr == "ifInBroadcastPkts" ||
-             attr == "ifOutMulticastPkts" || attr == "ifOutBroadcastPkts" || attr == "ifInUnicastPkts" || attr == "ifOutUnicastPkts" ||
-             false {
+          if attr == "ifInErrors" || attr == "ifInOctets" || attr == "ifOutOctets" ||
+             attr == "ifInMulticastPkts" || attr == "ifInBroadcastPkts" ||
+             attr == "ifOutMulticastPkts" || attr == "ifOutBroadcastPkts" || attr == "ifInUnicastPkts" ||
+             attr == "ifOutUnicastPkts" ||
+          false {
             //if
             switch attr_val.(type) {
             case int64:
@@ -1223,7 +1228,21 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
         }
       }
     }
-  } //locPortId
+  } else if strings.HasPrefix(raw.Vs("sysObjectID"), ".1.3.6.1.4.1.12356.101.1") {
+
+    for ifName, _ := range dev.VM("interfaces") {
+      if ifmac, ok := dev.Vse("interfaces", ifName, "ifPhysAddr");
+      ok && dev.Vi("interfaces", ifName, "ifType") == int64(6) && len(ifmac) == 12 && ifmac != "000000000000" &&
+      true {
+        ifIndex := dev.Vs("interfaces", ifName, "ifIndex")
+        dev.MkM("lldp_ports")[ifIndex] = M{
+          "ifName": ifName,
+          "port_id": ifName,
+          "subtype": int64(5),
+        }
+      }
+    }
+  }
 
   if !raw.EvM("lldpRemChassisId") && raw.EvM("BDCOMlldpRemChassisId") {
     port_seq := make(map[int64]int64)
@@ -2237,6 +2256,23 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
       }
     }
   }
+
+  var dev_id string
+  if raw.Evs("locChassisId") && len(raw.Vs("locChassisId")) > 0 {
+    s := strings.ToLower(raw.Vs("locChassisId"))
+    dev_id = "lldp:"+s
+  } else if raw.Evs("BDCOMlocChassisId") && len(raw.Vs("BDCOMlocChassisId")) > 0 {
+    s := strings.ReplaceAll(strings.ToLower(raw.Vs("BDCOMlocChassisId")), ".", "")
+    dev_id = "lldp:"+s
+  } else if raw.Evs("serial") && len(raw.Vs("serial")) > 0 {
+    dev_id = "serial:"+raw.Vs("serial")
+  } else if raw.Evs("sysName") && len(raw.Vs("sysName")) > 0 {
+    dev_id = "name:"+strings.ToLower(raw.Vs("sysName"))
+  } else {
+    dev_id = "ip:"+d.Dev_ip
+  }
+
+  dev["id"] = dev_id
 
   return nil
 }

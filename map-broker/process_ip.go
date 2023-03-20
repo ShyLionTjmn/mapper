@@ -1287,7 +1287,7 @@ func process_ip_data(wg *sync.WaitGroup, ip string, startup bool) {
               old_c, old_ex := old.Vie("interfaces", ifName, key);
               old_key_stop := old.Vs("_key_stop", key)
               new_key_stop := dev.Vs("_key_stop", key)
-              if new_ex && old_ex && new_c < old_c {
+              if new_ex && old_ex && new_c < old_c && (old_c - new_c) < 1000 {
                 logger.Event("if_key_reset", ifName, "key", key, "old_value", old.Vs("interfaces", ifName, key),
                              "new_value", dev.Vs("interfaces", ifName, key),
                              "old_key_stop", old_key_stop,
@@ -1297,7 +1297,7 @@ func process_ip_data(wg *sync.WaitGroup, ip string, startup bool) {
 
                 new_cu, new_exu := dev.Vue("interfaces", ifName, key);
                 old_cu, old_exu := old.Vue("interfaces", ifName, key);
-                if new_exu && old_exu && new_cu < old_cu {
+                if new_exu && old_exu && new_cu < old_cu && (old_cu - new_cu) < 1000 {
                   logger.Event("if_key_reset", ifName, "key", key, "old_value", old.Vs("interfaces", ifName, key),
                                "new_value", dev.Vs("interfaces", ifName, key),
                              "old_key_stop", old_key_stop,

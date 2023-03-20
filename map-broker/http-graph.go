@@ -42,7 +42,7 @@ func init() {
   g_graph_integer_reg = regexp.MustCompile(`^-?\d+$`)
   g_graph_dev_id_reg = regexp.MustCompile(`^[a-zA-Z0-9\.\-_]+$`)
   g_graph_if_name_reg = regexp.MustCompile(SAFE_INT_REGEX)
-  g_graph_cpu_name_reg = regexp.MustCompile(`^[a-zA-Z0-9 \/.,;:\-]+$`)
+  g_graph_cpu_name_reg = regexp.MustCompile(`^[a-zA-Z0-9 \/.,;:\-)(]+$`)
   g_graph_file_reg = regexp.MustCompile(`^[a-zA-Z0-9 .,:\-_]+\.png$`)
 
   g_graph_json_graph_left_reg = regexp.MustCompile(`^graph_left = (\d+)$`)
