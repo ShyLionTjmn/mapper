@@ -1,9 +1,5 @@
+**/*
+!**/*.*
 **/local*
 **/old*
 **/.*.swp
-map-broker/map-broker
-map-scanner/map-scanner
-map-alerter/map-alerter
-map-grapher/map-grapher
-red2file/red2file
-file2red/file2red
