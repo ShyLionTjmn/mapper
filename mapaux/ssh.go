@@ -176,6 +176,11 @@ func (s *SshConn) Expect(d time.Duration, good, bad string) (string, error) {
     }
   }
 
+  return s.ExpectReg(d, good_reg, bad_reg)
+}
+
+func (s *SshConn) ExpectReg(d time.Duration, good_reg, bad_reg *regexp.Regexp) (string, error) {
+
   expect_timer := time.NewTimer(d)
 
   var ret string

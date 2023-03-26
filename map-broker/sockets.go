@@ -9,6 +9,8 @@ import (
   "errors"
   "strings"
   "encoding/gob"
+  "encoding/json"
+  "github.com/gomodule/redigo/redis"
   . "github.com/ShyLionTjmn/mapper/mapaux"
 )
 
@@ -19,6 +21,8 @@ func init() {
 
 func socket_listener(stop chan string, wg *sync.WaitGroup) {
   defer wg.Done()
+
+  var err error
 
   _, serr := os.Stat(opt_u)
   if serr == nil {
@@ -92,6 +96,30 @@ func socket_listener(stop chan string, wg *sync.WaitGroup) {
           return
         }
 
+        var red redis.Conn
+        if red, err = RedisCheck(red, "unix", REDIS_SOCKET, red_db); err != nil { return }
+        defer red.Close()
+
+        var fields_json []byte
+        fields_json, err = redis.Bytes(red.Do("GET", "broker." + command + "_fields"))
+        if err == redis.ErrNil {
+          fields_json = []byte{}
+        } else if err != nil {
+          return
+        }
+
+        var fields M
+
+        if len(fields_json) > 0 {
+          if err = json.Unmarshal(fields_json, &fields); err != nil {
+            fields = nil
+          }
+        }
+
+        //if fields != nil {
+        //  fmt.Println(fields.ToJsonStr(true))
+        //}
+
         globalMutex.RLock()
         defer globalMutex.RUnlock()
 
@@ -108,8 +136,9 @@ func socket_listener(stop chan string, wg *sync.WaitGroup) {
             dev_ips := []string{}
             for ifName, _ := range devs.VM(id, "interfaces") {
               for ip, _ := range devs.VM(id, "interfaces", ifName, "ips") {
-                if devs.Vu(id, "interfaces", ifName, "ifOperStatus") == 1 &&
+                if devs.Vu(id, "interfaces", ifName, "ifAdminStatus") == 1 &&
                    !strings.HasPrefix(ip, "127.") &&
+                   !strings.HasPrefix(ip, "0.") &&
                 true {
                   ip_count ++
                   dev_ips = append(dev_ips, ip)
@@ -127,6 +156,35 @@ func socket_listener(stop chan string, wg *sync.WaitGroup) {
             }
           }
 
+        default:
+          for id, _ := range devs {
+            ip_count := 0
+            dev_ips := []string{}
+            for ifName, _ := range devs.VM(id, "interfaces") {
+              for ip, _ := range devs.VM(id, "interfaces", ifName, "ips") {
+                if devs.Vu(id, "interfaces", ifName, "ifAdminStatus") == 1 &&
+                   !strings.HasPrefix(ip, "127.") &&
+                   !strings.HasPrefix(ip, "0.") &&
+                true {
+                  ip_count ++
+                  dev_ips = append(dev_ips, ip)
+                }
+              }
+            }
+            var out_dev M
+
+            if fields != nil {
+              out_dev = front_dev(devs.VM(id), fields)
+            } else {
+              out_dev = devs.VM(id)
+            }
+            out_dev["ips_count"] = ip_count
+            out_dev["ips"] = dev_ips
+
+            out[id] = out_dev
+          }
+
+          //switch
         }
         enc.Encode(out)
       } ()
