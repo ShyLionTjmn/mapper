@@ -57,9 +57,14 @@ func (s *SshConn) Connect(host, user, pass string, stop_ch StopCloseChan) error 
   s.Config.HostKeyCallback = ssh.InsecureIgnoreHostKey()
   s.Config.Timeout = 10 * time.Second
   s.Config.Config = ssh.Config{
-		Ciphers: []string{
+		Ciphers: []string {
       "aes128-gcm@openssh.com", "chacha20-poly1305@openssh.com", "aes128-ctr", "aes192-ctr", "aes256-ctr",
       "aes128-cbc", "3des-cbc", "aes192-cbc", "aes256-cbc",
+    },
+    KeyExchanges: []string {
+      "curve25519-sha256", "curve25519-sha256@libssh.org", "ecdh-sha2-nistp256", "ecdh-sha2-nistp384",
+      "ecdh-sha2-nistp521", "diffie-hellman-group14-sha256", "diffie-hellman-group14-sha1", "ext-info-c",
+      "diffie-hellman-group1-sha1",
     },
   }
   /*
@@ -159,7 +164,11 @@ func (s *SshConn) Close() {
 }
 
 func (s *SshConn) Cmd(cmd string) {
-  s.W.Write([]byte(cmd + s.CmdNewline))
+  send_data := []byte(cmd + s.CmdNewline)
+  //fmt.Println()
+  //fmt.Println(send_data)
+  //fmt.Println()
+  s.W.Write(send_data)
 }
 
 func (s *SshConn) Expect(d time.Duration, good, bad string) (string, error) {
