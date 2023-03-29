@@ -17,11 +17,15 @@
 ## Script syntax
 
 Use single space before regexp or value, otherwise it will be part of it
+
 If you need to regexp a space, better use (?: ) style, for visibility
+
 Watch for trailing spaces after regexp or value, they will also be a part of it
 
 Regexp syntax is of golang, see https://golang.org/s/re2syntax for details
+
 Tip: use (?i)blahblah for case insensitive match
+
 Tip: use (?ms) for multiline match/capture
 
     # this is comment
