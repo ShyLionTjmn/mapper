@@ -1,0 +1,185 @@
+#############################
+#
+# WATCH FOR TRAILING SPACES!
+# WATCH FOR SPACES BEFORE regexp and value
+#
+# ###########################
+# comment
+#
+# %{0} - first -a value, %{1} - second -a value and so on
+#   escape regexp manually if needed and used in regexp
+# %{Y} - 4-digit year, local system time
+# %{m} - 2-digit month, local system time
+# %{d} - 2-digit day, local system time
+# %{H} - 2-digit 24h hour, local system time
+# %{M} - 2-digit minute, local system time
+# %{S} - 2-digit second, local system time
+# %{t} - unix time()
+# %{n} - dev's short_name
+# %{nXX} - dev's short_name, cut to XX chars (use 20 for Cisco)
+# %{N} - same as %{n} but regexp escaped, for use in e or ef
+# %{NXX} - same as %{nXX} but regexp meta chars escaped, for use in e or ef
+# %{int.Attr} - current interface Attr attribute value in per_int
+# %{dev.Attr} - device Attr attribute value
+# %{var.Var} - captured variable Var value, empty string if not set
+# %{INT.Attr}, %{DEV.Attr}, %{VAR.Var} - same as above, but regexp meta chars escaped
+# %{res} - last result of e or ef
+#
+#user username
+#pass password
+# if no user set, will ask both
+# ONLY EXACTLY ONE SPACE after pass
+#pass [EOL] means empty passord
+#
+#user username
+# no pass means empty password
+#pass _ASK_
+# will ask to enter password for username
+#
+# If you want to use different user/pass based on sect matching, specifiy any user/pass to prevent asking
+#
+#match value regexp
+#!match value regexp
+# ONLY EXACTLY ONE SPACE after devAttr
+# scrpit stops if "match" does not match regexp
+# or
+# "!match" does match regexp
+# regexp syntax is of golang. See https://golang.org/s/re2syntax
+#
+#start
+#   denote a starting point. if match fails before start, then device is not included as viable for processing
+#   and not considered as worked at all
+#   p, e, and ef start automatically
+#
+#   matches before start may filter device types for example
+#
+#match %{dev.model_short} (?i)cisco
+#start
+#match %{dev.overall_status} ^ok$
+#  if you use -e exclude_list option, then non-Cisco devices won't be added to list and wont be reported at all
+#
+#end
+#  End script execution right away
+#pager_reg regexp
+#pager_cmd cmd
+# ONLY EXACTLY ONE SPACE between keyword and value
+#
+#eol eol_string
+# EOL strings after command, \n by default, some alien devices want \r instead
+# ONLY EXACTLY ONE SPACE between keyword and value
+# \n, \r, \t, \a, \b, \f, \v are replaced with corresponding code
+# examples:
+#eol \n
+#eol \r
+#eol \r\n
+#eol \n\r
+#
+#per_int
+#match value regexp
+#!match value regexp
+# ... commands and expects
+#end_int
+#
+# Will cycle through dev's interfaces, matching value for each
+# and executing until end_int if matches, or skipping for next round
+#
+#sect
+#match value regexp
+#!match value regexp
+# ... commands and expects
+#else
+#match ....
+#!match ...
+# ... commands if not matched
+#else
+#... etc
+#end_sect
+#
+#
+# ONLY EXACTLY ONE SPACE between keyword and value
+#p command
+#  send command to device
+#e XX regexp
+#  wait at least XX seconds for reply, matching regexp
+#  fail device on timeout
+#ef XX regexp FAILON regexp
+#  wait at least XX seconds for reply, matching regexp
+#  fail device on timeout
+#  fail immediately on FAILON regexp
+#
+#capres var_name regexp
+#  capture e or ef result into var. if there is capturing group - it's value is stored,
+#  otherwise whole regexp match. Use (?m) option to analyze multiline output
+#  no match results in no capture, match %{var.var_name} will fail
+#
+#  Example:
+# p show run int Fas0/1
+# e %{N}#
+# capres shut (?m)^ (shutdown)$
+#  Will store "shutdown" in shut variable
+#
+#log something
+#  Write to devlog regardless of options
+#
+#nums_cross list list
+#!nums_cross list list
+#  Check if lists on numbers like 1,5-8,344 intersect
+#  will fail script, if any args is not number or list of numbers, or range is backwards
+#  Example:
+#  p show run int %{int.ifDescr}
+#  e 10 %{N}#
+#  capres vlans (?m)^ switchport trunk allowed vlan (.*)$
+#  sect
+#    nums_cross 45, %{var.vlans}
+#    ...
+#  list formats must be same
+#
+#list_splitter regexp
+#  extract items from list, fed to list_splitter.FindAllString , default "(\d+-\d+)|(\d+)"
+#list_ranger regexp
+#  range delimeter, default "-"
+#  use (?:...) for matches with spaces
+#  example: (?: to )
+#  example: (?: )
+#
+#  Huawei:
+#   port trunk allow-pass vlan 2 to 5 7 10 to 78
+#  Cisco:
+#   switchport trunk allowed vlan 2-5,7,10-78
+#  SNR:
+#   switchport trunk allowed vlan 2-5;7;10-78
+#
+#setvar var_name value
+
+user test
+pass test
+
+match   %{dev.short_name} ^test-router$
+!match %{dev.ips_count} ^1$
+match   %{dev.model_short} (?i:cisco)
+
+e 10 %{N}#
+p term len 0
+e 10 %{N}#
+
+per_int
+ sect
+  match %{int.ifName} ^(?:Fa|Lo|Tu|Vl|Gi|Po)
+  #log Check %{int.ifName}
+  p show run int %{int.ifDescr}
+  e 10 %{N}#
+  capres ip (?m)^ ip address (.*)$
+  sect
+   match %{var.ip} ^.+$
+   capres conf (?ms)^interface .*\n .*\nend$
+   log %{var.conf}
+   log
+  else
+   #log IP Not set
+  end_sect
+ else
+#  log Skip %{int.ifName}
+ end_sect
+end_int
+
+p exit
