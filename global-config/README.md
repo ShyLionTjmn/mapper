@@ -30,6 +30,16 @@ Tip: use (?ms) for multiline match/capture
 
     # this is comment
     # comments are olny allowed on separate line
+    # empty or space only lines are skipped
+
+    start
+      denotes the point, from which device pre-selection ends, must not be preceeded with e, ef or p
+      any e, ef or p also denotes this point
+      not preselected devices will not be worked at all
+      preselection is done by root-level match and !match
+
+    end
+      stops script execution right away
 
     user username
     pass password

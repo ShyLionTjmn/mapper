@@ -75,10 +75,9 @@ var regs map[string]*regexp.Regexp
 func init() {
   regs = map[string]*regexp.Regexp {
     "comment": regexp.MustCompile(`^\s*(?:#|$)`),
-    "match": regexp.MustCompile(`^\s*((?:!)?match)\s+([^\s]+)\s(.*)$`),
-    "matchres": regexp.MustCompile(`^\s*((?:!)?matchres)\s(.*)$`),
+    "start": regexp.MustCompile(`^\s*start\s*$`),
+    "match": regexp.MustCompile(`^\s*((?:!)?match)\s+([\S]+)\s(.*)$`),
     "capres": regexp.MustCompile(`^\s*capres\s+(\S+)\s(.*)$`),
-    "matchvar": regexp.MustCompile(`^\s*((?:!)?matchvar)\s+(\S+)\s(.*)$`),
     "e": regexp.MustCompile(`^\s*e\s+(\d+)\s(.*)$`),
     "ef": regexp.MustCompile(`^\s*ef\s+(\d+)\s(.*)\sFAILON\s(.*)$`),
     "p": regexp.MustCompile(`^\s*p\s(.*)$`),
@@ -105,12 +104,6 @@ func init() {
     "is_num": regexp.MustCompile(`^\d+$`),
   }
 
-}
-
-type DevMatchRule struct {
-  Op string
-  Attr string
-  Reg *regexp.Regexp
 }
 
 func main() {
@@ -173,12 +166,8 @@ func main() {
 
   script := string(file_bytes)
 
-  dev_match_rules := []DevMatchRule{}
-
   sect_depth := 0
   per_int := 0
-
-  started := false
 
   now = time.Now()
 
@@ -202,90 +191,67 @@ func main() {
       continue
     }
 
-    line = subst(line, M{}, int_i, map[string]string{}, ls, true)
-
-//fmt.Println(line)
-
     if m := regs["match"].FindStringSubmatch(line); m != nil {
-      // match dev_attr regexp
-      // !match dev_attr regexp
-      // if in root, execution stops if match does not match or !match does match
-      // if in sect or per_int, execution skips to end of corresponding section
-      r, err := regexp.Compile(m[3])
+      rstr := subst(m[3], M{}, int_i, map[string]string{}, ls, true)
+      _, err := regexp.Compile(rstr)
       if err != nil {
         panic("Error regexp compiling rule at line " + ls + " \"" + m[0] + "\":\n\t" + err.Error())
       }
 
-      if strings.HasPrefix(m[2], "int.") && per_int != 1 {
-        panic("Use of " + m[2] + " attribute outside of per_int at line " + ls)
-      }
+      _ = subst(m[2], M{}, int_i, map[string]string{}, ls, true)
 
-      if !started {
-        dev_match_rules = append(dev_match_rules, DevMatchRule{
-          Op: m[1],
-          Attr: m[2],
-          Reg: r,
-        })
-      }
-    } else if m := regs["matchres"].FindStringSubmatch(line); m != nil {
-      started = true
-      // match e or ef result
-      _, err := regexp.Compile(m[2])
-      if err != nil {
-        panic("Error regexp compiling rule at line " + ls + " \"" + m[0] + "\":\n\t" + err.Error())
-      }
     } else if m := regs["capres"].FindStringSubmatch(line); m != nil {
-      started = true
       // capture e or ef result into variable
-      _, err := regexp.Compile(m[2])
+      rstr := subst(m[2], M{}, int_i, map[string]string{}, ls, true)
+      _, err := regexp.Compile(rstr)
       if err != nil {
         panic("Error regexp compiling rule at line " + ls + " \"" + m[0] + "\":\n\t" + err.Error())
       }
-    } else if m := regs["matchvar"].FindStringSubmatch(line); m != nil {
-      started = true
-      // match variable value, captured by capres. if variable is not set, value is empty string
-      // same rules as with match/!match
-      _, err := regexp.Compile(m[3])
-      if err != nil {
-        panic("Error regexp compiling rule at line " + ls + " \"" + m[0] + "\":\n\t" + err.Error())
-      }
+
+      _ = subst(m[1], M{}, int_i, map[string]string{}, ls, true)
+
     } else if m := regs["e"].FindStringSubmatch(line); m != nil {
-      started = true
-      _, err := regexp.Compile(m[2])
+      rstr := subst(m[2], M{}, int_i, map[string]string{}, ls, true)
+      _, err := regexp.Compile(rstr)
       if err != nil {
         panic("Error regexp compiling rule at line " + ls + " \"" + m[0] + "\":\n\t" + err.Error())
       }
+
     } else if m := regs["ef"].FindStringSubmatch(line); m != nil {
-      started = true
-      _, err := regexp.Compile(m[2])
+      rstr := subst(m[2], M{}, int_i, map[string]string{}, ls, true)
+      _, err := regexp.Compile(rstr)
       if err != nil {
         panic("Error regexp compiling rule at line " + ls + " \"" + m[0] + "\":\n\t" + err.Error())
       }
-      _, err = regexp.Compile(m[3])
+      rstr = subst(m[3], M{}, int_i, map[string]string{}, ls, true)
+      _, err = regexp.Compile(rstr)
       if err != nil {
         panic("Error regexp compiling rule at line " + ls + " \"" + m[0] + "\":\n\t" + err.Error())
       }
     } else if m := regs["pager_reg"].FindStringSubmatch(line); m != nil {
-      _, err = regexp.Compile(m[1])
+      rstr := subst(m[1], M{}, int_i, map[string]string{}, ls, true)
+      _, err := regexp.Compile(rstr)
       if err != nil {
         panic("Error regexp compiling rule at line " + ls + " \"" + m[0] + "\":\n\t" + err.Error())
       }
-    } else if regs["p"].MatchString(line) {
-      started = true
-    } else if regs["eol"].MatchString(line) {
-    } else if regs["pager_cmd"].MatchString(line) {
+
+    } else if m := regs["p"].FindStringSubmatch(line); m != nil {
+      _ = subst(m[1], M{}, int_i, map[string]string{}, ls, true)
+    } else if m := regs["eol"].FindStringSubmatch(line); m != nil {
+    } else if m := regs["pager_cmd"].FindStringSubmatch(line); m != nil {
     } else if regs["per_int"].MatchString(line) {
-      started = true
-      if per_int > 0 {
-        panic("Cannot nest per_int inside per_int. At line " + ls)
+      if int_i != -1 {
+        panic("Cannot nest per_int, at line " + ls)
       }
+      int_i = 0
       per_int++
       sect_stack = append(sect_stack, "per_int")
-      int_i = 0
+
     } else if regs["end_int"].MatchString(line) {
-      started = true
-      per_int--
-      if per_int < 0 {
+      if int_i != 0 {
+        panic("Unmatched end_int, at line " + ls)
+      }
+      if per_int != 1 {
         panic("Unmatched end_int at line " + ls)
       }
       if len(sect_stack) == 0 {
@@ -294,14 +260,13 @@ func main() {
       if sect_stack[len(sect_stack) - 1] != "per_int" {
         panic("Sect overlap with per_int. At line " + ls)
       }
-      sect_stack = sect_stack[:len(sect_stack) - 1]
+      per_int = 0
       int_i = -1
+      sect_stack = sect_stack[:len(sect_stack) - 1]
     } else if regs["sect"].MatchString(line) {
-      started = true
       sect_depth++
       sect_stack = append(sect_stack, "sect")
     } else if regs["else"].MatchString(line) {
-      started = true
       if len(sect_stack) == 0 {
         panic("Unmatched else. At line " + ls)
       }
@@ -309,7 +274,6 @@ func main() {
         panic("else overlap with per_int. At line " + ls)
       }
     } else if regs["end_sect"].MatchString(line) {
-      started = true
       sect_depth--
       if sect_depth < 0 {
         panic("Unmatched end_sect at line " + ls)
@@ -321,23 +285,35 @@ func main() {
         panic("Sect overlap with per_int. At line " + ls)
       }
       sect_stack = sect_stack[:len(sect_stack) - 1]
-    } else if regs["log"].MatchString(line) {
-      //log
-    } else if regs["nums_cross"].MatchString(line) {
-      //cannot check syntax without real numbers
+    } else if m := regs["log"].FindStringSubmatch(line); m != nil {
+      _ = subst(m[1], M{}, int_i, map[string]string{}, ls, true)
+    } else if m := regs["nums_cross"].FindStringSubmatch(line); m != nil {
+      _ = subst(m[2], M{}, int_i, map[string]string{}, ls, true)
+      _ = subst(m[3], M{}, int_i, map[string]string{}, ls, true)
     } else if m := regs["list_splitter"].FindStringSubmatch(line); m != nil {
-      _, err = regexp.Compile(m[1])
+      rstr := subst(m[1], M{}, int_i, map[string]string{}, ls, true)
+      _, err := regexp.Compile(rstr)
+
       if err != nil {
         panic("Error regexp compiling rule at line " + ls + " \"" + m[0] + "\":\n\t" + err.Error())
       }
     } else if m := regs["list_ranger"].FindStringSubmatch(line); m != nil {
-      _, err = regexp.Compile(m[1])
+      rstr := subst(m[1], M{}, int_i, map[string]string{}, ls, true)
+      _, err := regexp.Compile(rstr)
+
       if err != nil {
         panic("Error regexp compiling rule at line " + ls + " \"" + m[0] + "\":\n\t" + err.Error())
       }
-    } else if regs["setvar"].MatchString(line) {
-    } else if regs["port"].MatchString(line) {
+    } else if m := regs["setvar"].FindStringSubmatch(line); m != nil {
+      _ = subst(m[1], M{}, int_i, map[string]string{}, ls, true)
+      _ = subst(m[2], M{}, int_i, map[string]string{}, ls, true)
+
+    } else if m := regs["port"].FindStringSubmatch(line); m != nil {
+      _ = subst(m[1], M{}, int_i, map[string]string{}, ls, true)
     } else if regs["end"].MatchString(line) {
+      // want to stop
+      // break
+    } else if regs["start"].MatchString(line) {
     } else {
       panic("Unknown command at line " + ls +":\n" + line)
     }
@@ -409,50 +385,24 @@ func main() {
   devs_status := M{}
 
   for id, _ := range devs {
-    dev_pre_matched := false
-    if len(dev_match_rules) == 0 {
-      dev_pre_matched = true
+    var presel bool
+    in_args := false
+
+    if len(flag.Args()) > 0 {
+      presel = IndexOf(flag.Args(), devs.Vs(id, "short_name")) >= 0 ||
+        IndexOf(flag.Args(), id) >= 0 ||
+        ArraysIntersect(flag.Args(), devs.VA(id, "ips").([]string)) ||
+        false
+      in_args = presel
     } else {
-      for _, rule := range dev_match_rules {
-        if val, ex := devs.Vse(id, rule.Attr); ex && rule.Reg.MatchString(val) {
-          if rule.Op == "match" {
-            dev_pre_matched = true
-          } else {
-            dev_pre_matched = false
-            break
-          }
-        } else {
-          if rule.Op == "match" {
-            dev_pre_matched = false
-            break
-          } else {
-            dev_pre_matched = true
-          }
-        }
-      }
+      presel = work_router(id, nil, nil, nil, script, true) && exclude_list[id] == nil
     }
 
-    in_args := IndexOf(flag.Args(), devs.Vs(id, "short_name")) >= 0 ||
-      IndexOf(flag.Args(), id) >= 0 ||
-      ArraysIntersect(flag.Args(), devs.VA(id, "ips").([]string)) ||
-      false
-
-    if dev_pre_matched &&
-       ( (len(flag.Args()) == 0 && exclude_list[id] == nil) ||
-       in_args ||
-       false) &&
-    true {
-      if devs.Vs(id, "overall_status") == "ok" {
+    if presel {
+      if devs.Vs(id, "overall_status") == "ok" || in_args {
         devs_list = append(devs_list, id)
       } else {
-        if !opt_q {
-          fmt.Printf("% -20s  % -15s  % -20s: skip because not ok\n",
-            devs.Vs(id, "short_name"),
-            devs.Vs(id, "data_ip"),
-            devs.Vs(id, "model_short"),
-          )
-        }
-        devs_status[id] = "skip because not ok"
+        devs_status[id] = "skip because of bad overall_status"
       }
     }
   }
@@ -497,7 +447,7 @@ func main() {
 
   for _, id := range devs_list {
     wg.Add(1)
-    go work_router(id, stop_ch, &wg, status_ch, script)
+    go work_router(id, stop_ch, &wg, status_ch, script, false)
   }
 
   wait_ch := make(chan struct{})
@@ -688,6 +638,10 @@ func subst(src string, dev M, int_i int, captures map[string]string, ls string, 
       attr := strings.TrimPrefix(key, "VAR.")
       val, _ := captures[attr]
       return prefix + regexp.QuoteMeta(val)
+    } else if strings.HasPrefix(key, "res") {
+      if dry_run { return prefix + "DRY_RUN" }
+      val, _ := captures[""]
+      return prefix + val
     } else if regs["is_num"].MatchString(key) {
       num, err := strconv.ParseUint(key, 10, 31)
       if err != nil {
@@ -757,45 +711,39 @@ func nums_cross(list1, list2 string, splitter, ranger *regexp.Regexp) (bool, boo
   return false, true
 }
 
-func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch chan StatusMsg, script string) {
-  defer wg.Done()
+func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch chan StatusMsg, script string, presel bool) bool {
+  if !presel {
+    defer wg.Done()
+  }
 
   devlog := []string{}
 
   now_str := time.Now().Format("2006.01.02 15:04:05 ")
 
-  defer func() {
-    if rec := recover(); rec != nil {
-      switch v := rec.(type) {
-      case string:
-        status_ch <- StatusMsg{id: id, msg: "exit panicked: " + v}
-        if opt_l {
-          fmt.Fprintln(os.Stderr, now_str, devs.Vs(id, "short_name") + " ", devs.Vs(id, "data_ip") + " ", v)
-        }
-      case error:
-        status_ch <- StatusMsg{id: id, msg: "exit panicked: " + v.Error() }
-        if opt_l {
-          fmt.Fprintln(os.Stderr, now_str, devs.Vs(id, "short_name") + " ", devs.Vs(id, "data_ip") + " ", v.Error())
-        }
-      default:
-        status_ch <- StatusMsg{id: id, msg: "exit panicked: unknown panick attack"}
-        if opt_l {
-          fmt.Fprintln(os.Stderr, now_str, devs.Vs(id, "short_name") + " ", devs.Vs(id, "data_ip") + " ",
-            "unknown panick attack", rec,
-          )
+  if !presel {
+    defer func() {
+      if rec := recover(); rec != nil {
+        switch v := rec.(type) {
+        case string:
+          status_ch <- StatusMsg{id: id, msg: "exit panicked: " + v}
+          if opt_l {
+            fmt.Fprintln(os.Stderr, now_str, devs.Vs(id, "short_name") + " ", devs.Vs(id, "data_ip") + " ", v)
+          }
+        case error:
+          status_ch <- StatusMsg{id: id, msg: "exit panicked: " + v.Error() }
+          if opt_l {
+            fmt.Fprintln(os.Stderr, now_str, devs.Vs(id, "short_name") + " ", devs.Vs(id, "data_ip") + " ", v.Error())
+          }
+        default:
+          status_ch <- StatusMsg{id: id, msg: "exit panicked: unknown panick attack"}
+          if opt_l {
+            fmt.Fprintln(os.Stderr, now_str, devs.Vs(id, "short_name") + " ", devs.Vs(id, "data_ip") + " ",
+              "unknown panick attack", rec,
+            )
+          }
         }
       }
-    }
-  } ()
-
-  status_ch <- StatusMsg{id: id, msg: "startup"}
-
-  if !opt_q {
-    fmt.Printf("% -20s  % -15s  % -20s: work\n",
-      devs.Vs(id, "short_name"),
-      devs.Vs(id, "data_ip"),
-      devs.Vs(id, "model_short"),
-    )
+    } ()
   }
 
   var interfaces []string
@@ -836,12 +784,26 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
 
   captures := make(map[string]string)
 
-  lastres := ""
+  captures[""] = ""
 
   step := 0
 
   list_splitter := default_splitter
   list_ranger := default_ranger
+
+  expected := false // control capres usage
+
+  if !presel {
+    status_ch <- StatusMsg{id: id, msg: "startup"}
+
+    if !opt_q {
+      fmt.Printf("% -20s  % -15s  % -20s: work\n",
+        devs.Vs(id, "short_name"),
+        devs.Vs(id, "data_ip"),
+        devs.Vs(id, "model_short"),
+      )
+    }
+  }
 
   for l = 0; l < len(lines); l++ {
     ls := strconv.FormatInt(int64(l) + 1, 10)
@@ -862,15 +824,17 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
     }
 
     step ++
-    status_ch <- StatusMsg{
-      id: id,
-      msg: "Executing line " + ls + ", step " + strconv.FormatInt(int64(step), 10) + ": " + line,
-    }
+    if !presel {
+      status_ch <- StatusMsg{
+        id: id,
+        msg: "Executing line " + ls + ", step " + strconv.FormatInt(int64(step), 10) + ": " + line,
+      }
 
-    if opt_v {
-      devlog = append(devlog, "Executing line " + ls + ": " + line)
-      if opt_l {
-        fmt.Println(devlog[ len(devlog) - 1])
+      if opt_v {
+        devlog = append(devlog, "Executing line " + ls + ": " + line)
+        if opt_l {
+          fmt.Println(devlog[ len(devlog) - 1])
+        }
       }
     }
 
@@ -883,32 +847,18 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
         panic("Error regexp compiling rule at line " + ls + " \"" + m[0] + "\":\n\t" + err.Error())
       }
       op := m[1]
-      attr := subst(m[2], devs.VM(id), int_i, captures, ls, false)
-
-      var val string
-      var ex bool
-
-      if strings.HasPrefix(attr, "int.") {
-        attr = strings.TrimPrefix(attr, "int.")
-        val, ex = devs.Vse(id, "interfaces", ifName, attr)
-      } else {
-        val, ex = devs.Vse(id, attr)
-      }
+      value := subst(m[2], devs.VM(id), int_i, captures, ls, false)
 
       if opt_v {
-        if ex {
-          devlog = append(devlog, "match against: \"" + val + "\"")
-        } else {
-          devlog = append(devlog, "match attr \"" + attr + "\" does not exists")
-        }
-        if opt_l {
+        devlog = append(devlog, "match against: \"" + value + "\"")
+        if opt_l && !presel {
           fmt.Println(devlog[ len(devlog) - 1])
         }
       }
 
       go_on = false
 
-      if ex && r.MatchString(val) {
+      if r.MatchString(value) {
         if op == "match" {
           go_on = true
         }
@@ -920,38 +870,7 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
 
       if opt_v && go_on {
         devlog = append(devlog, "match successfull, continue")
-        if opt_l {
-          fmt.Println(devlog[ len(devlog) - 1])
-        }
-      }
-
-      goto GO_ON
-
-    } else if m := regs["matchres"].FindStringSubmatch(line); m != nil {
-      // match e or ef result
-      rstr := subst(m[2], devs.VM(id), int_i, captures, ls, false)
-      r, err := regexp.Compile(rstr)
-      if err != nil {
-        panic("Error regexp compiling rule at line " + ls + " \"" + m[0] + "\":\n\t" + err.Error())
-      }
-
-      op := m[1]
-
-      go_on = false
-
-      if r.MatchString(lastres) {
-        if op == "matchres" {
-          go_on = true
-        }
-      } else {
-        if op == "!matchres" {
-          go_on = true
-        }
-      }
-
-      if opt_v && go_on {
-        devlog = append(devlog, "match successfull, continue")
-        if opt_l {
+        if opt_l && !presel {
           fmt.Println(devlog[ len(devlog) - 1])
         }
       }
@@ -959,6 +878,9 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
       goto GO_ON
 
     } else if m := regs["capres"].FindStringSubmatch(line); m != nil {
+      if !expected {
+        panic("capres before e or ef")
+      }
       // capture e or ef result into variable
       rstr := subst(m[2], devs.VM(id), int_i, captures, ls, false)
       r, err := regexp.Compile(rstr)
@@ -968,7 +890,7 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
 
       varname := subst(m[1], devs.VM(id), int_i, captures, ls, false)
 
-      if capres := r.FindStringSubmatch(lastres); capres != nil {
+      if capres := r.FindStringSubmatch(captures[""]); capres != nil {
         if len(capres) == 1 {
           captures[ varname ] = capres[0]
         } else {
@@ -978,54 +900,13 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
         delete(captures, varname)
       }
 
-    } else if m := regs["matchvar"].FindStringSubmatch(line); m != nil {
-      // match variable value, captured by capres. if variable is not set, value is empty string
-      // same rules as with match/!match
-      rstr := subst(m[3], devs.VM(id), int_i, captures, ls, false)
-      r, err := regexp.Compile(rstr)
-      if err != nil {
-        panic("Error regexp compiling rule at line " + ls + " \"" + m[0] + "\":\n\t" + err.Error())
-      }
-
-      op := m[1]
-
-      varname := subst(m[2], devs.VM(id), int_i, captures, ls, false)
-
-      val, ex := captures[ varname ]
-
-      if opt_v {
-        if ex {
-          devlog = append(devlog, "match against: \"" + val + "\"")
-        } else {
-          devlog = append(devlog, "match cap_var \"" + varname + "\" does not exists")
-        }
-        if opt_l {
-          fmt.Println(devlog[ len(devlog) - 1])
-        }
-      }
-
-      go_on = false
-
-      if ex && r.MatchString(val) {
-        if op == "matchvar" {
-          go_on = true
-        }
-      } else {
-        if op == "!matchvar" {
-          go_on = true
-        }
-      }
-
-      if opt_v && go_on {
-        devlog = append(devlog, "match successfull, continue")
-        if opt_l {
-          fmt.Println(devlog[ len(devlog) - 1])
-        }
-      }
-
-      goto GO_ON
-
     } else if m := regs["e"].FindStringSubmatch(line); m != nil {
+      if presel {
+        break
+      }
+
+      expected = true
+
       rstr := subst(m[2], devs.VM(id), int_i, captures, ls, false)
       r, _ := regexp.Compile(rstr)
 
@@ -1049,7 +930,7 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
 
       if opt_v {
         devlog = append(devlog, "Expecting: " + r.String())
-        if opt_l {
+        if opt_l && !presel {
           fmt.Println(devlog[ len(devlog) - 1])
         }
       }
@@ -1059,7 +940,7 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
       if opt_v || opt_r {
         for _, rline := range strings.Split(res, "\n") {
           devlog = append(devlog, "< \"" + rline + "\"")
-          if opt_l {
+          if opt_l && !presel {
             fmt.Println(devlog[ len(devlog) - 1])
           }
         }
@@ -1068,7 +949,7 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
       if err != nil {
         if opt_v {
           devlog = append(devlog, "expect failed, finish script" )
-          if opt_l {
+          if opt_l && !presel {
             fmt.Println(devlog[ len(devlog) - 1])
           }
         }
@@ -1082,9 +963,14 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
         break
       }
 
-      lastres = res
+      captures[""] = res
 
     } else if m := regs["ef"].FindStringSubmatch(line); m != nil {
+      if presel {
+        break
+      }
+
+      expected = true
       rstr := subst(m[2], devs.VM(id), int_i, captures, ls, false)
       good_reg, _ := regexp.Compile(rstr)
       if err != nil {
@@ -1116,11 +1002,11 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
 
       if opt_v {
         devlog = append(devlog, "Expecting: " + good_reg.String())
-        if opt_l {
+        if opt_l && !presel {
           fmt.Println(devlog[ len(devlog) - 1])
         }
         devlog = append(devlog, "FAILON: " + bad_reg.String())
-        if opt_l {
+        if opt_l && !presel {
           fmt.Println(devlog[ len(devlog) - 1])
         }
       }
@@ -1130,7 +1016,7 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
       if opt_v || opt_r {
         for _, rline := range strings.Split(res, "\n") {
           devlog = append(devlog, "< \"" + rline + "\"")
-          if opt_l {
+          if opt_l && !presel {
             fmt.Println(devlog[ len(devlog) - 1])
           }
         }
@@ -1139,7 +1025,7 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
       if err != nil {
         if opt_v {
           devlog = append(devlog, "expect failed, finish script" )
-          if opt_l {
+          if opt_l && !presel {
             fmt.Println(devlog[ len(devlog) - 1])
           }
         }
@@ -1153,7 +1039,7 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
         break
       }
 
-      lastres = res
+      captures[""] = res
 
     } else if m := regs["pager_reg"].FindStringSubmatch(line); m != nil {
       rstr := subst(m[1], devs.VM(id), int_i, captures, ls, false)
@@ -1161,6 +1047,10 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
       con.PagerReg = r
 
     } else if m := regs["p"].FindStringSubmatch(line); m != nil {
+      if presel {
+        break
+      }
+
       cmd := subst(m[1], devs.VM(id), int_i, captures, ls, false)
 
       if !ssh_connected {
@@ -1181,7 +1071,7 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
 
       if opt_v || opt_w {
         devlog = append(devlog, "> \"" + cmd + "\"")
-        if opt_l {
+        if opt_l && !presel {
           fmt.Println(devlog[ len(devlog) - 1])
         }
       }
@@ -1211,7 +1101,7 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
       if len(interfaces) == 0 {
         if opt_v {
           devlog = append(devlog, "per_int - no interfaces")
-          if opt_l {
+          if opt_l && !presel {
             fmt.Println(devlog[ len(devlog) - 1])
           }
         }
@@ -1230,7 +1120,7 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
 
       if opt_v {
         devlog = append(devlog, "per_int: " + ifName)
-        if opt_l {
+        if opt_l && !presel {
           fmt.Println(devlog[ len(devlog) - 1])
         }
       }
@@ -1247,7 +1137,7 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
 
         if opt_v {
           devlog = append(devlog, "per_int: " + ifName)
-          if opt_l {
+          if opt_l && !presel {
             fmt.Println(devlog[ len(devlog) - 1])
           }
         }
@@ -1255,7 +1145,7 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
       }
       if opt_v {
         devlog = append(devlog, "per_int done")
-        if opt_l {
+        if opt_l && !presel {
           fmt.Println(devlog[ len(devlog) - 1])
         }
       }
@@ -1313,9 +1203,12 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
       }
       sect_stack = sect_stack[:len(sect_stack) - 1]
     } else if m := regs["log"].FindStringSubmatch(line); m != nil {
+      if presel {
+        continue
+      }
       log := subst(m[1], devs.VM(id), int_i, captures, ls, false)
       devlog = append(devlog, log)
-      if opt_l {
+      if opt_l && !presel {
         fmt.Println(devlog[ len(devlog) - 1])
       }
     } else if m := regs["nums_cross"].FindStringSubmatch(line); m != nil {
@@ -1333,11 +1226,11 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
 
       if opt_v {
         devlog = append(devlog, "list1: " + list1)
-        if opt_l {
+        if opt_l && !presel {
           fmt.Println(devlog[ len(devlog) - 1])
         }
         devlog = append(devlog, "list2: " + list2)
-        if opt_l {
+        if opt_l && !presel {
           fmt.Println(devlog[ len(devlog) - 1])
         }
       }
@@ -1361,7 +1254,7 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
 
       if opt_v && go_on {
         devlog = append(devlog, "match successfull, continue")
-        if opt_l {
+        if opt_l && !presel {
           fmt.Println(devlog[ len(devlog) - 1])
         }
       }
@@ -1387,6 +1280,11 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
       captures[varname] = val
     } else if m := regs["port"].FindStringSubmatch(line); m != nil {
       port = subst(m[1], devs.VM(id), int_i, captures, ls, false)
+    } else if regs["start"].MatchString(line) {
+      if presel {
+        break
+      }
+
     } else if regs["end"].MatchString(line) {
       // want to stop
       break
@@ -1398,9 +1296,12 @@ GO_ON:
     if !go_on {
       //got to skip to end of script, end_int, end_sect or else
       if len(sect_stack) == 0 {
+        if presel {
+          return false
+        }
         if opt_v {
           devlog = append(devlog, "match failed, finish script" )
-          if opt_l {
+          if opt_l && !presel {
             fmt.Println(devlog[ len(devlog) - 1])
           }
         }
@@ -1411,7 +1312,7 @@ GO_ON:
       if sect_stack[ len(sect_stack) - 1] == "per_int" {
         if opt_v {
           devlog = append(devlog, "match failed, skip per_int section" )
-          if opt_l {
+          if opt_l && !presel {
             fmt.Println(devlog[ len(devlog) - 1])
           }
         }
@@ -1424,7 +1325,7 @@ GO_ON:
       } else { //sect
         if opt_v {
           devlog = append(devlog, "match failed, skip sect section" )
-          if opt_l {
+          if opt_l && !presel {
             fmt.Println(devlog[ len(devlog) - 1])
           }
         }
@@ -1454,12 +1355,16 @@ GO_ON:
     }
   }
 
-  if !opt_q {
-    fmt.Println(devs.Vs(id, "short_name") + ": Done")
+  if !presel {
+    if !opt_q {
+      fmt.Println(devs.Vs(id, "short_name") + ": Done")
+    }
+    status_ch <- StatusMsg{id: id, msg: "exit done"}
+  } else {
+    return true
   }
-  status_ch <- StatusMsg{id: id, msg: "exit done"}
 
-  if !opt_l && len(devlog) != 0 {
+  if !opt_l && len(devlog) != 0 && !presel {
     global_mutex.Lock()
 
     if dev_logs == nil {
@@ -1469,4 +1374,6 @@ GO_ON:
 
     global_mutex.Unlock()
   }
+
+  return true
 }
