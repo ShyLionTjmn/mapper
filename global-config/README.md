@@ -115,3 +115,26 @@ Tip: use (?ms) for multiline match/capture
       range delimeter, default "-"
       use (?: ) for matches with spaces
 
+## Variable substitution
+
+Variables matched with %{.+}, % can be escaped with \
+
+    ${0} - first -a value, ${1} - second -a value and so on
+      escape regexp manually if needed and used in regexp
+    ${Y} - 4-digit year, local system time
+    ${m} - 2-digit month, local system time
+    ${d} - 2-digit day, local system time
+    ${H} - 2-digit 24h hour, local system time
+    ${M} - 2-digit minute, local system time
+    ${S} - 2-digit second, local system time
+    ${t} - unix time()
+    ${n} - dev's short_name
+    ${nXX} - dev's short_name, cut to XX chars (use 20 for Cisco)
+    ${N} - same as ${n} but regexp escaped, for use in e or ef
+    ${NXX} - same as ${nXX} but regexp meta chars escaped, for use in e or ef
+    ${int.Attr} - current interface Attr attribute value in per_int
+    ${dev.Attr} - device Attr attribute value
+    ${var.Var} - captured variable Var value, empty string if not set
+    ${INT.Attr}, ${DEV.Attr}, ${VAR.Var} - same as above, but regexp meta chars escaped
+    ${res} - last result of e or ef
+
