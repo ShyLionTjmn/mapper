@@ -47,14 +47,16 @@ Tip: use (?ms) for multiline match/capture
       if password is _ASK_ then it will be asked
       if password is not set - it's empty
       username and password are not subject to variable substitution
+      if you want to use different user/pass based on sect matching, specifiy any user/pass to prevent asking
 
     pager_reg regexp
     pager_cmd cmd
       If input match pager_reg then issue pager_cmd
+      \n, \r, \t, \a, \b, \f, \v are replaced with corresponding code, after variable substitution
 
     eol eol_string
       EOL strings after command, \n by default, some alien devices want \r instead
-      \n, \r, \t, \a, \b, \f, \v are replaced with corresponding code
+      \n, \r, \t, \a, \b, \f, \v are replaced with corresponding code, after variable substitution
 
     p command
       Send command to device, no EOL chars needed, they will be added using eol option
@@ -117,24 +119,24 @@ Tip: use (?ms) for multiline match/capture
 
 ## Variable substitution
 
-Variables matched with %{.+}, % can be escaped with \
+Variables are matched with %{.+}, % can be escaped with \
 
-    ${0} - first -a value, ${1} - second -a value and so on
+    %{0} - first -a value, %{1} - second -a value and so on
       escape regexp manually if needed and used in regexp
-    ${Y} - 4-digit year, local system time
-    ${m} - 2-digit month, local system time
-    ${d} - 2-digit day, local system time
-    ${H} - 2-digit 24h hour, local system time
-    ${M} - 2-digit minute, local system time
-    ${S} - 2-digit second, local system time
-    ${t} - unix time()
-    ${n} - dev's short_name
-    ${nXX} - dev's short_name, cut to XX chars (use 20 for Cisco)
-    ${N} - same as ${n} but regexp escaped, for use in e or ef
-    ${NXX} - same as ${nXX} but regexp meta chars escaped, for use in e or ef
-    ${int.Attr} - current interface Attr attribute value in per_int
-    ${dev.Attr} - device Attr attribute value
-    ${var.Var} - captured variable Var value, empty string if not set
-    ${INT.Attr}, ${DEV.Attr}, ${VAR.Var} - same as above, but regexp meta chars escaped
-    ${res} - last result of e or ef
+    %{Y} - 4-digit year, local system time
+    %{m} - 2-digit month, local system time
+    %{d} - 2-digit day, local system time
+    %{H} - 2-digit 24h hour, local system time
+    %{M} - 2-digit minute, local system time
+    %{S} - 2-digit second, local system time
+    %{t} - unix time()
+    %{n} - dev's short_name
+    %{nXX} - dev's short_name, cut to XX chars (use 20 for Cisco)
+    %{N} - same as %{n} but regexp escaped, for use in e or ef
+    %{NXX} - same as %{nXX} but regexp meta chars escaped, for use in e or ef
+    %{int.Attr} - current interface Attr attribute value in per_int
+    %{dev.Attr} - device Attr attribute value
+    %{var.Var} - captured variable Var value, empty string if not set
+    %{INT.Attr}, %{DEV.Attr}, %{VAR.Var} - same as above, but regexp meta chars escaped
+    %{res} - last result of e or ef
 

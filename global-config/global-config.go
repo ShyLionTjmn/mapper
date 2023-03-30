@@ -238,7 +238,9 @@ func main() {
     } else if m := regs["p"].FindStringSubmatch(line); m != nil {
       _ = subst(m[1], M{}, int_i, map[string]string{}, ls, true)
     } else if m := regs["eol"].FindStringSubmatch(line); m != nil {
+      _ = subst(m[1], M{}, int_i, map[string]string{}, ls, true)
     } else if m := regs["pager_cmd"].FindStringSubmatch(line); m != nil {
+      _ = subst(m[1], M{}, int_i, map[string]string{}, ls, true)
     } else if regs["per_int"].MatchString(line) {
       if int_i != -1 {
         panic("Cannot nest per_int, at line " + ls)
@@ -1078,7 +1080,8 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
       con.Cmd(cmd)
 
     } else if m := regs["eol"].FindStringSubmatch(line); m != nil {
-      str := strings.ReplaceAll(m[1], "\\n", "\n")
+      str := subst(m[1], devs.VM(id), int_i, captures, ls, false)
+      str = strings.ReplaceAll(str, "\\n", "\n")
       str = strings.ReplaceAll(str, "\\r", "\r")
       str = strings.ReplaceAll(str, "\\t", "\t")
       str = strings.ReplaceAll(str, "\\a", "\a")
@@ -1088,7 +1091,8 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
       con.CmdNewline = str
 
     } else if m := regs["pager_cmd"].FindStringSubmatch(line); m != nil {
-      str := strings.ReplaceAll(m[1], "\\n", "\n")
+      str := subst(m[1], devs.VM(id), int_i, captures, ls, false)
+      str = strings.ReplaceAll(str, "\\n", "\n")
       str = strings.ReplaceAll(str, "\\r", "\r")
       str = strings.ReplaceAll(str, "\\t", "\t")
       str = strings.ReplaceAll(str, "\\a", "\a")
