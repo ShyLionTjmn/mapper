@@ -6599,6 +6599,7 @@ function interface_win(dev_id, int) {
         delete(win_parts[win_id]);
 
         dlg.dialog("close");
+        interface_out();
       },
     };
 
@@ -6621,6 +6622,19 @@ function interface_win(dev_id, int) {
          interface_win(dev_id, ifName);
        })
      )
+    ;
+
+    dlg.dialog("widget")
+      .hover(
+        function (e) {
+          e.stopPropagation();
+          let dlg = $(this).find(".dialog_start");
+          let int = dlg.data("int");
+          let dev_id = dlg.data("dev_id");
+          interface_in(int, data["devs"][dev_id])
+        },
+        interface_out
+      )
     ;
 
     dlg.data("dev_id", dev_id);

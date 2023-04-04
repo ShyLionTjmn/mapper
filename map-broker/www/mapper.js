@@ -1729,13 +1729,29 @@ function device_win(dev_id) {
        )
      )
      .append( $(DIV)
-       .append( $(LABEL).text("sysLoc: " + dev["sysLocation"]) )
+       .append( $(SPAN).text("sysName: " + dev["sysName"]) )
+       .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-copy"])
+         .title("Скопировать короткое имя в буфер")
+         .data("to_copy", dev["short_name"])
+         .click(function() {
+           let flash = $(this).closest("DIV");
+           copy_to_clipboard( $(this).data("to_copy"),
+             function() {
+               flash.animateHighlight("lightgreen", 200);
+             }
+           );
+         })
+         .css({"margin-left": "1em"})
+       )
      )
      .append( $(DIV)
-       .append( $(LABEL).text("Uptime: " + dev["sysUpTimeStr"]) )
+       .append( $(SPAN).text("sysLoc: " + dev["sysLocation"]) )
      )
      .append( $(DIV)
-       .append( $(LABEL).text(" IP: " + dev["data_ip"] + " ").ip_info(dev["data_ip"]) )
+       .append( $(SPAN).text("Uptime: " + dev["sysUpTimeStr"]) )
+     )
+     .append( $(DIV)
+       .append( $(SPAN).text(" IP: " + dev["data_ip"] + " ").ip_info(dev["data_ip"]) )
        .append( $(A, {"target": "blank", "href": "ssh://"+dev["data_ip"]}).text("SSH")
          .css({"margin-right": "0.5em"})
        )
@@ -6583,6 +6599,7 @@ function interface_win(dev_id, int) {
         delete(win_parts[win_id]);
 
         dlg.dialog("close");
+        interface_out();
       },
     };
 
@@ -6605,6 +6622,19 @@ function interface_win(dev_id, int) {
          interface_win(dev_id, ifName);
        })
      )
+    ;
+
+    dlg.dialog("widget")
+      .hover(
+        function (e) {
+          e.stopPropagation();
+          let dlg = $(this).find(".dialog_start");
+          let int = dlg.data("int");
+          let dev_id = dlg.data("dev_id");
+          interface_in(int, data["devs"][dev_id])
+        },
+        interface_out
+      )
     ;
 
     dlg.data("dev_id", dev_id);
