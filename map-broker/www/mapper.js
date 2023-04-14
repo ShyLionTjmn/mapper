@@ -2871,7 +2871,7 @@ function int_popup_label(int, dev_id) {
   let dev_name=dev_elm.children(".devname");
 
   if(dev_name == undefined || dev_name.length == 0) {
-    error_at("Cannot get dev name handle");
+    //error_at("Cannot get dev name handle");
     return;
   };
 
