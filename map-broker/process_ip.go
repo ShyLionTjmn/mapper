@@ -551,6 +551,8 @@ if(!data.EvM("l2_links", link_id)) {
                   l0M.Vs("overall_status") != "ok" ||
                   l1M.Vs("overall_status") != "ok" ||
                  false) &&
+                 l0M.Vi("interfaces", l0_if, "ifAdminStatus") == 1 &&
+                 l1M.Vi("interfaces", l1_if, "ifAdminStatus") == 1 &&
               true {
                 // keep link
                 if l0M.Vs("overall_status") == "ok" && l1M.Vs("overall_status") == "ok" &&

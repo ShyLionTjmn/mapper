@@ -117,6 +117,11 @@ Tip: use (?ms) for multiline match/capture
       range delimeter, default "-"
       use (?: ) for matches with spaces
 
+    fail message
+      fail script with message
+      device will be considered as failed and not included into exclude list option -e
+      for use in sect mostly, with conditions
+
 ## Variable substitution
 
 Variables are matched with %{.+}, % can be escaped with \

@@ -102,6 +102,7 @@ func init() {
     "port": regexp.MustCompile(`^\s*port\s+(\d+)\s*$`),
     "end": regexp.MustCompile(`^\s*end\s*$`),
     "is_num": regexp.MustCompile(`^\d+$`),
+    "fail": regexp.MustCompile(`^\s*fail(?:\s(.*))?$`),
   }
 
 }
@@ -316,6 +317,8 @@ func main() {
       // want to stop
       // break
     } else if regs["start"].MatchString(line) {
+    } else if m := regs["fail"].FindStringSubmatch(line); m != nil {
+      _ = subst(m[1], M{}, int_i, map[string]string{}, ls, true)
     } else {
       panic("Unknown command at line " + ls +":\n" + line)
     }
@@ -807,6 +810,8 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
     }
   }
 
+  var once_status sync.Once
+
   for l = 0; l < len(lines); l++ {
     ls := strconv.FormatInt(int64(l) + 1, 10)
     line := lines[l]
@@ -955,7 +960,9 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
             fmt.Println(devlog[ len(devlog) - 1])
           }
         }
-        status_ch <- StatusMsg{id: id, msg: "exit expect error: " + err.Error() + "\nResponse: " + res }
+        once_status.Do(func() {
+          status_ch <- StatusMsg{id: id, msg: "exit expect error: " + err.Error() + "\nResponse: " + res }
+        })
         if opt_q && opt_l {
           now_str = time.Now().Format("2006.01.02 15:04:05 ")
           fmt.Fprintln(os.Stderr, now_str, devs.Vs(id, "short_name") + " ",
@@ -1031,7 +1038,9 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
             fmt.Println(devlog[ len(devlog) - 1])
           }
         }
-        status_ch <- StatusMsg{id: id, msg: "exit expect error: " + err.Error() + "\nResponse: " + res }
+        once_status.Do(func() {
+          status_ch <- StatusMsg{id: id, msg: "exit expect error: " + err.Error() + "\nResponse: " + res }
+        })
         if opt_q && opt_l {
           now_str = time.Now().Format("2006.01.02 15:04:05 ")
           fmt.Fprintln(os.Stderr, now_str, devs.Vs(id, "short_name") + " ",
@@ -1292,6 +1301,14 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
     } else if regs["end"].MatchString(line) {
       // want to stop
       break
+    } else if m := regs["fail"].FindStringSubmatch(line); m != nil {
+      // want to stop with error status and message
+      msg := subst(m[1], devs.VM(id), int_i, captures, ls, false)
+
+      once_status.Do(func() {
+        status_ch <- StatusMsg{id: id, msg: "exit fail: " + msg }
+      })
+      break
     } else {
       panic("Unknown command at line " + ls +":\n" + line)
     }
@@ -1363,7 +1380,9 @@ GO_ON:
     if !opt_q {
       fmt.Println(devs.Vs(id, "short_name") + ": Done")
     }
-    status_ch <- StatusMsg{id: id, msg: "exit done"}
+    once_status.Do(func() {
+      status_ch <- StatusMsg{id: id, msg: "exit done"}
+    })
   } else {
     return true
   }

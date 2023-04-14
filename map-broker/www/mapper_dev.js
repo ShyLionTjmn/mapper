@@ -6377,36 +6377,34 @@ $.fn.graph = function(gdata) {
      })
    )
    .append( $(LABEL).addClass(["button"]).text("1H")
+     .addClass("range_btn")
+     .data("half-range", 1800)
+     .data("now-start", "end-1h")
      .title("Установить масштаб в 1 час")
-     .click(function(e) {
-       e.stopPropagation();
-       let g = $(this).closest(".graph");
-       let im = g.data("im");
-
-       let diff = Number(im["end"]) - Number(im["start"]);
-       let center = Number(im["start"]) + Math.floor(diff/2);
-       let new_start = center - 1800;
-       let new_end = center + 1800;
-       let new_diff = new_end - new_start;
-
-       let btn_gd = g.data("gdata");
-
-       if(new_end > unix_timestamp()) {
-         let diff = new_end - new_start;
-         new_end = "now";
-         new_start = "end-"+diff;
-       } else if(btn_gd["end"] === "now") {
-         new_end = "now";
-         new_start = "end-1h";
-       };
-
-       $("."+$.escapeSelector(g.data("sync"))).each(function() {
-         let gd = $(this).data("gdata");
-         gd["start"] = new_start;
-         gd["end"] = new_end;
-         $(this).data("gdata", gd);
-       }).trigger("graph_update");
-     })
+   )
+   .append( $(LABEL).addClass(["button"]).text("12H")
+     .addClass("range_btn")
+     .data("half-range", 60*60*12/2)
+     .data("now-start", "end-12h")
+     .title("Установить масштаб в 12 часов")
+   )
+   .append( $(LABEL).addClass(["button"]).text("1D")
+     .addClass("range_btn")
+     .data("half-range", 60*60*24/2)
+     .data("now-start", "end-1d")
+     .title("Установить масштаб в 1 день")
+   )
+   .append( $(LABEL).addClass(["button"]).text("1W")
+     .addClass("range_btn")
+     .data("half-range", 60*60*24*7/2)
+     .data("now-start", "end-7d")
+     .title("Установить масштаб в 1 неделя")
+   )
+   .append( $(LABEL).addClass(["button"]).text("1M")
+     .addClass("range_btn")
+     .data("half-range", 60*60*24*31/2)
+     .data("now-start", "end-31d")
+     .title("Установить масштаб в 1 месяц")
    )
    .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-zoomout"])
      .title("Увеличить масштаб (также можно прокрутить колесо мыши вниз наведя на график)")
@@ -6475,6 +6473,41 @@ $.fn.graph = function(gdata) {
      })
    )
    .find(".button").css({"margin-right": "0.5em"})
+  ;
+
+  controls.find(".range_btn")
+    .click(function(e) {
+      e.stopPropagation();
+      let g = $(this).closest(".graph");
+      let im = g.data("im");
+
+      let half_range = $(this).data("half-range");
+      let now_start = $(this).data("now-start");
+
+      let diff = Number(im["end"]) - Number(im["start"]);
+      let center = Number(im["start"]) + Math.floor(diff/2);
+      let new_start = center - half_range;
+      let new_end = center + half_range;
+      let new_diff = new_end - new_start;
+
+      let btn_gd = g.data("gdata");
+
+      if(new_end > unix_timestamp()) {
+        let diff = new_end - new_start;
+        new_end = "now";
+        new_start = "end-"+diff;
+      } else if(btn_gd["end"] === "now") {
+        new_end = "now";
+        new_start = now_start;
+      };
+
+      $("."+$.escapeSelector(g.data("sync"))).each(function() {
+        let gd = $(this).data("gdata");
+        gd["start"] = new_start;
+        gd["end"] = new_end;
+        $(this).data("gdata", gd);
+      }).trigger("graph_update");
+    })
   ;
 
   //{
