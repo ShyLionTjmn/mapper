@@ -982,6 +982,26 @@ GFDEV: for dev_id, dev_m := range devs {
               }
             }
           }
+
+          if !site_match {
+SIN:        for _, ip := range dev_ips {
+              ip_long, _ := V4ip2long(ip)
+              for net, _ := range net2site {
+                first := net2site.Vu(net, "first")
+                last := net2site.Vu(net, "last")
+
+                if first != UINT64_ERR && last != UINT64_ERR &&
+                   uint64(ip_long) >= first && uint64(ip_long) <= last &&
+                   tag_has_root( net2site.Vs(net, "tag_id"), req_site, 0) &&
+                true {
+                  site_match = true
+                  site_match_by = net
+                  break SIN
+                }
+              }
+            }
+          }
+
         }
       }
 
@@ -989,6 +1009,17 @@ GFDEV: for dev_id, dev_m := range devs {
         for _, ip := range dev_ips {
           if _, ex := ip2site[ip]; ex {
             continue GFDEV
+          }
+          ip_long, _ := V4ip2long(ip)
+          for net, _ := range net2site {
+            first := net2site.Vu(net, "first")
+            last := net2site.Vu(net, "last")
+
+            if first != UINT64_ERR && last != UINT64_ERR &&
+               uint64(ip_long) >= first && uint64(ip_long) <= last &&
+            true {
+              continue GFDEV
+            }
           }
         }
         //check site by data_ip net
@@ -1027,6 +1058,22 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
               }
             }
           }
+          for _, ip := range dev_ips {
+            ip_long, _ := V4ip2long(ip)
+            for net, _ := range net2site {
+              first := net2site.Vu(net, "first")
+              last := net2site.Vu(net, "last")
+
+              if first != UINT64_ERR && last != UINT64_ERR &&
+                 uint64(ip_long) >= first && uint64(ip_long) <= last &&
+                 tag_has_root( net2site.Vs(net, "tag_id"), proj_id, 0) &&
+              true {
+                proj_match = true
+                proj_match_by = net
+                break LPROJ
+              }
+            }
+          }
         }
       }
 
@@ -1053,6 +1100,56 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
         }
         out_devs[dev_id].(M)["_site_match_by"] = site_match_by
         out_devs[dev_id].(M)["_proj_match_by"] = proj_match_by
+      }
+
+      dev_sites := []M{}
+
+      for _, ip := range dev_ips {
+        if tag_id, ex := ip2site[ip]; ex {
+          dev_sites = append(dev_sites, M{ "site": tag_id, "by": ip })
+        }
+        ip_long, _ := V4ip2long(ip)
+        for net, _ := range net2site {
+          first := net2site.Vu(net, "first")
+          last := net2site.Vu(net, "last")
+          if first != UINT64_ERR && last != UINT64_ERR &&
+             uint64(ip_long) >= first && uint64(ip_long) <= last &&
+          true {
+            dev_sites = append(dev_sites, M{ "site": net2site.Vs(net, "tag_id"), "by": net })
+          }
+        }
+      }
+
+      for _, net := range dev_nets {
+        if net2site.EvM(net) {
+          dev_sites = append(dev_sites, M{ "site": net2site.Vs(net, "tag_id"), "by": net })
+        }
+      }
+
+      if len(dev_sites) > 0 && out_devs.EvM(dev_id) {
+        out_devs.VM(dev_id)["sites"] = dev_sites
+      }
+
+      dev_projects := []M{}
+
+      for _, ip := range dev_ips {
+        if tag_ids, ex := ip2projects[ip]; ex {
+          for _, tag_id := range tag_ids {
+            dev_projects = append(dev_projects, M{ "proj": tag_id, "by": ip })
+          }
+        }
+      }
+
+      for _, net := range dev_nets {
+        if tag_ids, ex := net2projects[net]; ex {
+          for _, tag_id := range tag_ids {
+            dev_projects = append(dev_projects, M{ "proj": tag_id, "by": net })
+          }
+        }
+      }
+
+      if len(dev_projects) > 0 && out_devs.EvM(dev_id) {
+        out_devs.VM(dev_id)["projects"] = dev_projects
       }
     } //devs
 
@@ -1942,6 +2039,16 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
         for _, ip := range dev_ips {
           if tag_id, ex := ip2site[ip]; ex {
             dev_sites = append(dev_sites, M{ "site": tag_id, "by": ip })
+          }
+          ip_long, _ := V4ip2long(ip)
+          for net, _ := range net2site {
+            first := net2site.Vu(net, "first")
+            last := net2site.Vu(net, "last")
+            if first != UINT64_ERR && last != UINT64_ERR &&
+               uint64(ip_long) >= first && uint64(ip_long) <= last &&
+            true {
+              dev_sites = append(dev_sites, M{ "site": net2site.Vs(net, "tag_id"), "by": net })
+            }
           }
         }
 

@@ -1134,6 +1134,22 @@ $( document ).ready(function() {
        VLANsWindow();
      })
    )
+   .append( $(LABEL).addClass(["button", "port_mac_report_btn"])
+     .text("Port MAC")
+     .title("Поиск портов с множеством MAC")
+     .click(function(e) {
+       e.stopPropagation();
+       portMacReport();
+     })
+   )
+   .append( $(LABEL).addClass(["button", "inventory_btn"])
+     .text("Inventory")
+     .title("Перечень всех устройств сайта с указанием модели")
+     .click(function(e) {
+       e.stopPropagation();
+       inventoryWin();
+     })
+   )
    .appendTo( $("BODY") )
   ;
 
@@ -10146,4 +10162,226 @@ function event_row(dev_id, event_json) {
 
 
   return ret;
+};
+
+function portMacReport() {
+  let dlg = createWindow("port_mac_report", "Отчет по MAC");
+  let content = dlg.find(".content");
+
+  //let table = $(DIV).addClass("table").appendTo(content);
+
+  let devs = {};
+  for(let dev_id in data["devs"]) {
+    if(data["devs"][dev_id]["interfaces"] != undefined) {
+      let ifs = [];
+      for(let i in data["devs"][dev_id]["interfaces_sorted"]) {
+        let ifName = data["devs"][dev_id]["interfaces_sorted"][i];
+        if(data["devs"][dev_id]["interfaces"][ifName]["macs_count"] !== undefined &&
+           data["devs"][dev_id]["interfaces"][ifName]["ifOperStatus"] == 1 &&
+           data["devs"][dev_id]["interfaces"][ifName]["l2_links"] === undefined &&
+           (
+             (
+               data["devs"][dev_id]["interfaces"][ifName]["portMode"] === 1 &&
+               (
+                 (
+                   ( data["devs"][dev_id]["interfaces"][ifName]["portVvid"] === undefined ||
+                     data["devs"][dev_id]["interfaces"][ifName]["portVvid"] === 4096
+                   ) &&
+                   data["devs"][dev_id]["interfaces"][ifName]["macs_count"] > 2
+                 ) ||
+                 data["devs"][dev_id]["interfaces"][ifName]["macs_count"] > 3
+               )
+             ) ||
+             (
+               data["devs"][dev_id]["interfaces"][ifName]["portMode"] === 2 &&
+               data["devs"][dev_id]["interfaces"][ifName]["macs_count"] > 1
+             ) ||
+             (
+               data["devs"][dev_id]["interfaces"][ifName]["portMode"] === 3 &&
+               data["devs"][dev_id]["interfaces"][ifName]["macs_count"] > 2
+             ) ||
+             (
+               data["devs"][dev_id]["interfaces"][ifName]["portMode"] !== 1 &&
+               data["devs"][dev_id]["interfaces"][ifName]["portMode"] !== 2 &&
+               data["devs"][dev_id]["interfaces"][ifName]["portMode"] !== 3 &&
+               true
+             )
+           )
+        ) {
+          ifs.push(ifName);
+        };
+      };
+      if(ifs.length > 0) {
+        devs[dev_id] = ifs;
+      };
+    };
+  };
+
+  let ids = keys(devs);
+  ids.sort(function(a, b) { return String(data["devs"][a]["short_name"]).localeCompare(data["devs"][b]["short_name"]); });
+
+  if(ids.length > 0) {
+    let table = $(TABLE);
+    table.appendTo(content);
+
+    for(let i in ids) {
+      let dev_id = ids[i];
+      table
+        .append( $(TR)
+          .append( $(TD).prop("colspan", "99")
+            .css({"background-color": "moccasin"})
+            .append( $(LABEL)
+              .text( data["devs"][dev_id]["short_name"] )
+              .addClass("button")
+              .data("dev_id", dev_id)
+              .click(function() { device_win( $(this).data("dev_id") ); })
+            )
+          )
+        )
+      ;
+
+      for(let ii in devs[dev_id]) {
+        let ifName = devs[dev_id][ii];
+        table
+          .append( $(TR)
+            .append( $(TD)
+              .append( $(LABEL)
+                .css({"margin-left": "1em"})
+                .addClass("button")
+                .text( ifName )
+                .data("dev_id", dev_id)
+                .data("int", ifName)
+                .click( function() {
+                  interface_win($(this).data("dev_id"), $(this).data("int"));
+                })
+              )
+            )
+            .append( $(TD)
+              .css({"white-space": "nowrap"})
+              .append( int_labels(ifName, data["devs"][dev_id]) )
+            )
+            .append( $(TD)
+              .css({"white-space": "nowrap"})
+              .text( data["devs"][dev_id]["interfaces"][ifName]["ifAlias"] )
+            )
+          )
+        ;
+      };
+    };
+
+
+  } else {
+    content.text( "В данном представлении ничего подходящего не обнаружено" );
+  };
+
+  dlg.trigger("recenter");
+};
+
+function inventoryWin() {
+  let dlg = createWindow("inventory_win", "Перечень устройств");
+  let content = dlg.find(".content");
+
+  let tbody = $(TBODY);
+
+  content
+    .append( $(TABLE)
+      .append( $(THEAD)
+        .append( $(TR)
+          .append( $(TH)
+            .append( $(LABEL).text("Сайт") )
+            .append( $(LABEL).addClass("sort_sign")
+              .data("sort_by", "site")
+              .addClass(["ui-icon", "ui-icon-sort"])
+            )
+          )
+          .append( $(TH)
+            .append( $(LABEL).text("Модель") )
+            .append( $(LABEL).addClass("sort_sign")
+              .data("sort_by", "model")
+              .addClass(["ui-icon", "ui-icon-sort"])
+            )
+          )
+          .append( $(TH)
+            .append( $(LABEL).text("Устройство") )
+            .append( $(LABEL).addClass("sort_sign")
+              .data("sort_by", "site")
+              .addClass(["ui-icon", "ui-icon-sort"])
+            )
+          )
+        )
+      )
+      .append( tbody )
+    )
+  ;
+
+  let ids = keys(data["devs"]);
+
+  let devs_sites = {};
+
+  for(let i in ids) {
+    let dev_id = ids[i];
+    let dev_sites = [];
+
+    if(data["devs"][dev_id]["sites"] !== undefined) {
+      for(let s in data["devs"][dev_id]["sites"]) {
+        let s_id = data["devs"][dev_id]["sites"][s]["site"];
+        dev_sites = append_once(dev_sites, s_id);
+      };
+      dev_sites.sort();
+    };
+    devs_sites[dev_id] = dev_sites;
+  };
+
+  let order = get_local("inventory_order", "model_site");
+  
+  ids.sort(function(a, b) {
+    if(order == "site_model") {
+      if( devs_sites[a].join(",") !== devs_sites[b].join(",") ) return num_compare( devs_sites[a].join(","), devs_sites[b].join(",") );
+      if( data["devs"][a]["model_short"] !== data["devs"][b]["model_short"] ) return num_compare( data["devs"][a]["model_short"], data["devs"][b]["model_short"]);
+      if( data["devs"][a]["sysObjectID"] !== data["devs"][b]["sysObjectID"] ) return num_compare( data["devs"][a]["sysObjectID"], data["devs"][b]["sysObjectID"]);
+    } else if(order == "model_site") {
+      if( data["devs"][a]["model_short"] !== data["devs"][b]["model_short"] ) return num_compare( data["devs"][a]["model_short"], data["devs"][b]["model_short"]);
+      if( data["devs"][a]["sysObjectID"] !== data["devs"][b]["sysObjectID"] ) return num_compare( data["devs"][a]["sysObjectID"], data["devs"][b]["sysObjectID"]);
+      if( devs_sites[a].join(",") !== devs_sites[b].join(",") ) return num_compare( devs_sites[a].join(","), devs_sites[b].join(",") );
+    };
+    return String(data["devs"][a]["short_name"]).localeCompare(data["devs"][b]["short_name"]);
+  });
+
+  for(let i in ids) {
+    let dev_id = ids[i];
+    let dev_sites = devs_sites[dev_id];
+
+    let sites_td = $(TD);
+    for(let s in dev_sites) {
+      let site_id = dev_sites[s];
+      sites_td
+        .append( get_tag({"id": "root", "children": data["sites"], "data": {}}, site_id) )
+      ;
+    };
+
+    tbody
+      .append( $(TR)
+        .data("dev_id", dev_id)
+        .data("dev_sites", devs_sites[dev_id])
+        .append( sites_td )
+        .append( $(TD)
+          .append( $(SPAN)
+            .text( data["devs"][dev_id]["model_short"] )
+            .title( data["devs"][dev_id]["model_long"] == "Unknown"? data["devs"][dev_id]["sysObjectID"]:data["devs"][dev_id]["model_long"] )
+          )
+        )
+        .append( $(TD)
+          .append( $(LABEL)
+            .text( data["devs"][dev_id]["short_name"] )
+            .addClass("button")
+            .data("dev_id", dev_id)
+            .click(function() { device_win( $(this).data("dev_id") ); })
+          )
+        )
+      )
+    ;
+
+  };
+
+  dlg.trigger("recenter");
 };

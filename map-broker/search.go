@@ -529,7 +529,7 @@ func ip_info(ip string, red redis.Conn, timeout time.Duration, skip_lookups bool
             fmt.Sprintf("\tchecking %s/%d", dev_ip, mask64),
           )
           dev_ip_u, var_ok := V4ip2long(dev_ip)
-          if mask64 > 32 || !var_ok { continue }
+          if mask64 == 0 || mask64 > 32 || !var_ok { continue }
           mask := uint32(mask64)
           arp_debug = append(arp_debug,
             fmt.Sprintf("\t%d vs %d", Ip4net(dev_ip_u, mask), Ip4net(v4ip, mask)),
@@ -603,7 +603,7 @@ func ip_info(ip string, red redis.Conn, timeout time.Duration, skip_lookups bool
           if masklen, ok := devs.Vue(dev_id, "interfaces", ifName, "ips", if_ip, "masklen");
           ok && !strings.HasPrefix(if_ip, "127.") {
             if_ip_u, var_ok := V4ip2long(if_ip)
-            if masklen > 32 || !var_ok { continue }
+            if masklen == 0 || masklen > 32 || !var_ok { continue }
             if Ip4net(if_ip_u, uint32(masklen)) == Ip4net(v4ip, uint32(masklen)) {
               ip_net_if := M{
                 "dev_id": dev_id,

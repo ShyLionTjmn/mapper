@@ -537,6 +537,13 @@ func (d *Dev) Decode(raw M) error {
 
   var i64 int64
 
+  if !raw.EvM("ifName") && raw.EvM("ifIndex") {
+    raw["ifName"] = make(M)
+    for index, _ := range raw.VM("ifIndex") {
+      raw.VM("ifName")[index] = index
+    }
+  }
+
   if raw.Evs("locChassisId") && len(raw.Vs("locChassisId")) > 0 {
     s := strings.ToLower(raw.Vs("locChassisId"))
     raw["locChassisId"] = s
