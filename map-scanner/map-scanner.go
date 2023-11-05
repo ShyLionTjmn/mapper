@@ -17,26 +17,27 @@ ip_oids.Q.IP - queue Q HASH  someKey oid:itemType:valueType:opt:optv ...
 */
 
 import (
-  snmp "github.com/gosnmp/gosnmp"
-  "sync"
-  "fmt"
-  "os"
-  "log"
-  "time"
-  _ "bufio"
-  "syscall"
-  "os/signal"
-  "regexp"
-  "net"
-  "errors"
-  "strings"
-  "strconv"
-  _ "runtime"
-  "github.com/gomodule/redigo/redis"
-  "github.com/marcsauter/single"
+	_ "bufio"
+	"errors"
+	"fmt"
+	"log"
+	"net"
+	"os"
+	"os/signal"
+	"regexp"
+	_ "runtime"
+	"strconv"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
 
-  redmutex "github.com/ShyLionTjmn/mapper/redmutex"
-  . "github.com/ShyLionTjmn/mapper/mapaux"
+	"github.com/gomodule/redigo/redis"
+	snmp "github.com/gosnmp/gosnmp"
+	"github.com/marcsauter/single"
+
+	. "github.com/ShyLionTjmn/mapper/mapaux"
+	redmutex "github.com/ShyLionTjmn/mapper/redmutex"
 )
 
 const DEFAULT_SNMP_TIMEOUT=10
@@ -73,6 +74,7 @@ var bad_oids int64
 type t_workStruct struct {
   queue		int
   dev_ip	string
+  community	string
   control_ch	chan string
   data_ch	chan t_scanData
   wg		*sync.WaitGroup
@@ -280,7 +282,7 @@ func worker(ws *t_workStruct) {
   client := &snmp.GoSNMP{
     Target:    ws.dev_ip,
     Port:      uint16(161),
-    Community: "public",
+    Community: ws.community,
     Version:   snmp.Version2c,
     Timeout:   time.Duration(DEFAULT_SNMP_TIMEOUT) * time.Second,
     Retries:   DEFAULT_SNMP_RETRIES,
@@ -574,7 +576,7 @@ ITEM:     for ii := 0; ii < len(ws.job[jgi].Items); ii++ {
                 if perVlanField != "" && perVlanField_ex {
                   key_value = make(map[string]string)
 VLANS:            for vlan_id, _ := range perVlanField_i.(map[string]string) {
-                    client.Community = "public@"+vlan_id
+                    client.Community = ws.community+"@"+vlan_id
 
                     debugPub(red, ws, debug, "perVlan", "walking vlan:", vlan_id)
                     var temp_key_value map[string]string
@@ -609,7 +611,7 @@ VLANS:            for vlan_id, _ := range perVlanField_i.(map[string]string) {
                       err = nil
                     }
                   } // VLANS
-                  client.Community = "public"
+                  client.Community = ws.community
                 } else {
                   err = errors.New("NoSuchInstance")
                 }
@@ -882,9 +884,25 @@ func read_devlist (red redis.Conn) (M, error) {
   ret := make(M)
   var err error
   var hash map[string]string
+  var com_hash map[string]string
 
   hash, err = redis.StringMap(red.Do("HGETALL", "dev_list"))
   if err != nil { return nil, err }
+
+  com_hash, err = redis.StringMap(red.Do("HGETALL", "community"))
+  if err == redis.ErrNil {
+    err = nil
+    com_hash = make(map[string]string)
+    com_hash["default"] = "public"
+  }
+
+  if err != nil {
+    return nil, err
+  }
+
+  if _, def_com_ex := com_hash["default"]; !def_com_ex {
+    com_hash["default"] = "public"
+  }
 
   for ip, val := range hash {
     a := strings.Split(val, ":")
@@ -895,6 +913,12 @@ func read_devlist (red redis.Conn) (M, error) {
         ret[ip] = make(M)
         ret[ip].(M)["time"] = t
         ret[ip].(M)["state"] = a[1]
+
+        if _, com_ex := com_hash[ip]; com_ex {
+          ret[ip].(M)["community"] = com_hash[ip]
+        } else {
+          ret[ip].(M)["community"] = com_hash["default"]
+        }
       }
     }
   }
@@ -1139,7 +1163,11 @@ MAIN_LOOP: for {
 
           if  exists {
             for q,_ := range workers[ip] {
-              workers[ip][q].check=cycle_start
+              if workers[ip][q].community == db_devlist.Vs(ip, "community") {
+                workers[ip][q].check=cycle_start
+              } else {
+                fmt.Println("Community change for "+ip+", queue ", q)
+              }
             }
           } else {
             fmt.Println("Adding workers for "+ip)
@@ -1163,6 +1191,7 @@ MAIN_LOOP: for {
                 workers[ip][q]=&t_workStruct{
                   queue:	q,
                   dev_ip:	ip,
+                  community: db_devlist.Vs(ip, "community"),
                   control_ch:	make(chan string, 1),
                   data_ch:	data_ch,
                   wg:	&wg,
