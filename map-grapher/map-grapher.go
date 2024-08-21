@@ -333,7 +333,8 @@ MAIN_LOOP:
       graph_sub_launched = true
       go graph_sub(graph_sub_stop, &wg)
 
-      for i := 0; i < runtime.NumCPU(); i++ {
+      //for i := 0; i < runtime.NumCPU(); i++ {
+      for i := 0; i < 1; i++ {
         worker_sub_stop := make(chan string, 1)
         stop_channels = append(stop_channels, worker_sub_stop)
 
@@ -468,7 +469,7 @@ S:for {
             }
           } else if _err != nil {
             if opt_v > 1 {
-              fmt.Println("redis error", _err.Error())
+              fmt.Println("redis error: ip:",gi.Ip, _err.Error())
             }
             globalMutex.Unlock()
             red.Close()
@@ -482,6 +483,9 @@ S:for {
             }
             redmap, _err := redis.StringMap(red.Do("HGETALL", "ip_graphs."+gi.Ip))
             if _err != nil && _err != redis.ErrNil {
+              if opt_v > 1 {
+                fmt.Println("Error loading ip_graphs."+gi.Ip)
+              }
               globalMutex.Unlock()
               red.Close()
               red = nil
@@ -503,6 +507,9 @@ S:for {
           } else {
             // redis data not changed, postprone
             data.VM("ip_graphs", gi.Ip)["_loaded"] = time.Now().Unix()
+            if opt_v > 1 {
+              fmt.Println("redis data not changed, postprone:", gi.Ip)
+            }
           }
         }
         gf, gf_found := data.Vse("ip_graphs", gi.Ip, "items", gi.Item)
@@ -510,10 +517,10 @@ S:for {
 
         created := data.EvA("created", gi.Ip, gi.Item)
 
-        if opt_v > 3 {
-          fmt.Println("Worker:", sub_num, gi, gf, gf_found)
-          fmt.Println("Worker:", sub_num, "create", cr, cr_found)
-          fmt.Println("Worker:", sub_num, "created", created)
+        if opt_v > 1 {
+          fmt.Println("Worker:", sub_num, gi.Ip, gi, gf, gf_found)
+          fmt.Println("Worker:", sub_num, gi.Ip, "create", cr, cr_found)
+          fmt.Println("Worker:", sub_num, gi.Ip, "created", created)
         }
 
         if gf_found && cr_found {
@@ -521,7 +528,7 @@ S:for {
             _, rrd_err := rrdc.Exec("CREATE "+opt_d+"/"+gf+" "+cr)
             if rrd_err != nil && !rrd.IsExist(rrd_err) {
               if opt_v > 1 {
-                fmt.Println("Error creating rrd:", rrd_err.Error())
+                fmt.Println("Error creating rrd, ip:", gi.Ip, rrd_err.Error())
               }
               globalMutex.Unlock()
               rrdc.Close()
@@ -529,7 +536,10 @@ S:for {
               rrdState(false)
               continue S
             } else {
-               data.MkM("created", gi.Ip)[gi.Item] = int64(1)
+              if opt_v > 1 {
+                fmt.Println("Created rrd, ip:", gi.Ip, opt_d+"/"+gf+" "+cr)
+              }
+              data.MkM("created", gi.Ip)[gi.Item] = int64(1)
             }
           }
           globalMutex.Unlock()
@@ -558,11 +568,14 @@ S:for {
                     cur_time := last_update_time + i*timestep
                     cur_value := last_update_value + i*valuestep
 
+                    if opt_v > 1 {
+                      fmt.Println("Updating rrd, ip:", gi.Ip, rrd_file, time.Unix(cur_time, 0), cur_value)
+                    }
                     rrd_err := rrdc.Update(rrd_file, rrd.NewUpdate(time.Unix(cur_time, 0), cur_value))
                     if rrd_err != nil {
                       if rrd.IsNotExist(rrd_err) {
                         if opt_v > 1 {
-                          fmt.Println("rrd file gone?:", rrd_err.Error())
+                          fmt.Println("rrd file gone?:", gi.Ip, rrd_err.Error())
                         }
                         globalMutex.Lock()
                         if data.EvA("created", gi.Ip, gi.Item) {
@@ -571,13 +584,17 @@ S:for {
                         globalMutex.Unlock()
                       } else {
                         if opt_v > 1 {
-                          fmt.Println("Error updating rrd:", rrd_err.Error())
+                          fmt.Println("Error updating rrd:", gi.Ip, rrd_err.Error())
                         }
                         rrdc.Close()
                         rrdc = nil
                         rrdState(false)
                       }
                       continue S
+                    } else {
+                      if opt_v > 1 {
+                        fmt.Println("Updated successfully rrd, ip:", gi.Ip, rrd_file)
+                      }
                     }
                   }
                 }
@@ -585,11 +602,14 @@ S:for {
             }
           }
 
+          if opt_v > 1 {
+            fmt.Println("Updating rrd, ip:", gi.Ip, rrd_file, "NOW", gi.Value)
+          }
           rrd_err := rrdc.Update(rrd_file, rrd.NewUpdateNow(gi.Value))
           if rrd_err != nil {
             if rrd.IsNotExist(rrd_err) {
               if opt_v > 1 {
-                fmt.Println("rrd file gone?:", rrd_err.Error())
+                fmt.Println("rrd file gone?:", gi.Ip, rrd_err.Error())
               }
               globalMutex.Lock()
               if data.EvA("created", gi.Ip, gi.Item) {
@@ -598,7 +618,7 @@ S:for {
               globalMutex.Unlock()
             } else {
               if opt_v > 1 {
-                fmt.Println("Error updating rrd:", rrd_err.Error())
+                fmt.Println("Error updating rrd:", gi.Ip, rrd_err.Error())
               }
               rrdc.Close()
               rrdc = nil
@@ -607,6 +627,9 @@ S:for {
             continue S
           } else {
             red.Do("HSET", "ip_graph_updates."+gi.Ip, rrd_file, strconv.FormatInt(time.Now().Unix(), 10)+" "+strconv.FormatUint( gi.Uptime, 10)+" "+gi.Value)
+            if opt_v > 1 {
+              fmt.Println("Updated rrd successfully, ip:", gi.Ip, rrd_file)
+            }
           }
         } else {
           globalMutex.Unlock()

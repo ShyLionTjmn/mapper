@@ -458,6 +458,7 @@ WORKER_CYCLE:
           }
         }
       }
+      ip_oids = ip_oids.Add("_time", time.Now().Unix())
       ip_oids = ip_oids.Add("_count", keys_count)
       ip_oids = ip_oids.Add("_sysObjectID", sysObjectID)
       red.Send("MULTI")

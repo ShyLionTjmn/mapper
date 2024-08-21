@@ -1913,6 +1913,23 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
     }
   }
 
+  if raw.EvM("hwEntCPULoad") && raw.EvM("hwEntCPUThreshold") {
+    for board_index, load := range raw.VM("hwEntCPULoad") {
+      if raw.Evi("hwEntCPUThreshold", board_index) &&
+         raw.Evi("invEntType", board_index) &&
+         raw.Evs("invEntName", board_index) &&
+         raw.Vi("invEntType", board_index) == 9 &&
+         raw.Vi("hwEntCPUThreshold", board_index) > 0 &&
+         true {
+        cpu_h := dev.MkM("CPUs", strconv.FormatInt(cpu_num, 10))
+        cpu_h["name"] = raw.Vs("invEntName", board_index) + " CPU"
+        cpu_h["_graph_key"] = "hwEntCPULoad." + board_index
+        cpu_h["cpu1MinLoad"] = load
+        cpu_num++
+      }
+    }
+  }
+
   if raw.EvM("snrMirrorDestIfName") {
     for monitor_session,_ := range raw.VM("snrMirrorDestIfName") {
       if dev.EvM("interfaces", raw.Vs("snrMirrorDestIfName", monitor_session)) {

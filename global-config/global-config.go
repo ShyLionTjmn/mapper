@@ -70,6 +70,8 @@ var opt_v bool // log execution steps
 var opt_q bool // no summary, no periodic updates
 var opt_l bool // live log to stdout
 
+var opt_j bool // dump JSON data from broker
+
 var regs map[string]*regexp.Regexp
 
 func init() {
@@ -133,6 +135,7 @@ func main() {
   flag.BoolVar(&opt_r, "r", false, "Log input from device")
   flag.BoolVar(&opt_w, "w", false, "Log sent commands to device")
   flag.BoolVar(&opt_v, "v", false, "Log execution")
+  flag.BoolVar(&opt_j, "j", false, "Dump JSON data from broker and quit")
   flag.BoolVar(&opt_P, "P", false, "No periodic status updates")
   flag.BoolVar(&opt_q, "q", false,
     "No dev start and stop messages, no summary results, no periodic updates (implies -P)",
@@ -154,6 +157,37 @@ func main() {
   )
 
   flag.Parse()
+
+  if opt_j {
+
+    conn, err := net.DialTimeout("unix", BROKER_UNIX_SOCKET, time.Second)
+    if err != nil {
+      panic(err)
+    }
+
+    _, err = conn.Write([]byte("global-config\n"))
+    if err != nil {
+      conn.Close()
+      panic(err)
+    }
+
+    dec := gob.NewDecoder(conn)
+
+    err = dec.Decode(&devs)
+
+    conn.Close()
+
+    if err != nil {
+      panic(err)
+    }
+
+    out_j, j_err := json.MarshalIndent(devs, "", "  ")
+    if j_err != nil {
+      panic(j_err)
+    }
+    fmt.Println(string(out_j))
+    return
+  }
 
   if script_filename == "" {
     panic("No script filename given, use -f flag")
