@@ -417,6 +417,7 @@ func http_server(stop chan string, wg *sync.WaitGroup) {
 
   http.Handle("/", NoCache(http.FileServer(fsys)))
   http.HandleFunc("/consts.js", handleConsts)
+  http.HandleFunc("/offline.js", handleOffline)
   http.HandleFunc("/ajax", handleAjax)
   http.HandleFunc("/graph", handleGraph)
 
@@ -472,6 +473,34 @@ func handleConsts(w http.ResponseWriter, req *http.Request) {
   w.Write([]byte(";\n"))
 
   w.Write([]byte("\n"))
+}
+
+func handleOffline(w http.ResponseWriter, req *http.Request) {
+
+  if req.Method == "OPTIONS" {
+    w.Header().Set("Access-Control-Allow-Origin", "*")
+    w.Header().Set("Access-Control-Allow-Methods", "*")
+    w.Header().Set("Access-Control-Allow-Headers", "*")
+    w.WriteHeader(http.StatusOK)
+    return
+  }
+
+  w.Header().Set("Content-Type", "text/javascript; charset=UTF-8")
+  w.Header().Set("Cache-Control", "no-cache")
+  w.Header().Set("Access-Control-Allow-Origin", "*")
+  w.Header().Set("Access-Control-Allow-Methods", "*")
+  w.Header().Set("Access-Control-Allow-Headers", "*")
+  w.WriteHeader(http.StatusOK)
+
+  w.Write([]byte("const OFFLINE_DATA = "))
+  jstr, jerr := json.MarshalIndent(M{"boo": "moo"}, "", "  ")
+  if jerr != nil {
+    panic(jerr)
+  }
+
+  w.Write(jstr)
+  w.Write([]byte(";\n"))
+
 }
 
 func handle_error(r interface{}, w http.ResponseWriter, req *http.Request) {
