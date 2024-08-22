@@ -1774,6 +1774,12 @@ function device_win(dev_id) {
        .append( $(A, {"target": "blank", "href": "telnet://"+dev["data_ip"]}).text("TELNET")
          .css({"margin-right": "0.5em"})
        )
+       .append( $(A, {"target": "blank", "href": "http://"+dev["data_ip"]+"/"}).text("HTTP")
+         .css({"margin-right": "0.5em"})
+       )
+       .append( $(A, {"target": "blank", "href": "https://"+dev["data_ip"]+"/"}).text("HTTPS")
+         .css({"margin-right": "0.5em"})
+       )
        .append( $(A, {"target": "blank", "href": "/ipdb/?action=link&ip="+dev["data_ip"]}).text("IPDB")
        )
        .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-copy"])
@@ -3076,7 +3082,7 @@ function int_metrics(int, dev) {
         };
       } else {
         labels["00_ifstatus"]["short_text"]="Un";
-        labels["00_ifstatus"]["long_text"]="Unknown";
+        labels["00_ifstatus"]["long_text"]="Unknown status";
         labels["00_ifstatus"]["bg_color"]="orange";
       };
     };
@@ -3253,12 +3259,18 @@ function int_metrics(int, dev) {
       labels["05_macs"]["bg_color"]="#FF8888";
     };
 
-    if(dev["interfaces"][int]["lag_parent"] != undefined) {
+    if(dev["interfaces"][int]["lag_parent"] != undefined &&
+      dev["interfaces"][int]["lag_parent"] != dev["interfaces"][int]["ifName"]
+    ) {
       labels["06_lag"]={};
       labels["06_lag"]["short_text"] = "LAG";
       labels["06_lag"]["long_text"] = "LAG member port of " + dev["interfaces"][int]["lag_parent"];
       labels["06_lag"]["bg_color"]="tan";
-    } else if(dev["interfaces"][int]["lag_members"] != undefined) {
+    } else if(dev["interfaces"][int]["lag_members"] != undefined &&
+              (dev["interfaces"][int]["lag_members"].length > 1 ||
+               dev["interfaces"][int]["lag_members"][0] != dev["interfaces"][int]["ifName"]
+              )
+    ) {
       labels["06_lag"]={};
       labels["06_lag"]["short_text"] = "LAG";
       labels["06_lag"]["long_text"] = "LAG parent for " + dev["interfaces"][int]["lag_members"].join(", ");
@@ -6705,7 +6717,8 @@ function interface_win(dev_id, int) {
        .append( $(SPAN)
          .css({"float": "right", "margin-left": "2em"})
          .append( $(LABEL).text("BW: ") )
-         .append( $(SPAN).text(im["02_speed"]["short_text"]) )
+         .append( im["02_speed"] != undefined ? $(SPAN).text(im["02_speed"]["short_text"]) : $(SPAN).text("n/d")
+         )
          .append( int_info["ifDelay"] == undefined ? $(LABEL) : $(LABEL).text(" DLY: ") )
          .append( int_info["ifDelay"] == undefined ? $(LABEL) : $(SPAN).text(Math.floor(int_info["ifDelay"]/10))
            .title("Cisco DLY: "+int_info["ifDelay"]+"\nConfig delay: "+Math.floor(int_info["ifDelay"]/10))
