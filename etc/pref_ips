@@ -1,6 +1,6 @@
 #!/bin/sh
 
-RED_CMD="redis-cli -s /tmp/redis.sock"
+RED_CMD="redis-cli"
 TIME=`date +%s`
 
 

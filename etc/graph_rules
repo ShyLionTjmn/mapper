@@ -1,7 +1,7 @@
 #!/bin/sh
 
 TIME=`date +%s`
-RED_CMD="redis-cli -s /tmp/redis.sock"
+RED_CMD="redis-cli"
 
 $RED_CMD -x SET graph_int_rules <<EOM
 int.ifAdminStatus == 1

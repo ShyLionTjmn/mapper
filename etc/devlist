@@ -8,7 +8,7 @@ then
   exit 1
 fi
 
-RED_CMD="redis-cli -s /tmp/redis.sock"
+RED_CMD="redis-cli"
 TIME=`date +%s`
 
 ($RED_CMD << EOM

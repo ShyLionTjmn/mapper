@@ -1,6 +1,6 @@
 #!/bin/sh
 
-RED_CMD="redis-cli -s /tmp/redis.sock"
+RED_CMD="redis-cli"
 
 ($RED_CMD -x SET broker.l2_fields <<EOM
 {
