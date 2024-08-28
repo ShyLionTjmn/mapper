@@ -1,0 +1,8 @@
+*
+refresh 5
+queue 0
+  one	str	sysName			.1.3.6.1.2.1.1.5.0				fail
+  table	str	ifName			.1.3.6.1.2.1.31.1.1.1.1				fail,auto
+  one	int	locChassisIdSubtype	.1.0.8802.1.1.2.1.3.1.0
+  one	hex	locChassisId		.1.0.8802.1.1.2.1.3.2.0
+end
