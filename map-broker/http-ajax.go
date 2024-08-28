@@ -55,6 +55,7 @@ var g_shared_key_reg *regexp.Regexp
 var g_mac_oui_reg *regexp.Regexp
 
 var g_file_list_reg *regexp.Regexp
+var g_default_file_list_reg *regexp.Regexp
 
 func init() {
   g_num_reg = regexp.MustCompile(`^\d+$`)
@@ -77,6 +78,7 @@ func init() {
   g_mac_oui_reg = regexp.MustCompile(`^([a-fA-F0-9])([a-fA-F0-9])[\-:\.]?([a-fA-F0-9])([a-fA-F0-9])[\-:\.]?([a-fA-F0-9])([a-fA-F0-9])(?:[\-:\.]?(?:[a-fA-F0-9][a-fA-F0-9])){3}$`)
 
   g_file_list_reg = regexp.MustCompile(`.*_(\d+|all|nodata|l3)_(\d+|all|nodata)\.([a-zA-Z0-9]*)\.(name|data)$`)
+  g_default_file_list_reg = regexp.MustCompile(`default_(\d+|all|nodata|l3)_(\d+|all|nodata)\.data$`)
 
   gob.Register(M{})
   gob.Register(map[string]interface{}{})
@@ -475,34 +477,6 @@ func handleConsts(w http.ResponseWriter, req *http.Request) {
   w.Write([]byte("\n"))
 }
 
-func handleOffline(w http.ResponseWriter, req *http.Request) {
-
-  if req.Method == "OPTIONS" {
-    w.Header().Set("Access-Control-Allow-Origin", "*")
-    w.Header().Set("Access-Control-Allow-Methods", "*")
-    w.Header().Set("Access-Control-Allow-Headers", "*")
-    w.WriteHeader(http.StatusOK)
-    return
-  }
-
-  w.Header().Set("Content-Type", "text/javascript; charset=UTF-8")
-  w.Header().Set("Cache-Control", "no-cache")
-  w.Header().Set("Access-Control-Allow-Origin", "*")
-  w.Header().Set("Access-Control-Allow-Methods", "*")
-  w.Header().Set("Access-Control-Allow-Headers", "*")
-  w.WriteHeader(http.StatusOK)
-
-  w.Write([]byte("const OFFLINE_DATA = "))
-  jstr, jerr := json.MarshalIndent(M{"boo": "moo"}, "", "  ")
-  if jerr != nil {
-    panic(jerr)
-  }
-
-  w.Write(jstr)
-  w.Write([]byte(";\n"))
-
-}
-
 func handle_error(r interface{}, w http.ResponseWriter, req *http.Request) {
   if r == nil {
     return
@@ -546,6 +520,53 @@ func handle_error(r interface{}, w http.ResponseWriter, req *http.Request) {
 
   w.Write(json)
   w.Write([]byte("\n"))
+  return
+}
+
+func handle_error_js(r interface{}, w http.ResponseWriter, req *http.Request) {
+  if r == nil {
+    return
+  }
+
+  w.Header().Set("Content-Type", "text/javascript; charset=UTF-8")
+  w.Header().Set("Cache-Control", "no-cache")
+  w.Header().Set("Access-Control-Allow-Origin", "*")
+  w.Header().Set("Access-Control-Allow-Methods", "*")
+  w.Header().Set("Access-Control-Allow-Headers", "*")
+  w.WriteHeader(http.StatusOK)
+
+  var out M
+
+  switch v := r.(type) {
+  case string:
+    out = make(M)
+    out["error"] = "Server message:\n"+v;
+    if v == PE {
+      out["error"] = out["error"].(string) + "\n\n" + string(debug.Stack())
+    }
+  case error:
+    out = make(M)
+    out["error"] = v.Error() + "\n\n" + string(debug.Stack())
+  case M:
+    out = v
+  default:
+    out = make(M)
+    out["error"] = "Unknown error\n\n" + string(debug.Stack())
+  }
+
+  if opt_d {
+    fmt.Println("out")
+    dj, _ := json.MarshalIndent(out, "", "  ")
+    fmt.Println(string(dj))
+  }
+  json, jerr := json.MarshalIndent(out, "", "  ")
+  if jerr != nil {
+    panic(jerr)
+  }
+
+  w.Write([]byte("const OFFLINE_DATA = "))
+  w.Write(json)
+  w.Write([]byte(";\n"))
   return
 }
 
@@ -642,7 +663,7 @@ func handleAjax(w http.ResponseWriter, req *http.Request) {
     panic("No authentication headers present")
   }
 
-  user_is_admin = true
+  //user_is_admin = true
 
   out := make(M)
 
@@ -2324,4 +2345,532 @@ pre_marshal := time.Now()
   if err != nil {
     panic(err)
   }
+}
+
+func tagParents(tag_id string, c int) ([]string, error) {
+  if c > 256 {
+    return nil, errors.New("Tags loop detected at tagParents")
+  }
+
+  ret := make([]string, 0)
+  tag_idx, ok := tags_indexes[tag_id]
+  if !ok {
+    return nil, errors.New("No tag_id " + tag_id + " exists")
+  }
+  if len(tags) <= tag_idx {
+    return nil, errors.New("Bad tag_id " + tag_id + " index")
+  }
+
+  parent_id := "0"
+  if tags[tag_idx].VM("data").Evs("parent_id") {
+    parent_id = tags[tag_idx].VM("data").Vs("parent_id")
+  }
+
+  if parent_id != "0" {
+    ret = append(ret, parent_id)
+    parent_parents, err := tagParents(parent_id, c + 1)
+    ret = append(ret, parent_parents...)
+    if err != nil {
+      return ret, err
+    }
+  }
+  return ret, nil
+}
+
+func handleOffline(w http.ResponseWriter, req *http.Request) {
+
+  if req.Method == "OPTIONS" {
+    w.Header().Set("Access-Control-Allow-Origin", "*")
+    w.Header().Set("Access-Control-Allow-Methods", "*")
+    w.Header().Set("Access-Control-Allow-Headers", "*")
+    w.WriteHeader(http.StatusOK)
+    return
+  }
+
+  defer func() { handle_error_js(recover(), w, req); } ()
+
+  ts := time.Now().Unix()
+
+  var u64 uint64 //general use var for typecasting
+  _ = u64
+
+  var user_sub string
+  var user_name string
+  var user_login string
+  var user_groups_string string
+
+  for header, header_values := range req.Header {
+    if strings.ToLower(header) == "x-idp-sub" && len(header_values) > 0 {
+      user_sub = strings.TrimSpace(header_values[0])
+    } else if strings.ToLower(header) == "x-idp-name" && len(header_values) > 0 {
+      user_name = strings.TrimSpace(header_values[0])
+    } else if strings.ToLower(header) == "x-idp-username" && len(header_values) > 0 {
+      user_login = strings.TrimSpace(header_values[0])
+    } else if strings.ToLower(header) == "x-idp-groups" && len(header_values) > 0 {
+      user_groups_string = strings.TrimSpace(header_values[0])
+    }
+  }
+
+  user_is_admin := false
+
+  if user_sub == "" {
+    // TODO turn back on
+    //panic("No authentication headers present")
+  }
+
+  //user_is_admin = true
+
+  out := M{}
+  out["ts"] = ts;
+
+  user_groups := make([]string, 0)
+  user_groups_a := strings.Split(user_groups_string, ",")
+  for _,v := range user_groups_a {
+    if len(v) > 3 && v[0:2] == `"/` && v[len(v)-1:] == `"` {
+      user_groups = append(user_groups, strings.ToLower(v[2:len(v)-1]) )
+    }
+  }
+
+
+  for _, g := range user_groups {
+    if g == "netapp_mapper_appadmin" {
+      user_is_admin = true
+    }
+  }
+
+  var var_ok bool
+  _ = var_ok
+
+  var red redis.Conn
+
+  var err error
+
+  if red, err = RedisCheck(red, "unix", REDIS_SOCKET, red_db); err != nil { panic(err) }
+  defer red.Close()
+
+  out_userinfo := M{
+    "sub": user_sub,
+    "name": user_name,
+    "login": user_login,
+    "groups": user_groups,
+    "is_admin": user_is_admin,
+  }
+
+  out["userinfo"] = out_userinfo
+
+  vdevs := M{}
+  vlinks := M{}
+
+  var vdevs_map map[string]string
+
+  vdevs_map, err = redis.StringMap(red.Do("HGETALL", "vdevs"))
+  if err == redis.ErrNil {
+    //ignore
+  } else if err != nil {
+    panic(err)
+  } else {
+    for vdev_id, vdev_data := range vdevs_map {
+      var vdev M
+      if err = json.Unmarshal([]byte(vdev_data), &vdev); err != nil { panic(err) }
+      vdev["last_seen"] = time.Now().Unix()
+      vdevs[vdev_id] = vdev
+    }
+  }
+
+  var vlinks_map map[string]string
+
+  vlinks_map, err = redis.StringMap(red.Do("HGETALL", "vlinks"))
+  if err == redis.ErrNil {
+    //ignore
+  } else if err != nil {
+    panic(err)
+  } else {
+    for vlink_id, vlink_data := range vlinks_map {
+      var vlink M
+      if err = json.Unmarshal([]byte(vlink_data), &vlink); err != nil { panic(err) }
+      vlinks[vlink_id] = vlink
+    }
+  }
+
+  var fields M
+  var fields_json []byte
+
+  fields_json, err = redis.Bytes(red.Do("GET", "broker.offline_fields"))
+
+  if err == redis.ErrNil {
+    panic("broker fields not set in redis db")
+  } else if err != nil {
+    panic(err)
+  }
+
+  if err = json.Unmarshal(fields_json, &fields); err != nil { panic(err) }
+
+  maps := make([]M, 0)
+
+  var keys []string
+
+  if keys, err = redis.Strings(red.Do("HKEYS", "maps")); err != nil && err != redis.ErrNil { panic(err) }
+  if err == nil {
+    for _, key := range keys {
+      if strings.HasPrefix(key, "default_") &&
+         strings.HasSuffix(key, ".data") &&
+      true {
+        a := g_default_file_list_reg.FindStringSubmatch(key)
+        if a != nil {
+          file_site := a[1]
+          file_proj := a[2]
+
+          empty_map := M{
+            "tps": M{},
+            "loc": M{},
+            "colors": M{},
+            "options": M{},
+          }
+
+          var map_data []byte
+          if map_data, err = redis.Bytes(red.Do("HGET", "maps", key)); err != nil {
+            panic(err)
+          }
+
+          buf := bytes.NewBuffer(map_data)
+          dec := gob.NewDecoder(buf)
+
+          var out_map M
+          if err = dec.Decode(&out_map); err != nil {
+            out_map = empty_map
+          }
+
+          maps = append(maps, M{
+            "site": file_site,
+            "proj": file_proj,
+            "file_name": "",
+            "file_key": "",
+            "map": out_map,
+          })
+        }
+      }
+    }
+  }
+
+  out["maps"] = maps
+
+
+  // Lock shared data
+  globalMutex.RLock()
+  defer globalMutex.RUnlock()
+
+  sites := []M{
+    M{
+      "id": "l3",
+      "children": []M{},
+      "text": "L3",
+      "data": M{"descr": "Routers"},
+    },
+    M{
+      "id": "nodata",
+      "children": []M{},
+      "text": "Без локации",
+      "data": M{"descr": "Без локации"},
+    },
+    M{
+      "id": "all",
+      "children": []M{},
+      "text": "Все устройства",
+      "data": M{"descr": "Все устройства"},
+    },
+  }
+  projects := []M{
+    M{
+      "id": "nodata",
+      "children": []M{},
+      "text": "Без тега",
+      "data": M{"descr": "Без тега"},
+    },
+    M{
+      "id": "all",
+      "children": []M{},
+      "text": "Все",
+      "data": M{"descr": "Все"},
+    },
+  }
+
+  var traverse_tree func(string, *[]M, int) (error)
+  traverse_tree = func(tag_id string, add_to *[]M, counter int) (error) {
+    if counter > 100 { return errors.New("Tags loop detected") }
+    tag_index, ex := tags_indexes[tag_id]
+    if !ex { return errors.New("no tag") }
+    add_tag := M{
+      "id": tag_id,
+      "text": tags[tag_index]["text"],
+      "data": M{
+        "descr": tags[tag_index]["data"].(M)["descr"],
+        "flags": tags[tag_index]["data"].(M)["flags"],
+      },
+    }
+    children := make([]M, 0)
+    for _, child_id := range tags[tag_index]["children"].([]string) {
+      if err := traverse_tree(child_id, &children, counter + 1); err != nil { return err }
+    }
+    add_tag["children"] = children
+    *add_to = append(*add_to, add_tag)
+    return nil
+  }
+
+  if sites_root_index, ex := tags_indexes[sites_root_tag]; sites_root_tag != "" && ex {
+    for _, tag_id := range tags[sites_root_index]["children"].([]string) {
+      if err = traverse_tree(tag_id, &sites, 0); err != nil { panic(err) }
+    }
+  }
+
+  if projects_root_index, ex := tags_indexes[projects_root_tag]; projects_root_tag != "" && ex {
+    for _, tag_id := range tags[projects_root_index]["children"].([]string) {
+      if err = traverse_tree(tag_id, &projects, 0); err != nil { panic(err) }
+    }
+  }
+
+  out["sites"] = sites
+  out["projects"] = projects
+  out["macs"]=devs_macs
+  out["arp"]=devs_arp
+
+  out_devs := make(M)
+
+  for dev_id, dev_m := range devs {
+    dev := front_dev(dev_m.(M).Copy(), fields)
+
+    dev_sites_m := make(map[string]struct{})
+    dev_projects_m := make(map[string]struct{})
+
+    dev_ips := make([]string, 0)
+    dev_nets := make([]string, 0)
+
+    for ifName, _ := range dev.VM("interfaces") {
+      if ifas, var_ok := dev.Vie("interfaces", ifName, "ifAdminStatus"); var_ok && ifas == 1 {
+        for ip, ipdata_h := range dev.VM("interfaces", ifName, "ips") {
+          if !strings.HasPrefix(ip, "127.") {
+            dev_ips = append(dev_ips, ip)
+            dev_nets = append(dev_nets, ipdata_h.(M)["net"].(string))
+            masklen := ipdata_h.(M).Vu("masklen")
+            if masklen == 32 {
+              if ip_long, var_ok := V4ip2long(ip); !var_ok {
+                panic("bad ip: " + ip)
+              } else {
+                for m := uint32(31); m > 0; m -- {
+                  net := fmt.Sprintf("%s/%d", V4long2ip(Ip4net(ip_long, m)), m)
+                  dev_nets = append(dev_nets, net)
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if len(dev_ips) > 1 && !g_l2_sysloc_reg.MatchString(dev.Vs("sysLocation")) {
+      dev_sites_m["l3"] = struct{}{}
+    }
+
+    for _, ip := range dev_ips {
+      if tag_id, ex := ip2site[ip]; ex {
+        dev_sites_m[tag_id] = struct{}{}
+        tag_parents, err := tagParents(tag_id, 0)
+        if err != nil { panic(err.Error() + "\n" + strings.Join(tag_parents, ":")) }
+        for _, _id := range tag_parents {
+          dev_sites_m[_id] = struct{}{}
+        }
+      }
+      if tag_ids, ex := ip2projects[ip]; ex {
+        for _, tag_id := range tag_ids {
+          dev_projects_m[tag_id] = struct{}{}
+          tag_parents, err := tagParents(tag_id, 0)
+          if err != nil { panic(err.Error() + "\n" + strings.Join(tag_parents, ":")) }
+          for _, _id := range tag_parents {
+            dev_projects_m[_id] = struct{}{}
+          }
+        }
+      }
+    }
+
+    for _, net := range dev_nets {
+      if net2site.EvM(net) {
+        tag_id := net2site.Vs(net, "tag_id")
+        dev_sites_m[tag_id] = struct{}{}
+        tag_parents, err := tagParents(tag_id, 0)
+        if err != nil { panic(err.Error() + "\n" + strings.Join(tag_parents, ":")) }
+        for _, _id := range tag_parents {
+          dev_sites_m[_id] = struct{}{}
+        }
+      }
+      if tag_ids, ex := net2projects[net]; ex {
+        for _, tag_id := range tag_ids {
+          dev_projects_m[tag_id] = struct{}{}
+          tag_parents, err := tagParents(tag_id, 0)
+          if err != nil { panic(err.Error() + "\n" + strings.Join(tag_parents, ":")) }
+          for _, _id := range tag_parents {
+            dev_projects_m[_id] = struct{}{}
+          }
+        }
+      }
+    }
+
+    dev_sites_a := make([]string, len(dev_sites_m))
+    site_i := 0
+    for site_id, _ := range dev_sites_m {
+      dev_sites_a[site_i] = site_id
+      site_i++
+    }
+
+    dev["dev_sites"] = dev_sites_a
+
+    dev_projects_a := make([]string, len(dev_projects_m))
+    project_i := 0
+    for project_id, _ := range dev_projects_m {
+      dev_projects_a[project_i] = project_id
+      project_i++
+    }
+
+    dev["dev_projects"] = dev_projects_a
+
+    dev_sites := []M{}
+
+    for _, ip := range dev_ips {
+      if tag_id, ex := ip2site[ip]; ex {
+        dev_sites = append(dev_sites, M{ "site": tag_id, "by": ip })
+      }
+      ip_long, _ := V4ip2long(ip)
+      for net, _ := range net2site {
+        first := net2site.Vu(net, "first")
+        last := net2site.Vu(net, "last")
+        if first != UINT64_ERR && last != UINT64_ERR &&
+           uint64(ip_long) >= first && uint64(ip_long) <= last &&
+        true {
+          dev_sites = append(dev_sites, M{ "site": net2site.Vs(net, "tag_id"), "by": net })
+        }
+      }
+    }
+
+    for _, net := range dev_nets {
+      if net2site.EvM(net) {
+        dev_sites = append(dev_sites, M{ "site": net2site.Vs(net, "tag_id"), "by": net })
+      }
+    }
+
+    if len(dev_sites) > 0 && out_devs.EvM(dev_id) {
+      out_devs.VM(dev_id)["sites"] = dev_sites
+    }
+
+    dev_projects := []M{}
+
+    for _, ip := range dev_ips {
+      if tag_ids, ex := ip2projects[ip]; ex {
+        for _, tag_id := range tag_ids {
+          dev_projects = append(dev_projects, M{ "proj": tag_id, "by": ip })
+        }
+      }
+    }
+
+    for _, net := range dev_nets {
+      if tag_ids, ex := net2projects[net]; ex {
+        for _, tag_id := range tag_ids {
+          dev_projects = append(dev_projects, M{ "proj": tag_id, "by": net })
+        }
+      }
+    }
+
+    if len(dev_projects) > 0 && out_devs.EvM(dev_id) {
+      out_devs.VM(dev_id)["projects"] = dev_projects
+    }
+    out_devs[dev_id] = dev
+  }
+
+  out["devs"] = out_devs
+
+  out_links := make(M)
+  if data["l2_links"] != nil {
+    for link_id, link := range data["l2_links"].(M) {
+      if link.(M)["0"] != nil && link.(M)["1"] != nil &&
+         out_devs[ link.(M)["0"].(M)["DevId"].(string) ] != nil &&
+         out_devs[ link.(M)["1"].(M)["DevId"].(string) ] != nil &&
+      true {
+        out_links[link_id] = link
+      }
+    }
+  }
+  out["l2_links"] = out_links.Copy()
+  out["l3_links"] = data["l3_links"]
+
+  for vdev_id, _ := range vdevs {
+    vdev_site := vdevs.Vs(vdev_id, "site")
+    out.VM("devs")[vdev_id] = vdevs.VM(vdev_id)
+    vdev_sites_m := make(map[string]struct{})
+    vdev_sites_m[vdev_site] = struct{}{}
+
+    tag_parents, err := tagParents(vdev_site, 0)
+    if err != nil { panic(err.Error() + "\n" + strings.Join(tag_parents, ":")) }
+    for _, _id := range tag_parents {
+      vdev_sites_m[_id] = struct{}{}
+    }
+    vdev_sites_a := make([]string, len(vdev_sites_m))
+    site_i := 0
+    for site_id, _ := range vdev_sites_m {
+      vdev_sites_a[site_i] = site_id
+      site_i++
+    }
+    out.VM("devs", vdev_id)["dev_sites"] = vdev_sites_a
+    out.VM("devs", vdev_id)["dev_projects"] = []string{}
+  }
+
+  for vlink_id, _ := range vlinks {
+    dev0 := vlinks.Vs(vlink_id, "0", "DevId")
+    if0 := vlinks.Vs(vlink_id, "0", "ifName")
+
+    dev1 := vlinks.Vs(vlink_id, "1", "DevId")
+    if1 := vlinks.Vs(vlink_id, "1", "ifName")
+
+    if out.EvM("devs", dev0, "interfaces", if0) && out.EvM("devs", dev1, "interfaces", if1) {
+      if out.Vi("devs", dev0, "interfaces", if0, "ifOperStatus") == int64(1) &&
+         out.Vi("devs", dev0, "interfaces", if0, "ifOperStatus") == int64(1) &&
+      true {
+        vlinks.VM(vlink_id)["status"] = 1
+      } else {
+        vlinks.VM(vlink_id)["status"] = 2
+      }
+
+      out.VM("l2_links")[vlink_id] = vlinks.VM(vlink_id)
+
+      list0 := []string{}
+      if out.EvA("devs", dev0, "interfaces", if0, "l2_links") {
+        list0 = out.VA("devs", dev0, "interfaces", if0, "l2_links").([]string)
+      }
+      list0 = StrAppendOnce(list0, vlink_id)
+      out.VM("devs", dev0, "interfaces", if0)["l2_links"] = list0
+
+      list1 := []string{}
+      if out.EvA("devs", dev1, "interfaces", if1, "l2_links") {
+        list1 = out.VA("devs", dev1, "interfaces", if1, "l2_links").([]string)
+      }
+      list1 = StrAppendOnce(list1, vlink_id)
+      out.VM("devs", dev1, "interfaces", if1)["l2_links"] = list1
+    }
+  }
+  ///// output result
+  w.Header().Set("Content-Type", "text/javascript; charset=UTF-8")
+  w.Header().Set("Cache-Control", "no-cache")
+  w.Header().Set("Access-Control-Allow-Origin", "*")
+  w.Header().Set("Access-Control-Allow-Methods", "*")
+  w.Header().Set("Access-Control-Allow-Headers", "*")
+  w.WriteHeader(http.StatusOK)
+
+  ok_out := make(M)
+  ok_out["ok"] = out
+
+  w.Write([]byte("const OFFLINE_DATA = "))
+  jstr, jerr := json.MarshalIndent(ok_out, "", "  ")
+  if jerr != nil {
+    panic(jerr)
+  }
+
+  w.Write(jstr)
+  w.Write([]byte(";\n"))
+
 }

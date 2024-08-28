@@ -134,6 +134,8 @@ var g_short_name_reg = /^[0-9a-z_A-Z][0-9a-z_A-Z\-]*$/;
 var g_ifName_reg = /^[0-9a-z_A-Z][0-9a-z_A-Z\-\/# ]*$/;
 var g_num_reg = /^\d+$/;
 
+var OD;
+
 function escapeRegex(string) {
     return string.replace(/[/\-\\^$*+?.()|[\]{}]/g, '\\$&');
 };
@@ -175,6 +177,12 @@ function gen_code() {
   };
 
   return code;
+};
+
+function parse_mac(mac) {
+  let m = String(mac).match(/^([0-9a-fA-F]{2})[:\.\-]?([0-9a-fA-F]{2})[:\.\-]?([0-9a-fA-F]{2})[:\.\-]?([0-9a-fA-F]{2})[:\.\-]?([0-9a-fA-F]{2})[:\.\-]?([0-9a-fA-F]{2})$/);
+  if(m === null) return false;
+  return(m[1].toLowerCase()+m[2].toLowerCase()+m[3].toLowerCase()+m[4].toLowerCase()+m[5].toLowerCase()+m[6].toLowerCase());
 };
 
 function format_mac(mac, view="canonic") {
@@ -1210,6 +1218,21 @@ $( document ).ready(function() {
        )
      )
     ;
+    if(offline) {
+      //debugLog(jstr(OFFLINE_DATA));
+
+      if(OFFLINE_DATA["error"] != undefined) {
+        debugLog(OFFLINE_DATA["error"]);
+      };
+    };
+  };
+
+  if(offline) {
+    if(OFFLINE_DATA["error"] != undefined) {
+      OD = {};
+    } else {
+      OD = OFFLINE_DATA["ok"];
+    };
   };
 
   let query;
@@ -1821,7 +1844,7 @@ function device_win(dev_id) {
     let cpu_mem_div;
     let cpu_mem_big_div;
 
-    if(dev["CPUs"] !== undefined) {
+    if(dev["CPUs"] !== undefined && !offline) {
       cpu_mem_div = $(DIV).css({"min-height": "34px", "height": "34px"});
 
       cpu_mem_big_div = $(DIV);
@@ -1873,7 +1896,7 @@ function device_win(dev_id) {
       ;
     };
 
-    if(dev["memoryUsed"] !== undefined) {
+    if(dev["memoryUsed"] !== undefined && !offline) {
       if(cpu_mem_div === undefined) {
         cpu_mem_div = $(DIV).css({"min-height": "34px", "height": "34px"});
         cpu_mem_big_div = $(DIV);
@@ -1964,7 +1987,7 @@ function device_win(dev_id) {
        )
       ;
 
-      if(int_data["_graph_prefix"] !== undefined) {
+      if(int_data["_graph_prefix"] !== undefined && !offline) {
         let gsrc = "graph?small&dev_id="+dev["safe_dev_id"]+"&int="+int_data["safe_if_name"];
         gsrc += "&" + unix_timestamp();
 
@@ -3317,7 +3340,7 @@ function interface_in(int, dev) {
   let safe_int = dev["interfaces"][int]["safe_if_name"];
 
   let int_info_text=dev["interfaces"][int]["ifName"]+"&nbsp;";
-  if(dev["virtual"] == undefined) {
+  if(dev["virtual"] == undefined && !offline) {
     let io_src="graph?type=int_io&dev_id="+safe_dev_id+"&int="+safe_int+"&small&"+sec;
     let pkt_src="graph?type=int_pkts&dev_id="+safe_dev_id+"&int="+safe_int+"&small&"+sec;
     let ifspeed=1000000000;
@@ -6919,7 +6942,7 @@ function interface_win(dev_id, int) {
       ;
     };
 
-    if(data["devs"][dev_id]["virtual"] == undefined) {
+    if(data["devs"][dev_id]["virtual"] == undefined && !offline) {
       content
        .append( $(DIV)
          .graph({"type": "int_io", "dev_id": dev_id, "int": int,
@@ -10397,4 +10420,538 @@ function inventoryWin() {
   };
 
   dlg.trigger("recenter");
+};
+
+function search_mac_info(mac) {
+  let ret = {};
+  ret["corp"] = "n/d: offline";
+  ret["ports"] = [];
+
+  for(let dev_id in OD["macs"]) {
+    for(let int_id in OD["macs"][dev_id]) {
+      for(let vlan in OD["macs"][dev_id][int_id]) {
+        if(in_array(OD["macs"][dev_id][int_id][vlan], mac)) {
+          ret["ports"].push({
+            "dev_id": dev_id,
+            "ifName": int_id,
+            "interface": OD["devs"][dev_id]["interfaces"][int_id],
+            "vlan": vlan,
+            "short_name": OD["devs"][dev_id]["short_name"],
+            "safe_dev_id": OD["devs"][dev_id]["safe_dev_id"],
+            "overall_status": OD["devs"][dev_id]["overall_status"],
+            "_": ""
+          });
+        };
+      };
+    };
+  };
+
+  ret["mac_arps"] = [];
+  ret["mac_ips"] = [];
+
+  for(let dev_id in OD["arp"]) {
+    for(let int_id in OD["arp"][dev_id]) {
+      for(let ip in OD["arp"][dev_id][int_id]) {
+        if(OD["arp"][dev_id][int_id][ip] == mac) {
+          ret["mac_arps"].push({
+            "dev_id": dev_id,
+            "ifName": int_id,
+            "interface": OD["devs"][dev_id]["interfaces"][int_id],
+            "ip": ip,
+            "short_name": OD["devs"][dev_id]["short_name"],
+            "safe_dev_id": OD["devs"][dev_id]["safe_dev_id"],
+            "overall_status": OD["devs"][dev_id]["overall_status"],
+            "_": ""
+          });
+          ret["mac_ips"] = append_once(ret["mac_ips"], ip);
+        };
+      };
+    };
+  };
+
+  ret["mac_ifs"] = [];
+  for(let dev_id in OD["devs"]) {
+    if(OD["devs"][dev_id]["interfaces"] !== undefined) {
+      for(let int_id in OD["devs"][dev_id]["interfaces"]) {
+        if(OD["devs"][dev_id]["interfaces"][int_id]["ifPhysAddr"] === mac) {
+          ret["mac_ifs"].push({
+            "dev_id": dev_id,
+            "ifName": int_id,
+            "interface": OD["devs"][dev_id]["interfaces"][int_id],
+            "short_name": OD["devs"][dev_id]["short_name"],
+            "safe_dev_id": OD["devs"][dev_id]["safe_dev_id"],
+            "overall_status": OD["devs"][dev_id]["overall_status"],
+            "_": ""
+          });
+        };
+      };
+    };
+  };
+  return ret;
+};
+
+function search_ip_info(ip) {
+  let ret = {};
+
+  let v4ip = v4ip2long(ip);
+  if(v4ip === false) return;
+
+  ret["hostname"] = "n/d: offline";
+  ret["whois"] = "n/d: offline";
+  ret["dns"] = "n/d: offline";
+  ret["ip_macs"] = [];
+
+  for(let dev_id in OD["arp"]) {
+    for(let int_id in OD["arp"][dev_id]) {
+      if(OD["arp"][dev_id][ip] !== undefined &&
+         true
+      ) {
+        ret["ip_macs"] = append_once(ret["ip_macs"], OD["arp"][dev_id][ip]);
+      };
+    };
+  };
+
+  ret["ip_net_ifs"] = [];
+  ret["ip_ifs"] = [];
+  ret["ip_neigs"] = [];
+
+  for(let dev_id in OD["devs"]) {
+    for(let int_id in OD["devs"][dev_id]["interfaces"]) {
+      let ip_matched = false;
+      if(OD["devs"][dev_id]["interfaces"][int_id]["ips"] !== undefined &&
+         OD["devs"][dev_id]["interfaces"][int_id]["ips"][ip] !== undefined &&
+         true
+      ) {
+        ret["ip_ifs"].push({
+          "dev_id": dev_id,
+          "ifName": int_id,
+          "interface": OD["devs"][dev_id]["interfaces"][int_id],
+          "short_name": OD["devs"][dev_id]["short_name"],
+          "safe_dev_id": OD["devs"][dev_id]["safe_dev_id"],
+          "overall_status": OD["devs"][dev_id]["overall_status"],
+          "_": ""
+        });
+        ip_matched = true;
+      };
+
+      if(!ip_matched) {
+        for(let if_ip in OD["devs"][dev_id]["interfaces"][int_id]["ips"]) {
+          if(! /^127\./.test(if_ip)) {
+            let masklen = Number(OD["devs"][dev_id]["interfaces"][int_id]["ips"][if_ip]["masklen"]);
+            let if_ip_u = v4ip2long(if_ip);
+            if(masklen === 0 || masklen > 32 || if_ip_u === false) continue;
+            if(ip4net(if_ip_u, masklen) === ip4net(v4ip, masklen)) {
+              ret["ip_net_ifs"].push({
+                "dev_id": dev_id,
+                "ifName": int_id,
+                "ip": if_ip,
+                "masklen": masklen,
+                "interface": OD["devs"][dev_id]["interfaces"][int_id],
+                "short_name": OD["devs"][dev_id]["short_name"],
+                "safe_dev_id": OD["devs"][dev_id]["safe_dev_id"],
+                "overall_status": OD["devs"][dev_id]["overall_status"],
+                "_": ""
+              });
+            };
+          };
+        };
+      };
+    };
+    for(let port_id in OD["devs"][dev_id]["lldp_ports"]) {
+      for(let nei_idx in OD["devs"][dev_id]["lldp_ports"][port_id]["neighbours"]) {
+        if(OD["devs"][dev_id]["lldp_ports"][port_id]["neighbours"][nei_idx]["RemMgmtAddr"] !== undefined &&
+           OD["devs"][dev_id]["lldp_ports"][port_id]["neighbours"][nei_idx]["RemMgmtAddr"]["1"] == ip &&
+           true
+        ) {
+          let neigh = {
+            "dev_id": dev_id,
+            "short_name": OD["devs"][dev_id]["short_name"],
+            "safe_dev_id": OD["devs"][dev_id]["safe_dev_id"],
+            "overall_status": OD["devs"][dev_id]["overall_status"],
+            "source": "LLDP",
+            "neighbour": OD["devs"][dev_id]["lldp_ports"][port_id]["neighbours"][nei_idx],
+            "nei_index": nei_idx,
+            "port_index": port_id,
+            "_": ""
+          };
+
+          let int_id = OD["devs"][dev_id]["lldp_ports"][port_id]["ifName"];
+          if( int_id !== undefined && OD["devs"][dev_id]["interfaces"][int_id] !== undefined) {
+            neigh["interface"] = OD["devs"][dev_id]["interfaces"][int_id];
+            neigh["ifName"] = int_id;
+          };
+          ret["ip_neigs"].push(neigh);
+        };
+      };
+    };
+
+    for(let port_id in OD["devs"][dev_id]["cdp_ports"]) {
+      for(let nei_idx in OD["devs"][dev_id]["cdp_ports"][port_id]["neighbours"]) {
+        if(OD["devs"][dev_id]["cdp_ports"][port_id]["neighbours"][nei_idx]["cdpRemAddrDecoded"] !== undefined &&
+           OD["devs"][dev_id]["cdp_ports"][port_id]["neighbours"][nei_idx]["cdpRemAddrDecoded"]["1"] == ip &&
+           true
+        ) {
+          let neigh = {
+            "dev_id": dev_id,
+            "short_name": OD["devs"][dev_id]["short_name"],
+            "safe_dev_id": OD["devs"][dev_id]["safe_dev_id"],
+            "overall_status": OD["devs"][dev_id]["overall_status"],
+            "source": "CDP",
+            "neighbour": OD["devs"][dev_id]["cdp_ports"][port_id]["neighbours"][nei_idx],
+            "nei_index": nei_idx,
+            "port_index": port_id,
+            "_": ""
+          };
+
+          let int_id = OD["devs"][dev_id]["cdp_ports"][port_id]["ifName"];
+          if( int_id !== undefined && OD["devs"][dev_id]["interfaces"][int_id] !== undefined) {
+            neigh["interface"] = OD["devs"][dev_id]["interfaces"][int_id];
+            neigh["ifName"] = int_id;
+          };
+          ret["ip_neigs"].push(neigh);
+        };
+      };
+    };
+  };
+
+  return ret;
+};
+
+function offline_query(query, successfunc) {
+  debugLog(jstr(query));
+
+  let ret={};
+
+  if(query["action"] == "get_front") {
+    let req_site = query["site"];
+    let req_proj = query["proj"];
+    ret["site"] = req_site;
+    ret["proj"] = req_proj;
+
+    ret["userinfo"] = { "sub": "offline", "name": "offline", "login": "offline", "groups": "", "is_admin": false};
+
+    ret["sites"] = OD["sites"];
+    ret["projects"] = OD["projects"];
+
+    ret["devs"] = {};
+
+    for(let dev_id in OD["devs"]) {
+      let site_match = false;
+      if(req_site == "all") {
+        site_match = true;
+      } else if(req_site == "nodata") {
+        site_match = OD["devs"][dev_id]["dev_sites"].length === 0;
+      } else {
+        site_match = in_array(OD["devs"][dev_id]["dev_sites"], req_site);
+      };
+
+      if(!site_match) continue;
+
+      let proj_match = false;
+      if(req_proj == "all") {
+        proj_match = true;
+      } else if(req_proj == "nodata") {
+        proj_match = OD["devs"][dev_id]["dev_projs"].length === 0;
+      } else {
+        proj_match = in_array(OD["devs"][dev_id]["dev_projects"], req_proj);
+      };
+
+      if(!proj_match) continue;
+
+      ret["devs"][dev_id] = OD["devs"][dev_id];
+    };
+
+    ret["l2_links"] = {};
+
+    for(let link_id in OD["l2_links"]) {
+      if(ret["devs"][ OD["l2_links"][link_id]["0"]["DevId"] ] !== undefined &&
+         ret["devs"][ OD["l2_links"][link_id]["1"]["DevId"] ] !== undefined &&
+         true
+      ) {
+        ret["l2_links"][link_id] = OD["l2_links"][link_id];
+      };
+    };
+
+    ret["l3_links"] = {};
+    for(let net in OD["l3_links"]) {
+      for(let ip in OD["l3_links"][net]) {
+        if(ret["devs"][ OD["l3_links"][net][ip]["dev_id"] ] !== undefined &&
+           true
+        ) {
+          ret["l3_links"][net] = OD["l3_links"][net];
+          break;
+        };
+      };
+    };
+
+    let map_found = false;
+
+    for(let i in OD["maps"]) {
+      if(OD["maps"][i]["site"] == req_site && OD["maps"][i]["proj"] == req_proj) {
+        ret["map"] = OD["maps"][i]["map"];
+        map_found = true;
+        break;
+      };
+    };
+
+    if(!map_found) {
+      ret["map"] = {"tps": {}, "loc": {}, "colors": {}, "options": {}};
+    };
+
+    ret["default_map"] = true;
+  } else if(query["action"] == "list_maps") {
+    ret["list"] = OD["maps"];
+  } else if(query["action"] == "get_device") {
+    let dev_id = query["dev_id"];
+    ret["dev"] = OD["devs"][ dev_id ];
+    if(ret["dev"]["interfaces"] !== undefined) {
+      for(let int_id in ret["dev"]["interfaces"]) {
+        if(OD["macs"][dev_id] !== undefined && OD["macs"][dev_id][int_id] !== undefined) {
+          ret["dev"]["interfaces"][int_id]["macs"] = OD["macs"][dev_id][int_id];
+        };
+        if(OD["arp"][dev_id] !== undefined && OD["arp"][dev_id][int_id] !== undefined) {
+          ret["dev"]["interfaces"][int_id]["arp"] = OD["arp"][dev_id][int_id];
+        };
+      };
+    };
+  } else if(query["action"] == "mac_info") {
+    ret = search_mac_info(query["mac"]);
+  } else if(query["action"] == "ip_info") {
+    ret = search_ip_info(query["ip"]);
+  } else if(query["action"] == "search") {
+    let reg_search = query["reg"] === 1;
+    let search_for = query["for"];
+
+    let v4addr = v4ip2long(search_for);
+    let mac = parse_mac(search_for);
+
+    let devs = [];
+    let ips = {};
+    let macs = {};
+    let ints = [];
+    let neighs = [];
+
+    let ips_list = [];
+    let macs_list = [];
+
+    let origin;
+    let origin_type;
+    let zero_mac = false;
+
+
+    if(v4addr !== false && !reg_search) {
+      origin = search_for;
+      origin_type = "ip";
+      ips_list.push(search_for);
+    } else if(mac !== false && !reg_search) {
+      origin = mac;
+      origin_type = "mac";
+      macs_list.push(mac);
+      if(mac === "000000000000") {
+        zero_mac = true
+      };
+    } else {
+      origin = search_for;
+      origin_type = "free";
+    };
+
+    if(origin_type == "ip") {
+      let ip_inf = search_ip_info(ips_list[0]);
+      ips[ ips_list[0] ] = ip_inf;
+
+      if(ip_inf["ip_macs"] !== undefined) {
+        for(let i in ip_inf["ip_macs"]) {
+          macs_list = append_once(macs_list, ip_inf["ip_macs"][i]);
+        };
+      };
+    } else if(origin_type == "mac") {
+      let mac_inf = search_mac_info(macs_list[0]);
+      macs[ macs_list[0] ] = mac_inf;
+      if(mac_inf["mac_ips"] !== undefined) {
+        for(let i in mac_inf["mac_ips"]) {
+          ips_list = append_once(ips_list, mac_inf["mac_ips"][i]);
+        };
+      };
+    } else {
+      let reg;
+      try {
+        if(reg_search) {
+          reg = RegExp(search_for, 'i')
+        } else {
+          reg = RegExp(escapeRegex(search_for), 'i')
+        };
+      } catch(e) {
+        error_dialog(e);
+        return;
+      };
+
+      let dev_search_keys = [
+        "short_name", "id", "model_short", "model_long", "sysDescr", "sysLocation",
+        "sysObjectID"
+      ];
+
+      let dev_inv_keys = [ "invEntModel", "invEntSerial" ];
+
+      for(let dev_id in OD["devs"]) {
+        let dev_match = false;
+        for(let i in dev_search_keys) {
+          if(OD["devs"][dev_id][ dev_search_keys[i] ] !== undefined) {
+            if(reg.test(OD["devs"][dev_id][ dev_search_keys[i] ])) {
+              dev_match = true;
+              break;
+            };
+          };
+        };
+
+        if(!dev_match) {
+          for(let key of dev_inv_keys) {
+            if(OD["devs"][dev_id][key] !== undefined) {
+              for(let sub_key in OD["devs"][dev_id][key]) {
+                if(reg.test(OD["devs"][dev_id][key][sub_key])) {
+                  dev_match = true;
+                  break;
+                };
+              };
+            };
+            if(dev_match) break;
+          };
+        };
+
+        if(dev_match) {
+          devs.push({
+            "dev_id": dev_id,
+            "short_name": OD["devs"][dev_id]["short_name"],
+            "safe_dev_id": OD["devs"][dev_id]["safe_dev_id"],
+            "overall_status": OD["devs"][dev_id]["overall_status"],
+            "_": ""
+          });
+        };
+
+        for(let int_id in OD["devs"][dev_id]["interfaces"]) {
+          let int_match = false;
+          for(let key of ["ifDescr", "ifAlias", "ifName"]) {
+            if(reg.test(OD["devs"][dev_id]["interfaces"][int_id][key])) {
+              int_match = true;
+              break;
+            };
+          };
+
+          if(int_match) {
+            ints.push({
+              "dev_id": dev_id,
+              "short_name": OD["devs"][dev_id]["short_name"],
+              "safe_dev_id": OD["devs"][dev_id]["safe_dev_id"],
+              "overall_status": OD["devs"][dev_id]["overall_status"],
+              "interface": OD["devs"][dev_id]["interfaces"][int_id],
+              "ifName": int_id,
+              "_": ""
+            });
+          };
+        };
+
+        for(let port_id in OD["devs"][dev_id]["lldp_ports"]) {
+          let int_id = OD["devs"][dev_id]["lldp_ports"][port_id]["ifName"];
+          for(let nei_idx in OD["devs"][dev_id]["lldp_ports"][port_id]["neighbours"]) {
+            for(let key of ["RemChassisId", "RemPortId", "RemPortDescr", "RemSysDescr", "RemSysName"]) {
+              if(reg.test(OD["devs"][dev_id]["lldp_ports"][port_id]["neighbours"][nei_idx][key])) {
+                let neig = {
+                  "dev_id": dev_id,
+                  "short_name": OD["devs"][dev_id]["short_name"],
+                  "safe_dev_id": OD["devs"][dev_id]["safe_dev_id"],
+                  "overall_status": OD["devs"][dev_id]["overall_status"],
+                  "interface": OD["devs"][dev_id]["interfaces"][int_id],
+                  "source": "LLDP",
+                  "neighbour": OD["devs"][dev_id]["lldp_ports"][port_id]["neighbours"][nei_idx],
+                  "nei_index": nei_idx,
+                  "port": OD["devs"][dev_id]["lldp_ports"][port_id],
+                  "port_index": port_id,
+                  "_": ""
+                };
+                if(int_id !== undefined && OD["devs"][dev_id]["interfaces"][int_id] !== undefined) {
+                  neig["interface"] = OD["devs"][dev_id]["interfaces"][int_id];
+                  neig["ifName"] = int_id;
+                };
+
+                neighs.push(neig);
+                break;
+              };
+            };
+          };
+        };
+
+        for(let port_id in OD["devs"][dev_id]["cdp_ports"]) {
+          let int_id = OD["devs"][dev_id]["cdp_ports"][port_id]["ifName"];
+          for(let nei_idx in OD["devs"][dev_id]["cdp_ports"][port_id]["neighbours"]) {
+            for(let key of ["cdpRemDevId", "cdpRemIfName", "cdpRemPlatform", "cdpRemSoftware"]) {
+              if(reg.test(OD["devs"][dev_id]["cdp_ports"][port_id]["neighbours"][nei_idx][key])) {
+                let neig = {
+                  "dev_id": dev_id,
+                  "short_name": OD["devs"][dev_id]["short_name"],
+                  "safe_dev_id": OD["devs"][dev_id]["safe_dev_id"],
+                  "overall_status": OD["devs"][dev_id]["overall_status"],
+                  "interface": OD["devs"][dev_id]["interfaces"][int_id],
+                  "source": "CDP",
+                  "neighbour": OD["devs"][dev_id]["cdp_ports"][port_id]["neighbours"][nei_idx],
+                  "nei_index": nei_idx,
+                  "port": OD["devs"][dev_id]["cdp_ports"][port_id],
+                  "port_index": port_id,
+                  "_": ""
+                };
+                if(int_id !== undefined && OD["devs"][dev_id]["interfaces"][int_id] !== undefined) {
+                  neig["interface"] = OD["devs"][dev_id]["interfaces"][int_id];
+                  neig["ifName"] = int_id;
+                };
+
+                neighs.push(neig);
+                break;
+              };
+            };
+          };
+        };
+      };
+    };
+
+    for(let ip of ips_list) {
+      if(ips[ip] === undefined) {
+        ips[ip] = search_ip_info(ip);
+      };
+    };
+
+    for(let mac of macs_list) {
+      if(macs[mac] === undefined) {
+        macs[mac] = search_mac_info(mac);
+      };
+    };
+
+    ret["origin"] = origin;
+    ret["origin_type"] = origin_type;
+    if(keys(ips).length > 0) {
+      ret["ips"] = ips;
+    };
+    if(keys(macs).length > 0) {
+      ret["macs"] = macs;
+    };
+    if(devs.length > 0) {
+      ret["devs"] = devs;
+    };
+    if(ints.length > 0) {
+      ret["ints"] = ints;
+    };
+    if(neighs.length > 0) {
+      ret["neigs"] = neighs;
+    };
+
+  } else if(query["action"] == "save_map") {
+  } else if(query["action"] == "save_map_key_id") {
+  } else if(query["action"] == "save_map_key") {
+  } else {
+    error_dialog("OFFLINE Unimplemented action: " + query["action"]);
+    return;
+  };
+
+  setTimeout(function() {
+    successfunc({"ok": ret});
+  }, 1);
+
+  return;
 };

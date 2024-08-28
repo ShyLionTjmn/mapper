@@ -419,6 +419,11 @@ function auth_check(res) {
 };
 
 function run_query(query, successfunc, datapoint=AJAX) {
+  if(offline) {
+    offline_query(query, successfunc);
+    return;
+  };
+
   if(query === undefined) {
     if(successfunc !== undefined) {
       successfunc();
