@@ -1,0 +1,20 @@
+#!/bin/sh
+
+#DO NOT RUN !
+#THIS IS AN EXAMPLE !
+if [ -z "$1" -o "$1" != "-y" ]
+then
+  echo "Unsafe. Exiting. Use -y parameter to reset dev_list"
+  exit 1
+fi
+
+RED_CMD="redis-cli -s /tmp/redis.sock"
+TIME=`date +%s`
+
+($RED_CMD << EOM
+MULTI
+DEL dev_list
+HSET dev_list 10.96.200.1 $TIME:run
+EXEC
+EOM
+) | grep -i error

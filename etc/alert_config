@@ -1,0 +1,129 @@
+#!/bin/sh
+
+RED_CMD="redis-cli -s /tmp/redis.sock"
+
+$RED_CMD DEL alert_config | grep -i err
+
+($RED_CMD -x HSET alert_config rule.rule_alert_int_and_loc <<EOM
+  ( alert_type == dev &&
+    sysLocation =~ /alert|aggregator/
+  ) ||
+  ( alert_type == int &&
+    ifAlias =~ /alert|power/ &&
+    ifAlias !~ /ignore/
+  )
+EOM
+) | grep -i err
+
+($RED_CMD -x HSET alert_config rule.rule_corealert_int_and_loc <<EOM
+  ( alert_type == dev &&
+    sysLocation =~ /corealert|aggregator/
+  ) ||
+  ( alert_type == int &&
+    ifAlias =~ /corealert|power/ &&
+    ifAlias !~ /ignore/
+  )
+EOM
+) | grep -i err
+
+($RED_CMD -x HSET alert_config rule.rule_asudd_pe <<EOM
+  alert_type == dev ||
+  ( alert_type == int &&
+    ifAlias !~ /ignore/ &&
+    ( ifAlias =~ /alert|power/ ||
+      portMode == 2
+    )
+  )
+EOM
+) | grep -i err
+
+($RED_CMD -x HSET alert_config rule.rule_pe <<EOM
+  alert_type == dev ||
+  ( alert_type == int &&
+    ifAlias !~ /ignore/ &&
+    ( ifAlias =~ /alert|power/ ||
+      portMode == 2
+    )
+  )
+EOM
+) | grep -i err
+
+($RED_CMD -x HSET alert_config rule.rule_any <<EOM
+  alert_type == dev ||
+  alert_type == int
+EOM
+) | grep -i err
+
+($RED_CMD -x HSET alert_config group.core <<EOM
+  short_name =~ /^asr|core|-srv-|^me3600/
+EOM
+) | grep -i err
+
+($RED_CMD -x HSET alert_config group.rb_hubs <<EOM
+  short_name =~ /rb_.*hub/
+EOM
+) | grep -i err
+
+($RED_CMD -x HSET alert_config group.asudd_core <<EOM
+  data_ip =~ /^10\.0\.8\./ ||
+  data_ip == 10.0.7.39
+EOM
+) | grep -i err
+
+($RED_CMD -x HSET alert_config group.asudd_pe <<EOM
+  data_ip =~ /^172\.27\.88\./
+EOM
+) | grep -i err
+
+($RED_CMD -x HSET alert_config group.olt <<EOM
+  short_name =~ /^ob-|^oh-/
+EOM
+) | grep -i err
+
+($RED_CMD -x HSET alert_config group.cams <<EOM
+  short_name =~ /^ss\-cam\-/
+EOM
+) | grep -i err
+
+($RED_CMD -x HSET alert_config group.not_rb_hubs_cuba <<EOM
+  short_name !~ /(rb_.*hub|rb_tob|sh\-mrc|rs_10_|(_|\-)cuba(_|\-))/
+EOM
+) | grep -i err
+
+($RED_CMD -x HSET alert_config group.not_rb_hubs <<EOM
+  short_name !~ /(rb_.*hub|sh\-mrc)/
+EOM
+) | grep -i err
+
+
+($RED_CMD -x HSET alert_config config <<EOM
+{
+  "coreadmins": {
+    "persons": {
+      "someone": {
+        "email": "no@email.not",
+        "telegram": "1234567",
+        "phone": "91234567"
+      }
+    },
+    "sms_alerts": [
+      { "group": "core", "rule": "rule_alert_int_and_loc", "action": "stop" },
+      { "group": "asudd_core", "rule": "rule_corealert_int_and_loc" },
+      { "group": "rb_hubs", "rule": "rule_corealert_int_and_loc" }
+    ],
+    "mail_alerts": [
+      { "group": "core", "rule": "rule_alert_int_and_loc" },
+      { "group": "asudd_core", "rule": "rule_alert_int_and_loc" }
+    ],
+    "telegram_alerts": [
+      { "group": "core", "rule": "rule_alert_int_and_loc" },
+      { "group": "asudd_core", "rule": "rule_alert_int_and_loc" }
+    ]
+  }
+}
+EOM
+) | grep -i err
+
+TIME=`date +%s`
+
+$RED_CMD HSET alert_config time $TIME | grep -i err

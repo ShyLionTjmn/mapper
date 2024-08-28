@@ -1,0 +1,4 @@
+#!/bin/sh
+exit 1
+redis-cli -s /tmp/redis.sock set tg_bot "netapp_bot"
+redis-cli -s /tmp/redis.sock set tg_key "boo"

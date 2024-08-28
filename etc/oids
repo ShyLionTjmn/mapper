@@ -1,0 +1,604 @@
+# 17:51 18 jul 2024
+#
+#(^|*|~|=)sysObjectID[ (^|~|=)optional_sysObjectID_except]
+#^pref		prefix. (dot added automatically, does not match prefix itself)
+#*		any
+#~reg		regex
+#=exact		exact
+#
+#define alias oid
+# used in prefix once or regex as literal
+define CISCO              .1.3.6.1.4.1.9
+define CISCO-ASR-1002X    .1.3.6.1.4.1.9.1.1525
+define SNR                .1.3.6.1.4.1.40418
+define SNR_OLD            .1.3.6.1.4.1.6339
+define ELTEX              .1.3.6.1.4.1.35265
+define HP-V               .1.3.6.1.4.1.25506
+define HP-J               .1.3.6.1.4.1.11.2
+define HP4210             .1.3.6.1.4.1.43.1.16.4.3.85
+define DLINK              .1.3.6.1.4.1.171
+define HUAWEI-OLT         .1.3.6.1.4.1.2011.2.248
+define HUAWEI-CE-SW       .1.3.6.1.4.1.2011.2.239
+define HUAWEI-S-SW        .1.3.6.1.4.1.2011.2.23
+define HUAWEI-S12700E     .1.3.6.1.4.1.2011.2.279
+define MIKROTIK           .1.3.6.1.4.1.14988
+#
+#queue 0 for fast values
+#queue 1 for slow values
+# all queues run as separate individual processes, they cannot use keys from other queues
+#
+#non_repeaters 10 #default 0  snmpbulkwalk -Cn..
+#max_repetitions 10 #default 10  snmpbulkwalk -Cr..
+#
+#
+# act	type	key			oid						options		indexkey/ifkey/ifnotkey
+#
+#
+#AUTOADDED!!!#
+#*
+#refresh every run
+#queue 0
+#  one oid	sysObjectID		.1.3.6.1.2.1.1.2.0
+#
+#
+#
+*
+#refresh 300
+queue 0
+  table str	ifAlias			.1.3.6.1.2.1.31.1.1.1.18
+#
+*
+queue 0
+  one	str	sysName			.1.3.6.1.2.1.1.5.0				fail
+  one	uns	sysUpTime		.1.3.6.1.2.1.1.3.0				fail
+  one	str	sysUpTimeStr		.1.3.6.1.2.1.1.3.0				fail
+#
+*
+refresh 300
+queue 0
+  one	str	sysContact		.1.3.6.1.2.1.1.4.0
+#
+*
+refresh 300
+queue 0
+  one	str	sysLocation		.1.3.6.1.2.1.1.6.0
+#
+*
+refresh 300
+queue 0
+  one	str	sysDescr		.1.3.6.1.2.1.1.1.0
+#
+#
+*
+refresh 300
+queue 0
+  one   hex	snmpEngineId		.1.3.6.1.6.3.10.2.1.1.0	
+#
+#
+*
+refresh 300
+queue 0
+  table	int	ifIndex			.1.3.6.1.2.1.2.2.1.1
+  table	str	ifName			.1.3.6.1.2.1.31.1.1.1.1				auto
+  table int	ifType			.1.3.6.1.2.1.2.2.1.3				fail
+  table	str	ifDescr			.1.3.6.1.2.1.2.2.1.2
+  table int ifDelay     .1.3.6.1.4.1.9.2.2.1.1.23
+#
+*
+refresh 300
+queue 0
+  table uns	ifHighSpeed		.1.3.6.1.2.1.31.1.1.1.15
+#
+*
+refresh 300
+queue 0
+  table hex	ifPhysAddr		.1.3.6.1.2.1.2.2.1.6
+# IP interface information
+*
+refresh 300
+queue 0
+  table	str	ifIpAddr		.1.3.6.1.2.1.4.20.1.1
+  table int	ifIpIfId		.1.3.6.1.2.1.4.20.1.2
+  table	str	ifIpMask		.1.3.6.1.2.1.4.20.1.3
+#
+^{MIKROTIK}
+refresh 60
+queue 0
+  one	str	serial			.1.3.6.1.4.1.14988.1.1.7.3.0
+# ARP table
+# index: ifIndex.AF.LEN.IP
+# IPv4: ifIndex.1.4.a.b.c.d
+# IPv6: ifIndex.2.16.a.b.c.d.e.......
+*
+refresh 300
+queue 1
+  table	hex	arpTable		.1.3.6.1.2.1.4.35.1.4				arp	ifindex.af.b.ip=strmac
+# Old ARP table
+# index: ifIndex.IP
+*
+refresh 300
+queue 1
+  table	hex	arpTableOld		.1.3.6.1.2.1.4.22.1.2				ifnot,arp	arpTable,ifindex.ip4=strmac
+# std vlan names
+*
+refresh 3600
+queue 1
+#index vlan_id
+  table str	vlanNames		.1.3.6.1.2.1.17.7.1.4.3.1.1		auto
+#
+# VLAN table
+^{CISCO}
+queue 1
+refresh 3600
+#index vlan_id
+  table str	vlanNames		.1.3.6.1.4.1.9.9.46.1.3.1.1.4.1			ifnot,auto	vlanNames
+#
+# Cisco per-vlan mac address table, accessible only by public@vlan community
+^{CISCO}
+queue 1
+refresh 300
+  table int vlanMacTable .1.3.6.1.2.1.17.4.3.1.2         mac,perVlanIndex  vlan.mac=port,vlanNames
+# Cisco VTP,  mode: 1 client, 2 server, 3 transparent, 4 off
+^{CISCO}
+queue 0
+  one   int vtpMode     .1.3.6.1.4.1.9.9.46.1.2.1.1.3.1     auto
+  one   str vtpDomain   .1.3.6.1.4.1.9.9.46.1.2.1.1.2.1     auto
+# CDP
+^{CISCO}
+queue 0
+  one str locCdpDevId         .1.3.6.1.4.1.9.9.23.1.3.4.0
+  table str locCdpIfEnabled   .1.3.6.1.4.1.9.9.23.1.1.1.1.2
+  table str locCdpIfName      .1.3.6.1.4.1.9.9.23.1.1.1.1.6
+^{CISCO}
+queue 0
+  table int cdpRemAddrType        .1.3.6.1.4.1.9.9.23.1.2.1.1.3
+  table hex cdpRemAddr            .1.3.6.1.4.1.9.9.23.1.2.1.1.4
+  table str cdpRemDevId           .1.3.6.1.4.1.9.9.23.1.2.1.1.6
+  table str cdpRemIfName          .1.3.6.1.4.1.9.9.23.1.2.1.1.7
+  table str cdpRemPlatform        .1.3.6.1.4.1.9.9.23.1.2.1.1.8
+  table hex cdpRemCaps            .1.3.6.1.4.1.9.9.23.1.2.1.1.9
+^{CISCO}
+queue 0
+non_repeaters 10
+  table str cdpRemSoftware        .1.3.6.1.4.1.9.9.23.1.2.1.1.5
+#
+# LLDP
+* ~^{HUAWEI-OLT}\..*
+queue 0
+refresh 300
+  one	int	locChassisIdSubtype	.1.0.8802.1.1.2.1.3.1.0
+  one	hex	locChassisId		.1.0.8802.1.1.2.1.3.2.0
+  one	str	locChassisSysName	.1.0.8802.1.1.2.1.3.3.0
+* ~^{HUAWEI-OLT}\..*
+queue 0
+refresh 3600
+  table	int	locPortIdSubtype	.1.0.8802.1.1.2.1.3.7.1.2
+  table	hex	locPortId		.1.0.8802.1.1.2.1.3.7.1.3
+#
+* ~^{MIKROTIK}\..|^{HUAWEI-OLT}\..*
+queue 0
+# index is TimeMark.Port.Sequence
+  table	int	lldpRemChassisIdSubtype	.1.0.8802.1.1.2.1.4.1.1.4
+  table hex	lldpRemChassisId	.1.0.8802.1.1.2.1.4.1.1.5
+  table int	lldpRemPortIdSubtype	.1.0.8802.1.1.2.1.4.1.1.6
+  table hex	lldpRemPortId		.1.0.8802.1.1.2.1.4.1.1.7
+  table str	lldpRemPortDescr	.1.0.8802.1.1.2.1.4.1.1.8
+  table str	lldpRemSysName		.1.0.8802.1.1.2.1.4.1.1.9
+  table hex	lldpRemSysCaps		.1.0.8802.1.1.2.1.4.1.1.11
+* ~^{MIKROTIK}\..|^{HUAWEI-OLT}\..*
+queue 0
+non_repeaters 10
+  table str	lldpRemSysDescr		.1.0.8802.1.1.2.1.4.1.1.10
+#
+*
+queue 0
+# index is TimeMark.Port.Sequence.address_family.address_length.a.d.d.r.e.s.s...
+#                                .1.4.ipv4_address_185.46.196.5
+#                                .2.16.a.ipv6_address_42.1.137.96.0.0.0.0.0.0.0.0.0.0.0.32
+  table int	lldpRemManAddrIfSubtype	.1.0.8802.1.1.2.1.4.2.1.3
+#
+*
+queue 0
+  table	uns	ifInOctets		.1.3.6.1.2.1.2.2.1.10				fail
+  table	uns	ifOutOctets		.1.3.6.1.2.1.2.2.1.16				fail
+  table	uns	ifInErrors		.1.3.6.1.2.1.2.2.1.14
+  table int	ifAdminStatus		.1.3.6.1.2.1.2.2.1.7				fail
+  table int	ifOperStatus		.1.3.6.1.2.1.2.2.1.8				fail
+  table uns	ifLastChange		.1.3.6.1.2.1.2.2.1.9
+  table uns	ifSpeed	      .1.3.6.1.2.1.2.2.1.5
+#
+*
+queue 0
+  table str	ifHCInOctets		.1.3.6.1.2.1.31.1.1.1.6
+  table str	ifHCOutOctets		.1.3.6.1.2.1.31.1.1.1.10
+  table uns	ifInMulticastPkts	.1.3.6.1.2.1.31.1.1.1.2
+  table uns	ifInBroadcastPkts	.1.3.6.1.2.1.31.1.1.1.3
+  table uns	ifOutMulticastPkts	.1.3.6.1.2.1.31.1.1.1.4
+  table uns	ifOutBroadcastPkts	.1.3.6.1.2.1.31.1.1.1.5
+  table uns	ifInUnicastPkts		.1.3.6.1.2.1.2.2.1.11
+  table uns	ifOutUnicastPkts	.1.3.6.1.2.1.2.2.1.17
+#
+*
+queue 0
+refresh 3600
+  table int	portToIfIndex		.1.3.6.1.2.1.17.1.4.1.2
+#
+^{CISCO}
+queue 0
+refresh 3600
+  table int	ifIndexToPort		.1.3.6.1.4.1.9.9.276.1.5.1.1.1
+#
+# Tunnels
+^{CISCO}
+queue 0
+refresh 180
+  table int tunnelEncap     .1.3.6.1.2.1.10.131.1.1.1.1.3
+  table int tunnelSec       .1.3.6.1.2.1.10.131.1.1.1.1.5
+  table int tunnelAddrType  .1.3.6.1.2.1.10.131.1.1.1.1.8
+  table hex tunnelSrc       .1.3.6.1.2.1.10.131.1.1.1.1.9
+  table hex tunnelDst       .1.3.6.1.2.1.10.131.1.1.1.1.10
+#
+# 802.1q
+^{CISCO}
+queue 0
+refresh 300
+  table int routedIfVlan    .1.3.6.1.4.1.9.9.128.1.1.1.1.3
+  table hex	ciscoPortTrunkVlans		.1.3.6.1.4.1.9.9.46.1.6.1.1.4
+  table int ciscoPortIsTrunk  .1.3.6.1.4.1.9.9.46.1.6.1.1.14
+  table int ciscoPortTrunkPvid  .1.3.6.1.4.1.9.9.46.1.6.1.1.5
+  table int ciscoPortAccessVlan  .1.3.6.1.4.1.9.9.68.1.2.2.1.2
+  table int ciscoPortVoiceVlan  .1.3.6.1.4.1.9.9.68.1.5.1.1.1
+# STP
+*
+refresh 3600
+  one	hex	stpBaseAddress		.1.3.6.1.2.1.17.1.1.0
+#
+*
+  table int	stpPortPriority		.1.3.6.1.2.1.17.2.15.1.2
+  table int	stpPortState		.1.3.6.1.2.1.17.2.15.1.3
+  table int	stpPortEnabled		.1.3.6.1.2.1.17.2.15.1.4
+  table int	stpPortPathCost		.1.3.6.1.2.1.17.2.15.1.5
+  table hex	stpPortDesRoot		.1.3.6.1.2.1.17.2.15.1.6
+  table int	stpPortDesCost		.1.3.6.1.2.1.17.2.15.1.7
+  table hex	stpPortDesBridge	.1.3.6.1.2.1.17.2.15.1.8
+  table uns	stpPortTrans		.1.3.6.1.2.1.17.2.15.1.10
+#
+*
+  table hex	stpPortDesPort		.1.3.6.1.2.1.17.2.15.1.9
+# {SNR} specific
+^{SNR}
+queue 0
+  table int 	snrStpPortState		.1.3.6.1.4.1.40418.7.100.2.2.3.1.9
+# Eltex specific
+^{ELTEX}
+queue 0
+  table int	eltexStpPortRole	.1.3.6.1.4.1.89.57.2.13.1.7
+# Cisco specific
+^{CISCO}
+queue 0
+  table int	ciscoStpPortRole	.1.3.6.1.4.1.9.9.82.1.12.2.1.3
+# {SNR} specific
+^{SNR}
+queue 0
+  one int 	snrStpEnabled		.1.3.6.1.4.1.40418.7.100.2.1.0
+# {SNR},Orion specific | Dlink | HP
+~^({SNR}\..*|{SNR_OLD}\..*|{DLINK}\.10\..*|{HP-V}\..*|{HP-J}\..*|{HP4210})
+queue 1
+refresh 300
+  table int	vlanMacTable		.1.3.6.1.2.1.17.7.1.2.2.1.2		mac	vlan.mac=port
+#
+# Dumb HP
+^{HP-J}
+queue 1
+refresh 300
+  table int macTable        .1.3.6.1.2.1.17.4.3.1.2       mac mac=port
+# {SNR} specific
+^{SNR}
+queue 0
+refresh 300
+  table int	portPvid		.1.3.6.1.4.1.40418.7.100.3.2.1.16
+  table int	portMode		.1.3.6.1.4.1.40418.7.100.3.2.1.15
+  table hex	portTrunkVlans		.1.3.6.1.4.1.40418.7.100.3.2.1.20
+  table hex	portHybridTag		.1.3.6.1.4.1.40418.7.100.3.2.1.21
+  table hex	portHybridUntag		.1.3.6.1.4.1.40418.7.100.3.2.1.22
+#
+# {SNR} specific
+^{SNR_OLD}
+queue 0
+refresh 300
+  table int	portMode		.1.3.6.1.4.1.6339.100.3.2.1.15
+  table int	portPvid		.1.3.6.1.4.1.6339.100.3.2.1.16
+  table hex	portTrunkVlans		.1.3.6.1.4.1.6339.100.3.2.1.20
+  table hex	portHybridTag		.1.3.6.1.4.1.6339.100.3.2.1.21
+  table hex	portHybridUntag		.1.3.6.1.4.1.6339.100.3.2.1.22
+#
+^{SNR}
+queue 1
+refresh 3600
+  table str	vlanNames		.1.3.6.1.4.1.40418.7.100.5.1.1.2	ifnot,auto	vlanNames
+#
+# HP-3COM-HUAWEI govno 4210G,       1 trunk, 2 access, 3 hybrid, 4 fabric?
+={HP4210}
+queue 1
+refresh 300
+  table str vlanNames         .1.3.6.1.4.1.43.45.1.2.23.1.2.1.1.1.2   ifnot,auto   vlanNames
+#
+={HP4210}
+queue 0
+refresh 300
+  table int 3comPortMode      .1.3.6.1.4.1.43.45.1.2.23.1.1.1.1.5
+  table hex 3comTaggedPorts   .1.3.6.1.4.1.43.45.1.2.23.1.2.1.1.1.17
+  table hex 3comUntaggedPorts .1.3.6.1.4.1.43.45.1.2.23.1.2.1.1.1.18
+#
+#HUAWEI SWITCH
+~^({HUAWEI-CE-SW}|{HUAWEI-S12700E}|{HUAWEI-S-SW})\..*
+queue 0
+refresh 300
+  table int hwL2IfPortIfIndex     .1.3.6.1.4.1.2011.5.25.42.1.1.1.3.1.2
+  table int hwL2IfPortType        .1.3.6.1.4.1.2011.5.25.42.1.1.1.3.1.3
+  table int hwL2IfPortActiveType  .1.3.6.1.4.1.2011.5.25.42.1.1.1.3.1.32
+  table int hwL2IfPVID            .1.3.6.1.4.1.2011.5.25.42.1.1.1.3.1.4
+  table hex hwL2IfTrunkVlansLow   .1.3.6.1.4.1.2011.5.25.42.1.1.1.10.1.2
+  table hex hwL2IfTrunkVlansHigh  .1.3.6.1.4.1.2011.5.25.42.1.1.1.10.1.3
+  table hex hwL2IfHybridTagLow    .1.3.6.1.4.1.2011.5.25.42.1.1.1.9.1.2
+  table hex hwL2IfHybridTagHigh   .1.3.6.1.4.1.2011.5.25.42.1.1.1.9.1.3
+  table hex hwL2IfHybridUntagLow  .1.3.6.1.4.1.2011.5.25.42.1.1.1.9.1.4
+  table hex hwL2IfHybridUntagHigh .1.3.6.1.4.1.2011.5.25.42.1.1.1.9.1.5
+#HUAWEI CPU
+~^({HUAWEI-CE-SW}|{HUAWEI-S12700E}|{HUAWEI-S-SW})\..*
+queue 0
+refresh 60
+  table int hwEntCPUThreshold     .1.3.6.1.4.1.2011.5.25.31.1.1.1.1.6
+  table int hwEntCPULoad          .1.3.6.1.4.1.2011.5.25.31.1.1.1.1.5
+# Common
+* ^{MIKROTIK}
+queue 0
+  table uns	ifInCRCErrors		.1.3.6.1.2.1.10.7.2.1.3
+# Mikrotik specific
+^{MIKROTIK}
+queue 0
+  table	str	ifInCRCErrors		.1.3.6.1.4.1.14988.1.1.14.1.1.45
+# Cisco specific
+#~^{CISCO}\..*
+#queue 0
+#  table	int	ifInCRCErrors		.1.3.6.1.4.1.9.2.2.1.1.12
+#
+^{CISCO}
+queue 0
+refresh 300
+  table	int	ifDelay			.1.3.6.1.4.1.9.2.2.1.1.23
+# config change and save
+^{CISCO}
+queue 0
+  one	uns	CiscoConfChange		.1.3.6.1.4.1.9.9.43.1.1.1.0
+  one	uns	CiscoConfSave		.1.3.6.1.4.1.9.9.43.1.1.3.0
+# Cisco CPU
+^{CISCO}
+queue 0
+refresh 3600
+  table	int	CiscoCPUPhysEnt		.1.3.6.1.4.1.9.9.109.1.1.1.1.2
+  table str	CiscoEntNames		.1.3.6.1.2.1.47.1.1.1.1.7
+#
+^{CISCO}
+queue 0
+# index
+  table	uns	CiscoCPU1mLoad		.1.3.6.1.4.1.9.9.109.1.1.1.1.7
+  table int	CiscoPSUstatus		.1.3.6.1.4.1.9.9.117.1.1.2.1.2
+#
+# Cisco QFP Load, key is CiscoCPUPhysEnt.N  (N: 1 - 5sec, 2 - 1min, 3 - 5min, 4 - 60min)
+^{CISCO}
+queue 0
+  table uns	CiscoQFPLoad		.1.3.6.1.4.1.9.9.715.1.1.6.1.14
+#
+# Eltex specific
+^{ELTEX}
+queue 0
+  one	int	cpu1MinLoad		.1.3.6.1.4.1.89.1.8.0
+# {SNR} specific
+^{SNR}
+queue 0
+  one	int	cpu1MinLoad		.1.3.6.1.4.1.40418.7.100.1.11.10.0
+# Mikrotik specific
+^{MIKROTIK}
+queue 0
+  one	int	cpu1MinLoad		.1.3.6.1.2.1.25.3.3.1.2.1
+# {SNR} 2965-24T power sensor
+#={SNR}.7.22
+^{SNR}
+queue 0
+  one	int	powerState		.1.3.6.1.4.1.40418.7.100.1.23.2
+#
+# {SNR} specific
+^{SNR}
+queue 0
+  one	int	memorySize		.1.3.6.1.4.1.40418.7.100.1.11.6.0
+  one	int	memoryUsed		.1.3.6.1.4.1.40418.7.100.1.11.7.0
+#
+# Mikrotik specific
+^{MIKROTIK}
+queue 0
+  one	int	memorySize		.1.3.6.1.2.1.25.2.3.1.5.65536	mul	1024
+  one	int	memoryUsed		.1.3.6.1.2.1.25.2.3.1.6.65536	mul	1024
+#
+^{CISCO}
+  table uns ciscoMemPoolUsed    .1.3.6.1.4.1.9.9.48.1.1.1.5
+  table uns ciscoMemPoolFree    .1.3.6.1.4.1.9.9.48.1.1.1.6
+# DHCP snooping config
+# {SNR} specific
+^{SNR}
+queue 0
+refresh 300
+  one	int	dhcpSnoopingEnable	.1.3.6.1.4.1.40418.7.100.13.3.1
+  one	str	dhcpSnoopingVlanEnable	.1.3.6.1.4.1.40418.7.100.13.3.3
+#
+^{SNR}
+queue 0
+refresh 300
+  table	str	dhcpSnoopingTrust	.1.3.6.1.4.1.40418.7.100.13.3.17.1.4
+#
+^{SNR}
+queue 0
+  table	int	dhcpSnoopingBindingCount .1.3.6.1.4.1.40418.7.100.13.3.17.1.8
+  table	int	dhcpSnoopingAlarmCount	.1.3.6.1.4.1.40418.7.100.13.3.17.1.7
+#
+^{SNR}
+queue 0
+  one	int	dhcpSnoopingStatisticDropPktsNum .1.3.6.1.4.1.40418.7.100.13.3.23.4
+## {SNR} specific, MAC count and limit
+#^{SNR}
+#queue 0
+#  table int	portMacCountLimitConfigNum	.1.3.6.1.4.1.40418.7.100.29.1.1.2
+#  table int	portMacCountLimitCurNum		.1.3.6.1.4.1.40418.7.100.29.1.1.3
+#
+# HP Port VLAN Membership
+~^({HP-V}|{HP-J})\..*
+queue 0
+refresh 300
+  table	uns	dot1qPvid			.1.3.6.1.2.1.17.7.1.4.5.1.1
+  table	hex	dot1qVlanStaticEgressPorts	.1.3.6.1.2.1.17.7.1.4.3.1.2
+  table	hex	dot1qVlanStaticUntaggedPorts	.1.3.6.1.2.1.17.7.1.4.3.1.4
+# {DLINK} DES-1210 .13 Port VLAN Membership
+={DLINK}.10.75.13
+queue 0
+refresh 300
+  table	uns	dot1qPvid			.1.3.6.1.4.1.171.10.75.13.7.7.1.1
+  table	hex	dot1qVlanStaticEgressPorts	.1.3.6.1.4.1.171.10.75.13.7.6.1.2
+  table	hex	dot1qVlanStaticUntaggedPorts	.1.3.6.1.4.1.171.10.75.13.7.6.1.4
+# {DLINK} DES-1210 .6 Port VLAN Membership
+={DLINK}.10.75.6
+queue 0
+refresh 300
+  table	uns	dot1qPvid			.1.3.6.1.4.1.171.10.75.6.7.7.1.1
+  table	hex	dot1qVlanStaticEgressPorts	.1.3.6.1.4.1.171.10.75.6.7.6.1.2
+  table	hex	dot1qVlanStaticUntaggedPorts	.1.3.6.1.4.1.171.10.75.6.7.6.1.4
+# {DLINK} DSG-1210-20 .14 Port VLAN Membership
+={DLINK}.10.76.14
+queue 0
+refresh 300
+  table	uns	dot1qPvid			.1.3.6.1.4.1.171.10.76.14.7.7.1.1
+  table	hex	dot1qVlanStaticEgressPorts	.1.3.6.1.4.1.171.10.76.14.7.6.1.2
+  table	hex	dot1qVlanStaticUntaggedPorts	.1.3.6.1.4.1.171.10.76.14.7.6.1.4
+## {SNR} specific, IGMP snooping subscriptions
+# OID.vlan.gr.ou.p.ip = PORTMAP
+^{SNR}
+queue 0
+refresh 60
+  table hex	priIgmpSnoopingPortBitmap	.1.3.6.1.4.1.40418.7.100.8.3.1.3
+# OID.vlan = snooping enabled
+# TOO SLOOOOOOW
+#^{SNR}
+#queue 2
+#refresh 300
+#  table int	priIgmpSnoopingvlanEnable	.1.3.6.1.4.1.40418.7.100.8.2.1.2
+#  table str	priIgmpSnoopingMrouterPorts	.1.3.6.1.4.1.40418.7.100.8.2.1.7
+# OID.vlan = mvlan status
+^{SNR}
+queue 0
+refresh 300
+  table int	mvlanStatus			.1.3.6.1.4.1.40418.7.100.5.2.1.2
+  table str	mvlanAssoVlanList		.1.3.6.1.4.1.40418.7.100.5.2.1.3
+#
+# Huawei
+^{HUAWEI-OLT}
+queue 0
+refresh 300
+  one   int	locChassisIdSubtype		.1.3.111.2.802.1.1.13.1.3.1.0
+  one   hex	locChassisId			.1.3.111.2.802.1.1.13.1.3.2.0
+  one   str	locChassisSysName		.1.3.111.2.802.1.1.13.1.3.3.0
+^{HUAWEI-OLT}
+queue 0
+refresh 3600
+  table int	locPortIdSubtype		.1.3.111.2.802.1.1.13.1.3.7.1.2
+  table hex	locPortId			.1.3.111.2.802.1.1.13.1.3.7.1.3
+#
+^{HUAWEI-OLT}
+queue 0
+  table int lldpRemChassisIdSubtype		.1.3.111.2.802.1.1.13.1.4.1.1.5
+  table hex lldpRemChassisId		.1.3.111.2.802.1.1.13.1.4.1.1.6
+  table int	lldpRemPortIdSubtype		.1.3.111.2.802.1.1.13.1.4.1.1.7
+  table hex	lldpRemPortId			.1.3.111.2.802.1.1.13.1.4.1.1.8
+  table str	lldpRemPortDescr		.1.3.111.2.802.1.1.13.1.4.1.1.9
+  table str	lldpRemSysName			.1.3.111.2.802.1.1.13.1.4.1.1.10
+  table hex	lldpRemSysCaps			.1.3.111.2.802.1.1.13.1.4.1.1.13
+  table str	lldpRemSysDescr			.1.3.111.2.802.1.1.13.1.4.1.1.11
+#
+^{HUAWEI-OLT}
+queue 0
+  table int	lldpRemManAddrIfSubtype		.1.3.111.2.802.1.1.13.1.4.2.1.3
+#
+#
+^{SNR}
+# index is monitor session number, value is ifName
+  table str	snrMirrorDestIfName		.1.3.6.1.4.1.40418.7.100.12.1.1.2
+# index is monitor session number . ifIndex, value is ifIndex
+#  table int	snrMirrorDestIfIndex		.1.3.6.1.4.1.40418.7.100.12.7.1.2
+# end is MANDATORY
+# 
+# EIGRP
+# eigrpPeer..vpnId.as.idx
+# eigrpIf..vpnId.as.ifIndex
+^{CISCO}
+queue 0
+  table int eigrpPeerAddrType     .1.3.6.1.4.1.9.9.449.1.4.1.1.2
+  table hex eigrpPeerAddr         .1.3.6.1.4.1.9.9.449.1.4.1.1.3
+  table int eigrpPeerIfIndex      .1.3.6.1.4.1.9.9.449.1.4.1.1.4
+  table uns eigrpIfPeerCount      .1.3.6.1.4.1.9.9.449.1.5.1.1.3
+  table uns eigrpIfPkts1          .1.3.6.1.4.1.9.9.449.1.5.1.1.13
+  table uns eigrpIfPkts2          .1.3.6.1.4.1.9.9.449.1.5.1.1.14
+  table uns eigrpIfPkts3          .1.3.6.1.4.1.9.9.449.1.5.1.1.15
+  table uns eigrpIfPkts4          .1.3.6.1.4.1.9.9.449.1.5.1.1.16
+#
+# inventory
+*
+queue 1
+refresh 3600
+  table str invEntDescr           .1.3.6.1.2.1.47.1.1.1.1.2         auto
+  table str invEntName            .1.3.6.1.2.1.47.1.1.1.1.7         auto
+  table int invEntParent          .1.3.6.1.2.1.47.1.1.1.1.4         auto
+  table int invEntType            .1.3.6.1.2.1.47.1.1.1.1.5         auto
+  table int invEntOrder           .1.3.6.1.2.1.47.1.1.1.1.6         auto
+  table str invEntHwRev           .1.3.6.1.2.1.47.1.1.1.1.8         auto
+  table str invEntFwRev           .1.3.6.1.2.1.47.1.1.1.1.9         auto
+  table str invEntSwRev           .1.3.6.1.2.1.47.1.1.1.1.10        auto
+  table str invEntSerial          .1.3.6.1.2.1.47.1.1.1.1.11        auto
+  table str invEntMfg             .1.3.6.1.2.1.47.1.1.1.1.12        auto
+  table str invEntModel           .1.3.6.1.2.1.47.1.1.1.1.13        auto
+  table int invEntFRU             .1.3.6.1.2.1.47.1.1.1.1.16        auto
+#
+# top talkers
+^{CISCO}
+queue 1
+  one   uns topTalkersUp          .1.3.6.1.4.1.9.9.387.1.7.1.0      auto
+  table int topTalkersInIf        .1.3.6.1.4.1.9.9.387.1.7.8.1.14   auto
+  table int topTalkersOutIf       .1.3.6.1.4.1.9.9.387.1.7.8.1.15   auto
+  table hex topTalkersSrcIp       .1.3.6.1.4.1.9.9.387.1.7.8.1.3    auto
+  table hex topTalkersDstIp       .1.3.6.1.4.1.9.9.387.1.7.8.1.6    auto
+  table uns topTalkersSrcPort     .1.3.6.1.4.1.9.9.387.1.7.8.1.10   auto
+  table uns topTalkersDstPort     .1.3.6.1.4.1.9.9.387.1.7.8.1.11   auto
+  table uns topTalkersProto       .1.3.6.1.4.1.9.9.387.1.7.8.1.19   auto
+  table uns topTalkersBytes       .1.3.6.1.4.1.9.9.387.1.7.8.1.24   auto
+  table uns topTalkersPkts        .1.3.6.1.4.1.9.9.387.1.7.8.1.25   auto
+  table uns topTalkersFirst       .1.3.6.1.4.1.9.9.387.1.7.8.1.16   auto
+  table uns topTalkersLast        .1.3.6.1.4.1.9.9.387.1.7.8.1.17   auto
+#
+# LACP / LAG,   index is ifIndex of member interface, value is ifIndex of parent interface
+*
+queue 0
+  table int lagParentIfIndex         .1.2.840.10006.300.43.1.2.1.1.12
+#
+# PAGP
+^{CISCO}
+queue 0
+  table int pagpMode               .1.3.6.1.4.1.9.9.98.1.1.1.1.1
+  table int pagpParentIfIndex      .1.3.6.1.4.1.9.9.98.1.1.1.1.8
+# HUAWEI MACs    mac.vlan.vsi = port  vsi = any number of octets
+^{HUAWEI-CE-SW}
+queue 1
+refresh 300
+  table int huiMacVlanPort          .1.3.6.1.4.1.2011.5.25.42.2.1.3.1.4         mac     mac.vlan.vsi=port
+# HUAWEI MACs Sseries mac.vlan.vsi = ifindex   vsi = any number of octets
+~^({HUAWEI-S12700E}|{HUAWEI-S-SW})\..*
+queue 1
+refresh 300
+  table int huiMacVlanIfIndex       .1.3.6.1.4.1.2011.5.25.42.2.1.3.1.4         mac     mac.vlan.vsi=ifIndex
+end

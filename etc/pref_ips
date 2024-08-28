@@ -1,0 +1,16 @@
+#!/bin/sh
+
+RED_CMD="redis-cli -s /tmp/redis.sock"
+TIME=`date +%s`
+
+
+### First in list, fetched by LRANGE pref_ips 0 -1, is more prefferable
+
+($RED_CMD << EOM
+MULTI
+DEL pref_ips
+RPUSH pref_ips "10.96.200.0 - 10.96.200.255"
+EXEC
+EOM
+) | grep -i error
+

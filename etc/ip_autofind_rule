@@ -1,0 +1,29 @@
+#!/bin/sh
+
+TIME=`date +%s`
+RED_CMD="redis-cli -s /tmp/redis.sock"
+
+$RED_CMD -x SET config.ip_neighbours.rule <<EOM
+( data_ip =~ /^10\./ ) &&
+( neighbour_ip =~ /^10\./ ) &&
+(
+  ( RemSysCapsDecoded =~ /router|bridge/ &&
+    RemSysCapsDecoded !~ /ap/ &&
+    RemSysCapsDecoded !~ /phone/ &&
+    RemSysCapsDecoded !~ /none/ &&
+    RemSysCapsDecoded !~ /error/ &&
+    RemSysCapsDecoded !~ /station/
+  ) ||
+  ( cdpRemCapsDecoded =~ /router|switch/ &&
+    cdpRemCapsDecoded !~ /phone/ &&
+    cdpRemCapsDecoded !~ /cvta/ &&
+    cdpRemCapsDecoded !~ /bridge/
+  ) ||
+  ( nei_source == "p2p" ) ||
+  ( nei_source == "eigrp" ) ||
+  ( nei_source == "ospf" )
+) &&
+ifAlias !~ /ignore/
+EOM
+
+$RED_CMD SET config.ip_neighbours.time $TIME
