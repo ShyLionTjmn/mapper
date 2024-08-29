@@ -1,0 +1,52 @@
+#!/bin/sh
+
+
+redis-cli HKEYS sysoids.long | grep "^\\.[0-9]" | perl -e '
+  @lines = sort {
+    @af = split(/(\d+)/, $a);
+    @bf = split(/(\d+)/, $b);
+
+    for($i = 0; $i < scalar(@af) && $i < scalar(@bf); $i++) {
+      if( $af[$i] =~ /^\d+$/ ) {
+        if( $bf[$i] =~ /^\d+$/ ) {
+          # a and b are numbers
+          if( $af[$i] != $bf[$i] ) {
+            return $af[$i] <=> $bf[$i];
+          };
+        } else {
+          #a is number and b is not
+          return -1;
+        };
+      } else {
+        if( $bf[$i] !~ /^\d+$/ ) {
+          #a and b are not numbers
+          if( $af[$i] ne $bf[$i] ) {
+            return $af[$i] cmp $bf[$i];
+          };
+        } else {
+          #a is not number and b is
+          return 1;
+        };
+      };
+      # values are equal, move to next part
+    };
+    if(i == scalar(@af) && i < scalar(@bf)) {
+      #a is shorter
+      return -1;
+    } elsif(i < scalar(@af) && i == scalar(@bf)) {
+      #b is shorter
+      return 1;
+    } else {
+      return 0;
+    };
+  } <STDIN>;
+  print(@lines);
+'| (
+  while read KEY
+  do
+    SHORT=`redis-cli HGET sysoids.short "$KEY"`
+    LONG=`redis-cli HGET sysoids.long "$KEY"`
+    echo HSET sysoids.short "\"$KEY\"" "\"$SHORT\"" 
+    echo HSET sysoids.long "\"$KEY\"" "\"$LONG\"" 
+  done
+)
