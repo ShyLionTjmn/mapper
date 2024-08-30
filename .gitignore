@@ -1,6 +1,7 @@
 */*
 !**/*.*
 !etc/*
+!map-broker/www
 **/local*
 **/old*
 **/.*.swp
