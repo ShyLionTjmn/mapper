@@ -1,6 +1,6 @@
 #!/bin/sh
 
-if [ -z "$1"]
+if [ -z "$1" ]
 then
   echo "usage: $0 path/.dropbox_uploader"
   exit 1
