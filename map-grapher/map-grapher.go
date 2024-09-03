@@ -33,8 +33,6 @@ const IP_GRAPHS_REFRESH=90
 
 const MAX_INTERPOLATE_INTERVALS=10
 
-var red_db string=REDIS_DB
-
 const IP_REGEX=`^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$`
 var ip_reg *regexp.Regexp
 
@@ -45,7 +43,7 @@ var opt_v int
 var opt_Q bool
 var opt_1 bool
 
-var opt_d string
+var config Config
 
 //const TRY_OPEN_FILES uint64=65536
 //var max_open_files uint64
@@ -64,6 +62,9 @@ var creates_loaded int64
 
 func init() {
 
+  var opt_d string
+  var opt_c string
+
   data["ip_graphs"] = make(M)
   data["creates"] = make(M)
   data["created"] = make(M)
@@ -78,9 +79,14 @@ func init() {
   flag.IntVar(&opt_v, "v", 0, "set verbosity level")
   flag.BoolVar(&opt_Q, "Q", false, "Ignore published data")
   flag.BoolVar(&opt_1, "1", false, "Quit after initializing")
-  flag.StringVar(&opt_d, "d", RRD_ROOT, "RRD files root dir, should be in rrdcached -b option path")
+  flag.StringVar(&opt_d, "d", DEFAULT_RRD_ROOT, "RRD files root dir, should be in rrdcached -b option path")
+  flag.StringVar(&opt_c, "c", DEFAULT_CONFIG_FILE, "mapper.conf location")
 
   flag.Parse()
+
+  config = LoadConfig(opt_c, FlagPassed("c"))
+
+  if FlagPassed("d") { config.Rrd_root = opt_d }
 }
 
 var red_state_mutex = &sync.Mutex{}
@@ -139,7 +145,7 @@ func graph_sub(stop_ch chan string, wg *sync.WaitGroup) {
   for !stop_signalled {
 
     var rsub *redsub.Redsub
-    rsub, err = redsub.New("unix", REDIS_SOCKET, red_db, "graph", 100)
+    rsub, err = redsub.New("unix", config.Redis_socket, config.Redis_db, "graph", 100)
     if err == nil {
       redState(true)
 L66:  for !stop_signalled {
@@ -187,7 +193,7 @@ L66:  for !stop_signalled {
 
 
     if !stop_signalled {
-      timer := time.NewTimer(REDIS_ERR_SLEEP*time.Second)
+      timer := time.NewTimer(time.Duration(config.Redis_err_sleep) * time.Second)
       select {
       case <- stop_ch:
         timer.Stop()
@@ -206,7 +212,7 @@ func main() {
 
   var err error
 
-  single_run := single.New("map-grapher."+red_db) // add redis_db here later
+  single_run := single.New("map-grapher." + config.Redis_db) // add redis_db here later
 
   if err = single_run.CheckLock(); err != nil && err == single.ErrAlreadyRunning {
     log.Fatal("another instance of the app is already running, exiting")
@@ -272,7 +278,7 @@ func main() {
 MAIN_LOOP:
   for {
 
-    red, err = RedisCheck(red, "unix", REDIS_SOCKET, red_db)
+    red, err = RedisCheck(red, "unix", config.Redis_socket, config.Redis_db)
 
     redState(red != nil && err == nil)
 
@@ -405,7 +411,7 @@ func RrdConnCheck(rrdc *rrd.Client) (*rrd.Client, error) {
     }
   }
 
-  ret, err = rrd.NewClient(RRD_SOCKET, rrd.Unix)
+  ret, err = rrd.NewClient(config.Rrd_socket, rrd.Unix)
   if err != nil {
     if opt_v > 1 {
       fmt.Println("Error connecting to rrd_cached:", err.Error())
@@ -435,7 +441,7 @@ func worker_sub(stop_ch chan string, wg *sync.WaitGroup, sub_num int) {
     }
   }()
 
-  red, _ = RedisCheck(red, "unix", REDIS_SOCKET, red_db)
+  red, _ = RedisCheck(red, "unix", config.Redis_socket, config.Redis_db)
   rrdc, _ = RrdConnCheck(rrdc)
 
   ticker := time.NewTicker(10*time.Second)
@@ -446,7 +452,7 @@ S:for {
     case <- stop_ch:
       return
     case <- ticker.C:
-      red, _ = RedisCheck(red, "unix", REDIS_SOCKET, red_db)
+      red, _ = RedisCheck(red, "unix", config.Redis_socket, config.Redis_db)
       rrdc, _ = RrdConnCheck(rrdc)
     case gi := <-mainQueue:
       if red != nil && rrdc != nil {
@@ -525,7 +531,7 @@ S:for {
 
         if gf_found && cr_found {
           if !created {
-            _, rrd_err := rrdc.Exec("CREATE "+opt_d+"/"+gf+" "+cr)
+            _, rrd_err := rrdc.Exec("CREATE "+ config.Rrd_root +"/"+gf+" "+cr)
             if rrd_err != nil && !rrd.IsExist(rrd_err) {
               if opt_v > 1 {
                 fmt.Println("Error creating rrd, ip:", gi.Ip, rrd_err.Error())
@@ -537,14 +543,14 @@ S:for {
               continue S
             } else {
               if opt_v > 1 {
-                fmt.Println("Created rrd, ip:", gi.Ip, opt_d+"/"+gf+" "+cr)
+                fmt.Println("Created rrd, ip:", gi.Ip,  config.Rrd_root +"/"+gf+" "+cr)
               }
               data.MkM("created", gi.Ip)[gi.Item] = int64(1)
             }
           }
           globalMutex.Unlock()
 
-          rrd_file := opt_d+"/"+gf
+          rrd_file :=  config.Rrd_root +"/"+gf
 
           last_update_str, _err := redis.String(red.Do("HGET", "ip_graph_updates."+gi.Ip, rrd_file))
 

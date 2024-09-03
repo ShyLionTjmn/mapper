@@ -27,12 +27,9 @@ import (
 
 )
 
-var safeInt_regex *regexp.Regexp
-
 func init() {
   w.WhereAmI()
   regexp.MustCompile("")
-  safeInt_regex = regexp.MustCompile(SAFE_INT_REGEX)
 }
 
 var legNeiErrNoDev = errors.New("nd")
@@ -631,7 +628,7 @@ func process_ip_data(wg *sync.WaitGroup, ip string, startup bool) {
 
   var red redis.Conn
 
-  red, err = RedisCheck(red, "unix", REDIS_SOCKET, red_db)
+  red, err = RedisCheck(red, "unix", config.Redis_socket, config.Redis_db)
 
   if red == nil {
     if opt_v > 1 { color.Red("%s", err.Error()) }
@@ -1164,7 +1161,7 @@ func process_ip_data(wg *sync.WaitGroup, ip string, startup bool) {
         int_h := int_m.(M)
         ifIndex := int_h.Vs("ifIndex")
         esc_if_name := dev.Vs("interfaces", ifName, "safe_if_name")
-        is_safe := safeInt_regex.MatchString(esc_if_name)
+        is_safe := g_graph_if_name_reg.MatchString(esc_if_name)
         red.Do("PUBLISH", "graph_calc." + ip, fmt.Sprintf("%s:\n%s\n", ifName, int_h.ToJsonStr(true)))
         if ok, _ := MatchGraphIntRules(graph_int_rules, dev, ifName); ok && is_safe {
           gf_prefix := esc_dev_id+"/"+esc_if_name

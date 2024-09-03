@@ -415,7 +415,7 @@ func http_server(stop chan string, wg *sync.WaitGroup) {
     close(server_shut)
   }()
 
-  fsys := dotFileHidingFileSystem{http.Dir(opt_w)}
+  fsys := dotFileHidingFileSystem{http.Dir(config.Www_root)}
 
   http.Handle("/", NoCache(http.FileServer(fsys)))
   http.HandleFunc("/consts.js", handleConsts)
@@ -423,7 +423,7 @@ func http_server(stop chan string, wg *sync.WaitGroup) {
   http.HandleFunc("/ajax", handleAjax)
   http.HandleFunc("/graph", handleGraph)
 
-  listener, listen_err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", BROKER_PORT))
+  listener, listen_err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", config.Broker_port))
   if listen_err != nil {
     panic("Listening error: "+listen_err.Error())
   }
@@ -735,7 +735,7 @@ func handleAjax(w http.ResponseWriter, req *http.Request) {
 
   var red redis.Conn
 
-  if red, err = RedisCheck(red, "unix", REDIS_SOCKET, red_db); err != nil { panic(err) }
+  if red, err = RedisCheck(red, "unix", config.Redis_socket, config.Redis_db); err != nil { panic(err) }
   defer red.Close()
 
   if action == "get_front" {
@@ -2168,7 +2168,7 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
       }
     }
 
-    config_filename := opt_C + "/" + out.Vs("dev", "short_name") + ".config"
+    config_filename := config.Devs_configs_dir + "/" + out.Vs("dev", "short_name") + ".config"
 
     if stat, err := os.Stat(config_filename); err == nil && !stat.IsDir() {
       if file_data, err := os.ReadFile(config_filename); err == nil {
@@ -2445,7 +2445,7 @@ func handleOffline(w http.ResponseWriter, req *http.Request) {
 
   var err error
 
-  if red, err = RedisCheck(red, "unix", REDIS_SOCKET, red_db); err != nil { panic(err) }
+  if red, err = RedisCheck(red, "unix", config.Redis_socket, config.Redis_db); err != nil { panic(err) }
   defer red.Close()
 
   out_userinfo := M{

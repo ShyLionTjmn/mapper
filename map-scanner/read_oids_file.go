@@ -14,7 +14,7 @@ import (
   "crypto/md5"
   "io"
   "encoding/hex"
-  . "github.com/ShyLionTjmn/mapper/mapaux"
+  //. "github.com/ShyLionTjmn/mapper/mapaux"
 )
 
 var read_oids_file_define_regex *regexp.Regexp
@@ -40,7 +40,7 @@ func read_oids_file() (map[int][]t_scanJobGroup, string, error) {
 
   defines := make(map[string]string)
 
-  file, err := os.Open(OIDS_FILE)
+  file, err := os.Open(config.Oids_file)
   if err != nil { return nil, "", err }
 
   defer file.Close()

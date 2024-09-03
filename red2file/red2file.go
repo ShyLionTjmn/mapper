@@ -31,7 +31,10 @@ func main() {
     fmt.Println("Usage: ", os.Args[0], " out_file key1 [key2 ...]")
   }
 
-  red, err = RedisCheck(red, "unix", REDIS_SOCKET, REDIS_DB)
+  config := LoadConfig(DEFAULT_CONFIG_FILE, true)
+
+  red, err = RedisCheck(red, "unix", config.Redis_socket, config.Redis_db)
+
 
   if err != nil {
     panic(err)

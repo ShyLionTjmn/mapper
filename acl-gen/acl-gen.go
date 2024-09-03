@@ -23,9 +23,6 @@ import (
   _ "github.com/go-sql-driver/mysql"
 )
 
-const CONFIGS_DIR = "/data/configs/"
-const DB_DIR = "/data/apps_db/acl-gen/"
-
 var devs M
 var database M
 
@@ -74,6 +71,7 @@ var g_og_entry_reg *regexp.Regexp
 var g_cisco_pager_reg *regexp.Regexp
 
 var opt_i bool // ignore cache file
+var opt_c string // mapper.conf location
 
 func init() {
   gob.Register(M{})
@@ -83,12 +81,17 @@ func init() {
   g_cisco_pager_reg = regexp.MustCompile(`--[Mm]ore--`)
 }
 
+var config Config
+
 func main() {
   var err error
 
 
   flag.BoolVar(&opt_i, "i", false, "Ignore cache file")
+  flag.StringVar(&opt_c, "c", DEFAULT_CONFIG_FILE, "mapper.conf location")
   flag.Parse()
+
+  config = LoadConfig(opt_c, FlagPassed("c"))
 
   single_run := single.New("acl-gen")
 
@@ -99,7 +102,7 @@ func main() {
   }
   defer single_run.TryUnlock()
 
-  conn, err := net.DialTimeout("unix", BROKER_UNIX_SOCKET, time.Second)
+  conn, err := net.DialTimeout("unix", config.Broker_unix_socket, time.Second)
   if err != nil {
     panic(err)
   }
@@ -128,7 +131,7 @@ func main() {
          ArraysIntersect(flag.Args(), devs.VA(id, "ips").([]string)) ||
        false) &&
     true {
-      fname := CONFIGS_DIR + devs.Vs(id, "short_name") + ".config"
+      fname := config.Devs_configs_dir + "/" + devs.Vs(id, "short_name") + ".config"
       fstat, err := os.Stat(fname)
       if err != nil ||
          fstat.IsDir() ||
@@ -183,7 +186,7 @@ func main() {
   var db *sql.DB
   var query string
 
-  if db, err = sql.Open("mysql", IPDB_DSN); err != nil { panic(err) }
+  if db, err = sql.Open("mysql", config.Ipdb_dsn); err != nil { panic(err) }
   defer db.Close()
 
   query = "SELECT t.tag_id, t.tag_name" +
@@ -325,7 +328,7 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
 
 
   cache_loaded := false
-  cache_fn := DB_DIR + devs.Vs(id, "short_name") + ".hash"
+  cache_fn := config.Acl_gen_db_dir + devs.Vs(id, "short_name") + ".hash"
 
   del_count := 0
 
@@ -371,7 +374,7 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
 
   if !cache_loaded {
     status_ch <- StatusMsg{id: id, msg: "connecting"}
-    err = con.Connect(devs.Vs(id, "data_ip"), SSH_USER, SSH_PASS, stop_ch)
+    err = con.Connect(devs.Vs(id, "data_ip"), config.Acl_gen_user, config.Acl_gen_pass, stop_ch)
     if err != nil {
       fmt.Println(devs.Vs(id, "short_name") + " SSH ERROR: " + err.Error())
       status_ch <- StatusMsg{id: id, msg: "exit ssh connect error: " + err.Error()}
@@ -464,7 +467,7 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
 
   if !ssh_connected {
     status_ch <- StatusMsg{id: id, msg: "connecting"}
-    err = con.Connect(devs.Vs(id, "data_ip"), SSH_USER, SSH_PASS, stop_ch)
+    err = con.Connect(devs.Vs(id, "data_ip"), config.Acl_gen_user, config.Acl_gen_pass, stop_ch)
     if err != nil {
       fmt.Println(devs.Vs(id, "short_name") + " SSH ERROR: " + err.Error())
       status_ch <- StatusMsg{id: id, msg: "exit connect ssh error: " + err.Error()}

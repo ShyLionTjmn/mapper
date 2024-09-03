@@ -20,6 +20,7 @@ import (
 	_ "bufio"
 	"errors"
 	"fmt"
+	"flag"
 	"log"
 	"net"
 	"os"
@@ -52,8 +53,6 @@ const ERROR_SLEEP=15
 const IDLE_SLEEP=600
 
 
-
-var red_db string=REDIS_DB
 
 const IP_REGEX=`^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$`
 const DB_FILE_RECORD="^(\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})(?:\\s.*)?$"
@@ -321,7 +320,7 @@ WORKER_CYCLE:
     first_poke_ok := false
 
     if red != nil && red.Err() == nil {
-      _, err = red.Do("SELECT", red_db)
+      _, err = red.Do("SELECT", config.Redis_db)
       if err != nil {
         red.Close()
         red = nil
@@ -338,13 +337,13 @@ WORKER_CYCLE:
     err = nil
 
     if red == nil {
-      red, err = redis.Dial("unix", REDIS_SOCKET)
+      red, err = redis.Dial("unix", config.Redis_socket)
       first_poke_ok = false
     }
 
     if err == nil && red != nil && !first_poke_ok {
       //poke redis to check connectivity
-      _, err = red.Do("SELECT", red_db)
+      _, err = red.Do("SELECT", config.Redis_db)
       if err != nil {
         red.Close()
         red = nil
@@ -962,6 +961,8 @@ func waitTimeout(wg *sync.WaitGroup, timeout time.Duration) bool {
 //example: key.*.suffix , will SCAN 0 MATCH key.*.suffix, will extract with regex ^key\.(.)\.suffix$ and check against index_regex
 // return map[string] with type of type_var
 
+var config Config
+
 func main() {
 
   var err error
@@ -970,7 +971,14 @@ func main() {
 
   ip_reg = regexp.MustCompile(IP_REGEX)
 
-  single_run := single.New("map-scanner."+red_db) // add redis_db here later
+  var opt_c string
+  flag.StringVar(&opt_c, "c", DEFAULT_CONFIG_FILE, "mapper.conf location")
+
+  flag.Parse()
+
+  config = LoadConfig(opt_c, FlagPassed("c"))
+
+  single_run := single.New("map-scanner."+config.Redis_db) // add redis_db here later
 
   if err = single_run.CheckLock(); err != nil && err == single.ErrAlreadyRunning {
     log.Fatal("another instance of the app is already running, exiting")
@@ -1028,7 +1036,7 @@ MAIN_LOOP: for {
 
     if red != nil && red.Err() == nil {
       //poke redis to check connectivity
-      _, err = red.Do("SELECT", red_db)
+      _, err = red.Do("SELECT", config.Redis_db)
       if err != nil {
         red.Close()
         red = nil
@@ -1045,13 +1053,13 @@ MAIN_LOOP: for {
     }
 
     if red == nil {
-      red, err = redis.Dial("unix", REDIS_SOCKET)
+      red, err = redis.Dial("unix", config.Redis_socket)
       first_poke_ok = false
     }
 
     if err == nil && red != nil && !first_poke_ok {
       //poke redis to check connectivity
-      _, err = red.Do("SELECT", red_db)
+      _, err = red.Do("SELECT", config.Redis_db)
       if err != nil {
         red.Close()
         red = nil
@@ -1087,7 +1095,7 @@ MAIN_LOOP: for {
     }
 
     if err == nil {
-      oids_file_stat, err = os.Stat(OIDS_FILE)
+      oids_file_stat, err = os.Stat(config.Oids_file)
 
       if err == nil {
         if !oids_file_stat.Mode().IsRegular() {

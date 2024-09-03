@@ -43,10 +43,7 @@ const IPDB_REFRESH=60
 const ERROR_SLEEP=15
 const IDLE_SLEEP=600
 
-// set in mapaux/local.go // TODO move to config file
-//const IPDB_DSN="DP_USER:DB_PASS@unix(/var/run/mysqld/mysqld.sock)/ipdb_db_name"
-
-var red_db string=REDIS_DB
+var config Config
 
 const IP_REGEX=`^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$`
 var ip_reg *regexp.Regexp
@@ -97,9 +94,6 @@ var opt_v int
 var opt_l bool
 var opt_n bool
 var opt_d bool
-var opt_w string //www root
-var opt_u string //unix socket
-var opt_C string //devs config dir DEVS_CONFIGS_DIR
 
 const TRY_OPEN_FILES uint64=65536
 var max_open_files uint64
@@ -122,6 +116,11 @@ func init() {
 
   ip_reg = regexp.MustCompile(IP_REGEX)
 
+  var opt_w string //www root
+  var opt_u string //unix socket
+  var opt_C string //devs config dir DEVS_CONFIGS_DIR
+  var opt_c string
+
   flag.BoolVar(&opt_Q, "Q", false, "ignore queue saves from mapper")
   flag.BoolVar(&opt_P, "P", false, "No periodic status update for outdated devs")
   flag.BoolVar(&opt_1, "1", false, "startup and finish")
@@ -129,11 +128,20 @@ func init() {
   flag.BoolVar(&opt_n, "n", false, "auto add ip Neighbours")
   flag.BoolVar(&opt_d, "d", false, "debug")
   flag.IntVar(&opt_v, "v", 0, "set verbosity level")
-  flag.StringVar(&opt_w, "w", WWW_ROOT, "www root")
-  flag.StringVar(&opt_u, "u", BROKER_UNIX_SOCKET, "Broker Unix socket")
-  flag.StringVar(&opt_C, "C", DEVS_CONFIGS_DIR, " devices configs dir")
+  flag.StringVar(&opt_w, "w", DEFAULT_WWW_ROOT, "www root")
+  flag.StringVar(&opt_u, "u", DEFAULT_BROKER_UNIX_SOCKET, "Broker Unix socket")
+  flag.StringVar(&opt_C, "C", DEFAULT_DEVS_CONFIGS_DIR, "devices configs dir")
+  flag.StringVar(&opt_c, "c", DEFAULT_CONFIG_FILE, "mapper.conf location")
 
   flag.Parse()
+
+  config = LoadConfig(opt_c, FlagPassed("c"))
+
+  if FlagPassed("w") { config.Www_root = opt_w }
+  if FlagPassed("u") { config.Broker_unix_socket = opt_u }
+  if FlagPassed("C") { config.Devs_configs_dir = opt_C }
+
+  g_graph_if_name_reg = regexp.MustCompile(config.Safe_int_regex)
 }
 
 var red_state_mutex = &sync.Mutex{}
@@ -209,7 +217,7 @@ func arp_logger(stop_ch chan string, log_chan chan ArpLog, wg *sync.WaitGroup) {
       //fmt.Println("arp_logger got data: ", data)
       if ip, ok := V4ip2long(data.Ip); ok {
         if db == nil {
-          db, err = sql.Open("mysql", IPDB_DSN)
+          db, err = sql.Open("mysql", config.Ipdb_dsn)
           if err != nil {
             //fmt.Println("arp_logger db connect error: ", err)
             db = nil
@@ -262,7 +270,7 @@ func png_cache_cleaner(stop_ch chan string, wg *sync.WaitGroup) {
   for !stop_signalled {
     var dir []os.DirEntry
     var err error
-    dir, err = os.ReadDir(PNG_CACHE + "/")
+    dir, err = os.ReadDir(config.Png_cache + "/")
     if err == nil {
       for _, dirent := range dir {
         fi, fierr := dirent.Info()
@@ -270,7 +278,7 @@ func png_cache_cleaner(stop_ch chan string, wg *sync.WaitGroup) {
            fierr == nil &&
            time.Now().Sub(fi.ModTime()) > PNG_MAX_AGE*2 &&
         true {
-          os.Remove(PNG_CACHE + "/" + dirent.Name())
+          os.Remove(config.Png_cache + "/" + dirent.Name())
         }
       }
     }
@@ -297,7 +305,7 @@ func queue_data_sub(stop_ch chan string, wg *sync.WaitGroup) {
   for !stop_signalled {
 
     var rsub *redsub.Redsub
-    rsub, err = redsub.New("unix", REDIS_SOCKET, red_db, "queue_saved", 100)
+    rsub, err = redsub.New("unix", config.Redis_socket, config.Redis_db, "queue_saved", 100)
     if err == nil {
       redState(true)
 L66:  for !stop_signalled {
@@ -335,7 +343,7 @@ L66:  for !stop_signalled {
 
 
     if !stop_signalled {
-      timer := time.NewTimer(REDIS_ERR_SLEEP*time.Second)
+      timer := time.NewTimer(time.Duration(config.Redis_err_sleep)*time.Second)
       select {
       case <- stop_ch:
         timer.Stop()
@@ -358,7 +366,7 @@ func main() {
   var alert_config_time string
   var ip_neighbours_time string
 
-  single_run := single.New("map-broker."+red_db) // add redis_db here later
+  single_run := single.New("map-broker."+config.Redis_db) // add redis_db here later
 
   if err = single_run.CheckLock(); err != nil && err == single.ErrAlreadyRunning {
     log.Fatal("another instance of the app is already running, exiting")
@@ -437,7 +445,7 @@ func main() {
 MAIN_LOOP:
   for {
 
-    red, err = RedisCheck(red, "unix", REDIS_SOCKET, red_db)
+    red, err = RedisCheck(red, "unix", config.Redis_socket, config.Redis_db)
 
     redState(red != nil && err == nil)
 
@@ -565,7 +573,7 @@ MAIN_LOOP:
         var u64 uint64
         var var_ok bool
 
-        if db, err = sql.Open("mysql", IPDB_DSN); err != nil { return err }
+        if db, err = sql.Open("mysql", config.Ipdb_dsn); err != nil { return err }
         defer db.Close()
 
         query = "SELECT * FROM tags ORDER BY tag_sort"
@@ -595,10 +603,10 @@ MAIN_LOOP:
               }
               return errors.New("no tag_api_name: tag_id: "+tag_id)
             } //unlikely
-            if tag_api_name == IPDB_SITES_ROOT_API_NAME {
+            if tag_api_name == config.Ipdb_sites_root_api_name {
               new_sites_root = tag_id
             }
-            if tag_api_name == IPDB_PROJECTS_ROOT_API_NAME {
+            if tag_api_name == config.Ipdb_projects_root_api_name {
               new_projects_root = tag_id
             }
           }

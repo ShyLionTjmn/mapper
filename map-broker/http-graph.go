@@ -41,7 +41,9 @@ func init() {
   g_graph_start_reg = regexp.MustCompile(`^[0-9+\-a-zA-Z \:\.\/]+$`)
   g_graph_integer_reg = regexp.MustCompile(`^-?\d+$`)
   g_graph_dev_id_reg = regexp.MustCompile(`^[a-zA-Z0-9\.\-_]+$`)
-  g_graph_if_name_reg = regexp.MustCompile(SAFE_INT_REGEX)
+
+  // compiled at map-broker.go init()
+  //g_graph_if_name_reg = regexp.MustCompile(SAFE_INT_REGEX)
   g_graph_cpu_name_reg = regexp.MustCompile(`^[a-zA-Z0-9 \/.,;:\-)(]+$`)
   g_graph_file_reg = regexp.MustCompile(`^[a-zA-Z0-9 .,:\-_]+\.png$`)
 
@@ -97,9 +99,9 @@ func handle_graph_error(dbg bool, r interface{}, w http.ResponseWriter, req *htt
     var err error
     var f *os.File
 
-    if f, err = os.Open(opt_w + "/error_pngs/"+err_image+".png"); err != nil {
-      if f, err = os.Open(opt_w + "/error_pngs/error.png"); err != nil {
-        w.Header().Set("X-Error", "Can not open "+opt_w + "/error_pngs/error.png file")
+    if f, err = os.Open(config.Www_root + "/error_pngs/"+err_image+".png"); err != nil {
+      if f, err = os.Open(config.Www_root + "/error_pngs/error.png"); err != nil {
+        w.Header().Set("X-Error", "Can not open "+config.Www_root + "/error_pngs/error.png file")
         w.WriteHeader(http.StatusInternalServerError)
         return
       }
@@ -220,7 +222,7 @@ func handleGraph(w http.ResponseWriter, req *http.Request) {
     if filename, err = get_p_string(q, "file", g_graph_file_reg); err != nil { panic(err) }
 
     var f *os.File
-    if f, err = os.Open(PNG_CACHE + "/" + filename); err != nil { panic(err) }
+    if f, err = os.Open(config.Png_cache + "/" + filename); err != nil { panic(err) }
     defer f.Close()
 
     w.WriteHeader(http.StatusOK)
@@ -239,7 +241,7 @@ func handleGraph(w http.ResponseWriter, req *http.Request) {
   width := "400"
   height := "100"
 
-  cmd := []string{"graphv", "PNG_PLACE_HOLDER", "--daemon", RRD_SOCKET, "--slope-mode"}
+  cmd := []string{"graphv", "PNG_PLACE_HOLDER", "--daemon", config.Rrd_socket, "--slope-mode"}
 
 
   png_end := ""
@@ -348,8 +350,8 @@ func handleGraph(w http.ResponseWriter, req *http.Request) {
 
   time_src := ""
 
-  rrd_root := RRD_ROOT + "/"
-  png_cache := PNG_CACHE + "/"
+  rrd_root := config.Rrd_root + "/"
+  png_cache := config.Png_cache + "/"
 
   png := ""
   json_png := ""
@@ -903,7 +905,7 @@ func handleGraph(w http.ResponseWriter, req *http.Request) {
 
   if !use_cache {
 
-    os_cmd := exec.Command(RRD_TOOL, cmd...)
+    os_cmd := exec.Command(config.Rrd_tool, cmd...)
     var stdout strings.Builder
     var stderr strings.Builder
 	  os_cmd.Stdout = &stdout

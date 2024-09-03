@@ -7,11 +7,10 @@ import (
   "flag"
 
   "github.com/ShyLionTjmn/mapper/redsub"
+  . "github.com/ShyLionTjmn/mapper/mapaux"
 
 )
 
-
-var red_db string=REDIS_DB
 
 var opt_v int
 var channel string
@@ -31,7 +30,9 @@ func init() {
 }
 
 func main() {
-  sub, err := redsub.New("unix", REDIS_SOCKET, REDIS_DB, channel, 1)
+  config := LoadConfig(DEFAULT_CONFIG_FILE, true)
+
+  sub, err := redsub.New("unix", config.Redis_socket, config.Redis_db, channel, 1)
 
   if err == nil {
 

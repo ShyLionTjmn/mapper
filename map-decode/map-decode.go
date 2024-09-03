@@ -13,12 +13,12 @@ func main() {
     return
   }
 
-  var red_db = "0"
-
   var err error
   var red redis.Conn
 
-  red, err = RedisCheck(red, "unix", REDIS_SOCKET, red_db)
+  config := LoadConfig(DEFAULT_CONFIG_FILE, true)
+
+  red, err = RedisCheck(red, "unix", config.Redis_socket, config.Redis_db)
 
   if red == nil {
     panic(err)

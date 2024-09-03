@@ -24,15 +24,15 @@ func socket_listener(stop chan string, wg *sync.WaitGroup) {
 
   var err error
 
-  _, serr := os.Stat(opt_u)
+  _, serr := os.Stat(config.Broker_unix_socket)
   if serr == nil {
-    os.Remove(opt_u)
+    os.Remove(config.Broker_unix_socket)
   }
-  listener, listen_err := net.Listen("unix", opt_u)
+  listener, listen_err := net.Listen("unix", config.Broker_unix_socket)
   if listen_err != nil {
     panic("Listening error: "+listen_err.Error())
   }
-  os.Chmod(opt_u, 0777)
+  os.Chmod(config.Broker_unix_socket, 0777)
 
   var lwg sync.WaitGroup
 
@@ -97,7 +97,7 @@ func socket_listener(stop chan string, wg *sync.WaitGroup) {
         }
 
         var red redis.Conn
-        if red, err = RedisCheck(red, "unix", REDIS_SOCKET, red_db); err != nil { return }
+        if red, err = RedisCheck(red, "unix", config.Redis_socket, config.Redis_db); err != nil { return }
         defer red.Close()
 
         var fields_json []byte
