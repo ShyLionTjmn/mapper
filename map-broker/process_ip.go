@@ -1029,6 +1029,7 @@ func process_ip_data(wg *sync.WaitGroup, ip string, startup bool) {
         if ips, ok := if_m.(M).VMe("ips"); ok {
           for if_ip, if_ip_m := range ips {
             if net, ok := if_ip_m.(M).Vse("net"); ok && !strings.HasPrefix(if_ip,"127.") &&
+               !strings.HasPrefix(if_ip,"169.254.") &&
                !strings.HasPrefix(if_ip,"0.") &&
             true {
               register := false
@@ -1091,7 +1092,9 @@ func process_ip_data(wg *sync.WaitGroup, ip string, startup bool) {
     for ifName, _ := range devs.VM(d_id, "interfaces") {
       if as, var_ok := devs.Vie(d_id, "interfaces", ifName, "ifAdminStatus"); var_ok && as == 1 {
         for d_ip, _ := range devs.VM(d_id, "interfaces", ifName, "ips") {
-          if !strings.HasPrefix(d_ip, "127.") && !strings.HasPrefix(d_ip, "0.") {
+          if !strings.HasPrefix(d_ip, "127.") && !strings.HasPrefix(d_ip, "0.") &&
+             !strings.HasPrefix(d_ip, "169.254.") &&
+          true {
             all_ips[d_ip] = struct{}{}
           }
         }
@@ -1574,7 +1577,7 @@ func process_ip_data(wg *sync.WaitGroup, ip string, startup bool) {
     // add p2p neighbours
     if dev.EvM("interfaces", ifName, "ips") {
       for if_ip, ip_m := range dev.VM("interfaces", ifName, "ips") {
-        if !strings.HasPrefix(if_ip,"127.") {
+        if !strings.HasPrefix(if_ip,"127.") && !strings.HasPrefix(if_ip,"169.254.") {
           if ip_u, ip_ok := V4ip2long(if_ip); ip_ok {
             ml := ip_m.(M).Vi("masklen")
             if ml == 30 || ml == 31 {

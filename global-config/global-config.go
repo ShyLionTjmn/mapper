@@ -132,6 +132,8 @@ func main() {
   var opt_P bool // skip periodic updates
   var opt_s bool
 
+  var opt_c string
+
   flag.BoolVar(&opt_r, "r", false, "Log input from device")
   flag.BoolVar(&opt_w, "w", false, "Log sent commands to device")
   flag.BoolVar(&opt_v, "v", false, "Log execution")
@@ -156,11 +158,15 @@ func main() {
                               "Escape % with \\ if needed",
   )
 
+  flag.StringVar(&opt_c, "c", DEFAULT_CONFIG_FILE, "mapper.conf location")
+
   flag.Parse()
+
+  config := LoadConfig(opt_c, FlagPassed("c"))
 
   if opt_j {
 
-    conn, err := net.DialTimeout("unix", BROKER_UNIX_SOCKET, time.Second)
+    conn, err := net.DialTimeout("unix", config.Broker_unix_socket, time.Second)
     if err != nil {
       panic(err)
     }
@@ -372,7 +378,7 @@ func main() {
 
   var conn net.Conn
 
-  conn, err = net.DialTimeout("unix", BROKER_UNIX_SOCKET, time.Second)
+  conn, err = net.DialTimeout("unix", config.Broker_unix_socket, time.Second)
   if err != nil {
     panic(err)
   }
