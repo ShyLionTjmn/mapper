@@ -104,7 +104,7 @@ var tp_grid; //set in data_loaded()
 var tp_btn_size; //set in data_loaded()
 var tp_grid_offset; //set in data_loaded()
 
-var def_dev_name_size = (def_int_size - 1) +"px";
+var def_dev_name_size = (def_int_size - 2) +"px";
 var dev_name_size; //set in data_loaded()
 
 var windows = {};
@@ -919,7 +919,12 @@ function get_tag(tag_data, tag_id) {
 };
 
 $( document ).ready(function() {
+  setTimeout(myReady, 1);
+});
+
+function myReady() {
  
+  $("#dummylabel").remove();
   //BEGIN begin
   window.onerror=function(errorMsg, url, lineNumber) {
     alert("Error occured: " + errorMsg + ", at line: " + lineNumber);//or any message
@@ -1351,7 +1356,7 @@ $( document ).ready(function() {
     };
     //createWindow("test", "Test window", undefined);
   });
-});
+};
 
 function data_loaded(new_data, really=true) {
   if(really) {

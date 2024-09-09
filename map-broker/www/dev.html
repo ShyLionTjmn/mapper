@@ -4,12 +4,47 @@
 <meta http-equiv="Cache-control" content="no-cache">
 <META charset="UTF-8">
 <TITLE>MAPPER DEV</TITLE>
-<LINK rel="icon" href="data:;base64,iVBORw0KGgo=">
+<!-- LINK rel="icon" href="data:;base64,iVBORw0KGgo="-->
+<LINK rel="icon" href="favicon.ico">
+<LINK href="reset.css" rel="stylesheet">
+<LINK href="font.css" rel="stylesheet">
 <LINK href="lib/jquery-ui/jquery-ui.min.css" rel="stylesheet">
 <LINK href="lib/jq-plugins/jquery-ui-iconfont/jquery-ui.icon-font.min.css" rel="stylesheet">
 <!-- LINK href="lib/jq-plugins/jquery-ui-dialog-collapse-master/css/jquery.ui.dialog-collapse.css" rel="stylesheet" -->
 <LINK href="lib/jstree/themes/default/style.min.css" rel="stylesheet">
-<LINK href="styles.css" rel="stylesheet">
+<LINK href="styles_dev.css" rel="stylesheet">
+<SCRIPT type="text/javascript" src="lib/jquery.js"></SCRIPT>
+<SCRIPT type="text/javascript" src="lib/jquery-ui/jquery-ui.min.js"></SCRIPT>
+<!-- SCRIPT type="text/javascript" src="lib/jq-plugins/jquery-ui-dialog-collapse-master/js/jquery.ui.dialog-collapse.js"></SCRIPT -->
+<SCRIPT type="text/javascript" src="lib/jstree/jstree.min.js"></SCRIPT>
+<SCRIPT type="text/javascript">
+  var getUrlParameter = function getUrlParameter(sParam) {
+    var sPageURL = window.location.search.substring(1),
+        sURLVariables = sPageURL.split('&'),
+        sParameterName,
+        i;
+
+    for (i = 0; i < sURLVariables.length; i++) {
+        sParameterName = sURLVariables[i].split('=');
+
+        if (sParameterName[0] === sParam) {
+            return sParameterName[1] === undefined ? true : decodeURIComponent(sParameterName[1]);
+        }
+    }
+    return false;
+  };
+  var offline=false;
+  var AJAX="ajax";
+  var version="production";
+  var DEBUG=getUrlParameter("debug") !== false;
+</SCRIPT>
+<LINK rel="icon" href="data:;base64,iVBORw0KGgo=">
+<LINK href="reset.css" rel="stylesheet">
+<LINK href="lib/jquery-ui/jquery-ui.min.css" rel="stylesheet">
+<LINK href="lib/jq-plugins/jquery-ui-iconfont/jquery-ui.icon-font.min.css" rel="stylesheet">
+<!-- LINK href="lib/jq-plugins/jquery-ui-dialog-collapse-master/css/jquery.ui.dialog-collapse.css" rel="stylesheet" -->
+<LINK href="lib/jstree/themes/default/style.min.css" rel="stylesheet">
+<LINK href="styles_dev.css" rel="stylesheet">
 <SCRIPT type="text/javascript" src="lib/jquery.js"></SCRIPT>
 <SCRIPT type="text/javascript" src="lib/jquery-ui/jquery-ui.min.js"></SCRIPT>
 <!-- SCRIPT type="text/javascript" src="lib/jq-plugins/jquery-ui-dialog-collapse-master/js/jquery.ui.dialog-collapse.js"></SCRIPT -->
@@ -40,5 +75,6 @@
 <SCRIPT type="text/javascript" src="mapper_dev.js"></SCRIPT>
 </HEAD>
 <BODY>
+  <LABEL class="devname" id="dummylabel"> </LABEL>
 </BODY>
 </HTML>
