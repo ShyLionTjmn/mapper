@@ -1837,7 +1837,7 @@ function device_win(dev_id) {
          .css({"margin-left": "0.5em"})
          .click(function() { $(this).closest(".dialog_start").find(".sysdescr").toggle(); })
        )
-       .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-edit"])
+       .append( (dev["virtual"] != undefined || offline) ? $(LABEL) : $(LABEL).addClass(["button", "ui-icon", "ui-icon-edit"])
          .css({"margin-left": "0.5em"})
          .click(function() {
            let _div = $(this).closest(".dialog_start").find(".sysoidedit");
@@ -1866,7 +1866,7 @@ function device_win(dev_id) {
        })
        .text(dev["sysDescr"])
      )
-     .append( $(DIV).addClass("sysoidedit")
+     .append( (dev["virtual"] != undefined || offline) ? $() : $(DIV).addClass("sysoidedit")
        .hide()
        .append( $(DIV)
          .append( $(LABEL).text("Короткое описание модели: ") )
