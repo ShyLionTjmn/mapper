@@ -52,6 +52,8 @@ var g_map_key_reg *regexp.Regexp
 var g_file_key_reg *regexp.Regexp
 var g_shared_key_reg *regexp.Regexp
 
+var g_sysoid_reg *regexp.Regexp
+
 var g_mac_oui_reg *regexp.Regexp
 
 var g_file_list_reg *regexp.Regexp
@@ -68,6 +70,8 @@ func init() {
   g_map_key_reg = regexp.MustCompile(`^(?:loc|tps|colors|options)$`)
   g_file_key_reg = regexp.MustCompile(`^(?:|[0-9a-zA-Z]{10})$`)
   g_shared_key_reg = regexp.MustCompile(`^[0-9a-zA-Z]{10}$`)
+
+  g_sysoid_reg = regexp.MustCompile(`^(?:\.\d+)+$`)
 
   g_graph_start_reg = regexp.MustCompile(`^[0-9+\-a-zA-Z \:\.\/]+$`)
   g_graph_integer_reg = regexp.MustCompile(`^-?\d+$`)
@@ -124,7 +128,8 @@ func (fsys dotFileHidingFileSystem) Open(name string) (http.File, error) {
     return dotFileHidingFile{file}, err
 }
 
-func get_p_string(q M, name string, check interface{}, options ... interface{}) (string,error) { // options: (error on empty(true by default)), (default value) 
+func get_p_string(q M, name string, check interface{}, options ... interface{}) (string,error) {
+  // options: (error on empty(true by default)), (default value) 
   val, exists := q[name]
   if !exists {
     if len(options) == 0 || options[0].(bool) {
@@ -677,7 +682,7 @@ func handleAjax(w http.ResponseWriter, req *http.Request) {
 
 
   for _, g := range user_groups {
-    if g == "netapp_mapper_appadmin" {
+    if g == config.Admin_group {
       user_is_admin = true
     }
   }
@@ -2314,6 +2319,59 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
 
     if out["events"], err = redis.Strings(red.Do("LRANGE", "log." + dev_id, "0", "-1")); err != nil { panic(err) }
 
+  } else if action == "get_sysoid" {
+    var sysoid string
+    if sysoid, err = get_p_string(q, "sysoid", g_sysoid_reg); err != nil { panic(err) }
+
+    var sysoid_long string
+    var sysoid_short string
+
+    sysoid_long, err = redis.String(red.Do("HGET", "sysoids.long", sysoid))
+    if err != nil && err != redis.ErrNil { panic(err) }
+    if err == redis.ErrNil { sysoid_long = "" }
+
+    sysoid_short, err = redis.String(red.Do("HGET", "sysoids.short", sysoid))
+    if err != nil && err != redis.ErrNil { panic(err) }
+    if err == redis.ErrNil { sysoid_short = "" }
+
+    out["short"] = sysoid_short
+    out["long"] = sysoid_long
+
+  } else if action == "set_sysoid" {
+    if !user_is_admin {
+      panic("You have no access to edit")
+    }
+
+    var sysoid string
+    if sysoid, err = get_p_string(q, "sysoid", g_sysoid_reg); err != nil { panic(err) }
+
+    var sysoid_long string
+    var sysoid_short string
+
+    if sysoid_long, err = get_p_string(q, "long", nil); err != nil { panic(err) }
+    if sysoid_short, err = get_p_string(q, "short", nil); err != nil { panic(err) }
+
+    if _, err = red.Do("HSET", "sysoids.long", sysoid, sysoid_long); err != nil { panic(err) }
+    if _, err = red.Do("HSET", "sysoids.short", sysoid, sysoid_short); err != nil { panic(err) }
+    if _, err = red.Do("HSET", "sysoids.long", "time", ts); err != nil { panic(err) }
+    if _, err = red.Do("HSET", "sysoids.short", "time", ts); err != nil { panic(err) }
+
+    globalMutex.Lock()
+    data.VM("sysoids")[sysoid] = make(M)
+    data.VM("sysoids", sysoid)["short"] = sysoid_short
+    data.VM("sysoids", sysoid)["long"] = sysoid_long
+
+    for dev_id, _ := range devs {
+      if devs[dev_id].(M).Vs("sysObjectID") == sysoid {
+        devs[dev_id].(M)["model_short"] = sysoid_short
+        devs[dev_id].(M)["model_long"] = sysoid_long
+      }
+    }
+
+    globalMutex.Unlock()
+
+    out["done"] = 1
+
   } else if action == "query" {
     out["_query"] = q
     goto OUT
@@ -2433,7 +2491,7 @@ func handleOffline(w http.ResponseWriter, req *http.Request) {
 
 
   for _, g := range user_groups {
-    if g == "netapp_mapper_appadmin" {
+    if g == config.Admin_group {
       user_is_admin = true
     }
   }

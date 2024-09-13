@@ -1826,6 +1826,7 @@ function device_win(dev_id) {
      )
      .append( $(DIV)
        .append( $(LABEL).text("Тип: " + (dev["model_short"] != "Unknown" ? dev["model_short"] : dev["sysObjectID"]))
+         .addClass("model")
          .title(dev["model_long"])
        )
        .append( dev["model_short"] != "Unknown" ? $(LABEL) : $(A, {"target": "blank", "href": "https://oidref.com/"+String(dev["sysObjectID"]).replace(/^\./, "")})
@@ -1836,6 +1837,27 @@ function device_win(dev_id) {
          .css({"margin-left": "0.5em"})
          .click(function() { $(this).closest(".dialog_start").find(".sysdescr").toggle(); })
        )
+       .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-edit"])
+         .css({"margin-left": "0.5em"})
+         .click(function() {
+           let _div = $(this).closest(".dialog_start").find(".sysoidedit");
+           if(_div.is(":visible")) {
+             _div.toggle();
+             return;
+           };
+
+           let dev_id = $(this).closest(".dialog_start").data("dev_id");
+           let sysoid = data["devs"][dev_id]["sysObjectID"];
+
+           run_query({"action": "get_sysoid", "sysoid": sysoid}, function(res) {
+             _div.find("INPUT.sysoid_short").val( res["ok"]["short"] );
+             _div.find("INPUT.sysoid_long").val( res["ok"]["long"] );
+             _div.find(".sysoid_undo").data("saved_short", res["ok"]["short"] );
+             _div.find(".sysoid_undo").data("saved_long", res["ok"]["long"] );
+             _div.toggle();
+           });
+         })
+       )
      )
      .append( $(DIV).addClass("sysdescr")
        .hide()
@@ -1843,6 +1865,72 @@ function device_win(dev_id) {
              "font-size": "smaller"
        })
        .text(dev["sysDescr"])
+     )
+     .append( $(DIV).addClass("sysoidedit")
+       .hide()
+       .append( $(DIV)
+         .append( $(LABEL).text("Короткое описание модели: ") )
+         .append( $(INPUT).addClass("sysoid_short")
+           .css({"width": "15em"})
+           .val(dev["model_short"] != "Unknown" ? dev["model_short"] : "")
+         )
+       )
+       .append( $(DIV)
+         .append( $(LABEL).text("Полное описание модели: ") )
+       )
+       .append( $(DIV)
+         .append( $(INPUT).addClass("sysoid_long")
+           .css({"width": "30em"})
+           .val(dev["model_short"] != "Unknown" ? dev["model_long"] : "")
+         )
+       )
+       .append( $(DIV)
+         .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-save"])
+           .title("Сохранить")
+           .click(function() {
+             let _div = $(this).closest(".dialog_start").find(".sysoidedit");
+             let sysoid_short = _div.find("INPUT.sysoid_short").val();
+             let sysoid_long = _div.find("INPUT.sysoid_long").val();
+
+             let flash = $();
+
+             if(! /^\S.*\S$/.test(sysoid_short)) flash = flash.add(_div.find("INPUT.sysoid_short"));
+             if(! /^\S.*\S$/.test(sysoid_long)) flash = flash.add(_div.find("INPUT.sysoid_long"));
+
+             if(flash.length != 0) {
+               $(flash).animateHighlight("red", 300);
+               return;
+             };
+
+             let dev_id = _div.closest(".dialog_start").data("dev_id");
+             let sysoid = data["devs"][dev_id]["sysObjectID"];
+
+             run_query({"action": "set_sysoid", "short": sysoid_short, "long": sysoid_long, "sysoid": sysoid}, function(res) {
+               data["devs"][dev_id]["model_short"] = sysoid_short;
+               data["devs"][dev_id]["model_long"] = sysoid_long;
+
+               _div.closest(".dialog_start").find(".model").text("Тип: " + sysoid_short).title(sysoid_long);
+
+               flash = $();
+
+               flash = flash.add(_div.find("INPUT.sysoid_short"));
+               flash = flash.add(_div.find("INPUT.sysoid_long"));
+               flash.animateHighlight("lightgreen", 300);
+             });
+
+           })
+         )
+         .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-undo", "sysoid_undo"])
+           .title("Вернуть исходное значение")
+           .data("saved_short", dev["model_short"] != "Unknown" ? dev["model_short"] : "")
+           .data("saved_long", dev["model_short"] != "Unknown" ? dev["model_long"] : "")
+           .click(function() {
+             let _div = $(this).closest(".sysoidedit");
+             _div.find("INPUT.sysoid_short").val( $(this).data("saved_short") );
+             _div.find("INPUT.sysoid_long").val( $(this).data("saved_long") );
+           })
+         )
+       )
      )
     ;
 

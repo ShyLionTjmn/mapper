@@ -34,6 +34,8 @@ type Config struct {
   Acl_gen_pass                  string `json:"acl_gen_pass"`
   Acl_gen_db_dir                string `json:"acl_gen_db_dir"`
 
+  Admin_group                   string `json:"admin_group"`
+
   Config_origin                 string
 }
 
@@ -64,6 +66,8 @@ func LoadConfig(file string, from_opt_c bool) Config {
     Devs_configs_dir:              DEFAULT_DEVS_CONFIGS_DIR,
 
     Acl_gen_user:                  "aclgen",
+
+    Admin_group:                   DEFAULT_ADMIN_GROUP,
 
     Config_origin:                 "Default values",
   }

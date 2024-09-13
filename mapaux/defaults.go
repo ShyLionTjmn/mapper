@@ -21,3 +21,5 @@ const DEFAULT_IPDB_SITES_ROOT_API_NAME = "location"
 const DEFAULT_IPDB_PROJECTS_ROOT_API_NAME = "is"
 
 const DEFAULT_DEVS_CONFIGS_DIR = "/data/configs"
+
+const DEFAULT_ADMIN_GROUP = "usr_netapp_map_admins"
