@@ -1163,6 +1163,14 @@ function myReady() {
        inventoryWin();
      })
    )
+   .append( $(LABEL).addClass(["button", "summary_btn"])
+     .text("Summary")
+     .title("Перечень всех моделей сайта")
+     .click(function(e) {
+       e.stopPropagation();
+       summaryWin();
+     })
+   )
    .appendTo( $("BODY") )
   ;
 
@@ -10497,6 +10505,7 @@ function inventoryWin() {
           .append( $(SPAN)
             .text( data["devs"][dev_id]["model_short"] )
             .title( data["devs"][dev_id]["model_long"] == "Unknown"? data["devs"][dev_id]["sysObjectID"]:data["devs"][dev_id]["model_long"] )
+            .css({"color": data["devs"][dev_id]["overall_status"] == "ok"?"black":"red"})
           )
         )
         .append( $(TD)
@@ -10515,6 +10524,84 @@ function inventoryWin() {
   dlg.trigger("recenter");
 };
 
+function summaryWin() {
+  let dlg = createWindow("summary_win", "Перечень моделей устройств");
+  let content = dlg.find(".content");
+
+  let tbody = $(TBODY);
+
+  content
+    .append( $(TABLE)
+      .append( $(THEAD)
+        .append( $(TR)
+          .append( $(TH)
+            .append( $(LABEL).text("Модель") )
+            .append( $(LABEL).addClass("sort_sign")
+              .data("sort_by", "model")
+              .addClass(["ui-icon", "ui-icon-sort"])
+            )
+          )
+          .append( $(TH)
+            .append( $(LABEL).text("Количество") )
+            .append( $(LABEL).addClass("sort_sign")
+              .data("sort_by", "number")
+              .addClass(["ui-icon", "ui-icon-sort"])
+            )
+          )
+        )
+      )
+      .append( tbody )
+    )
+  ;
+
+  let devs_number = {};
+
+  for(let dev_id in data["devs"]) {
+    let model = data["devs"][dev_id]["model_short"];
+
+    if(devs_number[model] === undefined) {
+      devs_number[model] = 0;
+    };
+
+    devs_number[model] ++;
+  };
+
+  let models = keys(devs_number);
+
+  let order = get_local("summary_order", "model");
+  
+  models.sort(function(a, b) {
+    if(order == "model") {
+      if( a != b) return num_compare( a, b);
+    } else if(order == "number") {
+      return devs_number[a] - devs_number[b];
+    };
+    return String(a).localeCompare(b);
+  });
+
+  for(let i in models) {
+
+    let model = models[i];
+
+    tbody
+      .append( $(TR)
+        .append( $(TD)
+          .append( $(SPAN)
+            .text( model )
+          )
+        )
+        .append( $(TD)
+          .append( $(LABEL)
+            .text( devs_number[model] )
+          )
+        )
+      )
+    ;
+
+  };
+
+  dlg.trigger("recenter");
+};
 function search_mac_info(mac) {
   let ret = {};
   ret["corp"] = "n/d: offline";
