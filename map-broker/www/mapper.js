@@ -1804,19 +1804,19 @@ function device_win(dev_id) {
      )
      .append( $(DIV)
        .append( $(SPAN).text(" IP: " + dev["data_ip"] + " ").ip_info(dev["data_ip"]) )
-       .append( $(A, {"target": "blank", "href": "ssh://"+dev["data_ip"]}).text("SSH")
+       .append( $(A, {"target": "_blank", "href": "ssh://"+dev["data_ip"]}).text("SSH")
          .css({"margin-right": "0.5em"})
        )
-       .append( $(A, {"target": "blank", "href": "telnet://"+dev["data_ip"]}).text("TELNET")
+       .append( $(A, {"target": "_blank", "href": "telnet://"+dev["data_ip"]}).text("TELNET")
          .css({"margin-right": "0.5em"})
        )
-       .append( $(A, {"target": "blank", "href": "http://"+dev["data_ip"]+"/"}).text("HTTP")
+       .append( $(A, {"target": "_blank", "href": "http://"+dev["data_ip"]+"/"}).text("HTTP")
          .css({"margin-right": "0.5em"})
        )
-       .append( $(A, {"target": "blank", "href": "https://"+dev["data_ip"]+"/"}).text("HTTPS")
+       .append( $(A, {"target": "_blank", "href": "https://"+dev["data_ip"]+"/"}).text("HTTPS")
          .css({"margin-right": "0.5em"})
        )
-       .append( $(A, {"target": "blank", "href": "/ipdb/?action=link&ip="+dev["data_ip"]}).text("IPDB")
+       .append( $(A, {"target": "_blank", "href": "/ipdb/?action=link&ip="+dev["data_ip"]}).text("IPDB")
        )
        .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-copy"])
          .title("Скопировать IP в буфер")
@@ -1837,7 +1837,7 @@ function device_win(dev_id) {
          .addClass("model")
          .title(dev["model_long"])
        )
-       .append( dev["model_short"] != "Unknown" ? $(LABEL) : $(A, {"target": "blank", "href": "https://oidref.com/"+String(dev["sysObjectID"]).replace(/^\./, "")})
+       .append( dev["model_short"] != "Unknown" ? $(LABEL) : $(A, {"target": "_blank", "href": "https://oidref.com/"+String(dev["sysObjectID"]).replace(/^\./, "")})
          .css({"margin-left": "0.5em"})
          .text("?")
        )
@@ -2576,7 +2576,7 @@ function device_win(dev_id) {
             )
             .append( $(SPAN).addClass("td")
               .append( $(SPAN).text(dev["sites"][i]["by"]) )
-              .append( $(A, {"target": "blank",
+              .append( $(A, {"target": "_blank",
                              "href": "/ipdb/?action=link&ip="+(String(dev["sites"][i]["by"]).split("/")[0]),
                 })
                 .text("IPDB")
@@ -2636,7 +2636,7 @@ function device_win(dev_id) {
             )
             .append( $(SPAN).addClass("td")
               .append( $(SPAN).text(dev["projects"][i]["by"]) )
-              .append( $(A, {"target": "blank",
+              .append( $(A, {"target": "_blank",
                              "href": "/ipdb/?action=link&ip="+(String(dev["projects"][i]["by"]).split("/")[0]),
                 })
                 .text("IPDB")
@@ -7002,19 +7002,19 @@ function interface_win(dev_id, int) {
              .ip_info(ip)
              .css({"margin-right": "0.5em", "min-width": "8em", "display": "inline-block"})
            )
-           .append( $(A, {"target": "blank", "href": "ssh://"+ip}).text("SSH")
+           .append( $(A, {"target": "_blank", "href": "ssh://"+ip}).text("SSH")
              .css({"margin-right": "0.5em"})
            )
-           .append( $(A, {"target": "blank", "href": "telnet://"+ip}).text("TELNET")
+           .append( $(A, {"target": "_blank", "href": "telnet://"+ip}).text("TELNET")
              .css({"margin-right": "0.5em"})
            )
-           .append( $(A, {"target": "blank", "href": "http://"+ip+"/"}).text("HTTP")
+           .append( $(A, {"target": "_blank", "href": "http://"+ip+"/"}).text("HTTP")
              .css({"margin-right": "0.5em"})
            )
-           .append( $(A, {"target": "blank", "href": "https://"+ip+"/"}).text("HTTPS")
+           .append( $(A, {"target": "_blank", "href": "https://"+ip+"/"}).text("HTTPS")
              .css({"margin-right": "0.5em"})
            )
-           .append( $(A, {"target": "blank", "href": "/ipdb/?action=link&ip="+ip}).text("IPDB")
+           .append( $(A, {"target": "_blank", "href": "/ipdb/?action=link&ip="+ip}).text("IPDB")
            )
            .append( $(LABEL).addClass(["button", "ui-icon", "ui-icon-copy"])
              .title("Скопировать IP в буфер")
@@ -7732,7 +7732,7 @@ function ip_results(ok) {
           )
           .append( $(TD)
             .append( $(SPAN).text(data_row["hostname"]) )
-            .append( $(A, {"target": "blank", "href": "/ipdb/?action=link&ip="+ip}).text("IPDB")
+            .append( $(A, {"target": "_blank", "href": "/ipdb/?action=link&ip="+ip}).text("IPDB")
               .css({"margin-left": "1em"})
             )
           )
@@ -7768,7 +7768,7 @@ function ip_results(ok) {
           )
           .append( $(TD)
             .append( $(SPAN).text(data_row["net_cidr"]) )
-            .append( $(A, {"target": "blank",
+            .append( $(A, {"target": "_blank",
                 "href": "/ipdb/?action=link&ip="+String(data_row["net_cidr"]).replace(/\/.*$/, "")
               })
               .text("IPDB")
@@ -10445,6 +10445,13 @@ function inventoryWin() {
               .addClass(["ui-icon", "ui-icon-sort"])
             )
           )
+          .append( $(TH)
+            .append( $(LABEL).text("Версия") )
+            .append( $(LABEL).addClass("sort_sign")
+              .data("sort_by", "version")
+              .addClass(["ui-icon", "ui-icon-sort"])
+            )
+          )
         )
       )
       .append( tbody )
@@ -10496,6 +10503,21 @@ function inventoryWin() {
       ;
     };
 
+    let version = "";
+
+    if(data["devs"][dev_id]["invEntParent"] !== undefined) {
+      for(let key in data["devs"][dev_id]["invEntParent"]) {
+        if(data["devs"][dev_id]["invEntParent"][key] == 0) {
+          if(data["devs"][dev_id]["invEntSwRev"] !== undefined &&
+             data["devs"][dev_id]["invEntSwRev"][key] !== undefined
+          ) {
+            version = data["devs"][dev_id]["invEntSwRev"][key];
+          };
+          break;
+        };
+      };
+    };
+
     tbody
       .append( $(TR)
         .data("dev_id", dev_id)
@@ -10514,6 +10536,10 @@ function inventoryWin() {
             .addClass("button")
             .data("dev_id", dev_id)
             .click(function() { device_win( $(this).data("dev_id") ); })
+          )
+        )
+        .append( $(TD)
+          .append( $(SPAN).text(version)
           )
         )
       )
