@@ -1,6 +1,6 @@
 #!/bin/sh
 
-RED_CMD="redis-cli"
+RED_CMD="redis-cli -s /tmp/redis.sock"
 
 ($RED_CMD -x SET broker.l2_fields <<EOM
 {
@@ -48,6 +48,11 @@ RED_CMD="redis-cli"
       "stpBlockInstances": 1
     }
   },
+  "invEntParent": 1,
+  "invEntFwRev": 1,
+  "invEntHwRev": 1,
+  "invEntSwRev": 1,
+  "invEntSerial": 1,
   "last_seen": 1,
   "model_short": 1,
   "model_long": 1,
@@ -105,6 +110,11 @@ EOM
       "stpBlockInstances": 1
     }
   },
+  "invEntParent": 1,
+  "invEntFwRev": 1,
+  "invEntHwRev": 1,
+  "invEntSwRev": 1,
+  "invEntSerial": 1,
   "last_seen": 1,
   "model_short": 1,
   "model_long": 1,
