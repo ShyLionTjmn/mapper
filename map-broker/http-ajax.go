@@ -1011,6 +1011,12 @@ GFDEV: for dev_id, dev_m := range devs {
         }
       }
 
+      // use data_ip if there is no visible ip interfaces
+
+      if len(dev_ips) == 0 {
+        dev_ips = append(dev_ips, dev.Vs("data_ip"))
+      }
+
       if !site_match && req_site != "nodata" {
         if req_site == "l3" {
           sysLocation := dev.Vs("sysLocation")
