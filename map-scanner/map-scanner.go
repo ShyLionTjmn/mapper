@@ -278,25 +278,6 @@ func worker(ws *t_workStruct) {
 
   //fmt.Println("worker start")
 
-  client := &snmp.GoSNMP{
-    Target:    ws.dev_ip,
-    Port:      uint16(161),
-    Community: ws.community,
-    Version:   snmp.Version2c,
-    Timeout:   time.Duration(DEFAULT_SNMP_TIMEOUT) * time.Second,
-    Retries:   DEFAULT_SNMP_RETRIES,
-    NonRepeaters: DEFAULT_SNMP_NON_REPEATERS,
-    MaxRepetitions: DEFAULT_SNMP_MAX_REPETITIONS,
-//    Logger:    log.New(os.Stdout, "", 0),
-  }
-
-  err = client.Connect()
-  if err != nil {
-    log.Fatalf("Connect() err: %v", err)
-  }
-
-  ws.conn = client.Conn
-
   var sysObjectID string
 
   var val string
@@ -309,6 +290,14 @@ func worker(ws *t_workStruct) {
   var debug string
 
   var sysUpTime string
+
+  defer func() {
+    if ws.conn != nil {
+      ws.conn.Close()
+      ws.conn = nil
+    }
+  } ()
+
 
 WORKER_CYCLE:
   for {
@@ -382,6 +371,30 @@ WORKER_CYCLE:
 
     var sOIDstop_time time.Time
     var sOIDstop int64
+
+    if ws.conn != nil {
+      ws.conn.Close()
+      ws.conn = nil
+    }
+
+    client := &snmp.GoSNMP{
+      Target:    ws.dev_ip,
+      Port:      uint16(161),
+      Community: ws.community,
+      Version:   snmp.Version2c,
+      Timeout:   time.Duration(DEFAULT_SNMP_TIMEOUT) * time.Second,
+      Retries:   DEFAULT_SNMP_RETRIES,
+      NonRepeaters: DEFAULT_SNMP_NON_REPEATERS,
+      MaxRepetitions: DEFAULT_SNMP_MAX_REPETITIONS,
+  //    Logger:    log.New(os.Stdout, "", 0),
+    }
+
+    err = client.Connect()
+    if err == nil {
+      ws.conn = client.Conn
+    }
+
+
 
     if err == nil && red != nil {
       // get sysObjectID.0
@@ -1149,6 +1162,7 @@ MAIN_LOOP: for {
               wd.control_ch <- "stop"
               if wd.conn != nil {
                 wd.conn.Close()
+                wd.conn = nil
               }
               close(wd.control_ch)
             }
@@ -1223,6 +1237,7 @@ MAIN_LOOP: for {
             workers[ip][q].control_ch <- "stop"
             if workers[ip][q].conn != nil {
               workers[ip][q].conn.Close()
+              workers[ip][q].conn = nil
             }
             close(workers[ip][q].control_ch)
             delete(workers[ip],q)
@@ -1280,6 +1295,7 @@ MAIN_LOOP: for {
           ws := *data.ws
           if ws.conn != nil {
             ws.conn.Close()
+            ws.conn = nil
           }
           _, exists := workers[ws.dev_ip]
           if exists {
@@ -1303,6 +1319,7 @@ MAIN_LOOP: for {
       wd.control_ch <- "stop"
       if wd.conn != nil {
         wd.conn.Close()
+        wd.conn = nil
       }
       close(wd.control_ch)
     }

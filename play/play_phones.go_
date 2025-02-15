@@ -1,0 +1,80 @@
+package main
+
+import (
+  "fmt"
+  "os"
+  . "github.com/ShyLionTjmn/m"
+  "regexp"
+)
+
+func main() {
+
+  phone_reg := regexp.MustCompile(`^(SEP[0-9a-fA-F]{12})\.?`)
+
+  if len(os.Args) != 2 {
+    panic("No file argument")
+  }
+
+  _json, err := os.ReadFile(os.Args[1])
+  if err != nil { panic(err) }
+
+  data := M{}
+
+  err = data.UnmarshalJSON(_json)
+
+  if err != nil { panic(err) }
+
+  phones := M{}
+
+  for dev_id, _ := range data {
+    if data.Vs(dev_id, "overall_status") == "ok" {
+      if data.EvM(dev_id, "lldp_ports") {
+        for port_id, _ := range data.VM(dev_id, "lldp_ports") {
+          if data.EvM(dev_id, "lldp_ports", port_id, "neighbours") {
+            for nei_idx, _ := range data.VM(dev_id, "lldp_ports", port_id, "neighbours") {
+              if data.Evs(dev_id, "lldp_ports", port_id, "neighbours", nei_idx, "RemSysName") {
+                rem_name := data.Vs(dev_id, "lldp_ports", port_id, "neighbours", nei_idx, "RemSysName")
+                m := phone_reg.FindStringSubmatch(rem_name)
+                if m != nil {
+                  phones[ m[1] ] = M{
+                    "ip": data.Vs(dev_id, "data_ip"),
+                    "name": data.Vs(dev_id, "sysName"),
+                    "loc": data.Vs(dev_id, "sysLocation"),
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      if data.EvM(dev_id, "cdp_ports") {
+        for port_id, _ := range data.VM(dev_id, "cdp_ports") {
+          if data.EvM(dev_id, "cdp_ports", port_id, "neighbours") {
+            for nei_idx, _ := range data.VM(dev_id, "cdp_ports", port_id, "neighbours") {
+              if data.Evs(dev_id, "cdp_ports", port_id, "neighbours", nei_idx, "cdpRemDevId") {
+                rem_name := data.Vs(dev_id, "cdp_ports", port_id, "neighbours", nei_idx, "cdpRemDevId")
+                m := phone_reg.FindStringSubmatch(rem_name)
+                if m != nil {
+                  phones[ m[1] ] = M{
+                    "ip": data.Vs(dev_id, "data_ip"),
+                    "name": data.Vs(dev_id, "sysName"),
+                    "loc": data.Vs(dev_id, "sysLocation"),
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  for mac, _ := range phones {
+    fmt.Println(
+      mac,
+      "\t", phones.Vs(mac, "ip"),
+      "\t", phones.Vs(mac, "name"),
+      "\t", phones.Vs(mac, "loc"),
+    )
+  }
+}

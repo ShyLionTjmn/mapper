@@ -7327,7 +7327,7 @@ function interface_win(dev_id, int) {
 
       let if_sect = false;
 
-      let sect_reg = new RegExp("^interface "+escapeRegex(int_info["ifDescr"])+"$");
+      let sect_reg = new RegExp("^[Ii]nterface "+escapeRegex(int_info["ifDescr"])+"$");
       let sect_space = new RegExp("^ ");
 
       for(let l in lines) {
