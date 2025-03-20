@@ -3481,6 +3481,13 @@ function interface_in(int, dev) {
     };
   };
 
+  int_info
+   .append( $(BR) )
+   .append( $(LABEL).text("ifIndex: ") )
+   .append( $(SPAN).text(dev["interfaces"][int]["ifIndex"]) )
+  ;
+
+
   int_info.appendTo($("BODY"));
 
   let dev_elm = $(document.getElementById(dev_id));
@@ -6834,6 +6841,11 @@ function interface_win(dev_id, int) {
      .append( $(DIV)
        .css({"white-space": "nowrap"})
        .append( int_labels(int, data["devs"][dev_id]) )
+       .append( $(SPAN)
+         .css({"float": "right", "margin-left": "2em", "font-size": "smaller"})
+         .append( $(LABEL).text("ifIndex: ") )
+         .append( $(SPAN).text(int_info["ifIndex"]) )
+       )
      )
      .append( $(DIV)
        .css({"white-space": "nowrap"})
