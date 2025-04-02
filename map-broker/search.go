@@ -5,7 +5,6 @@ import (
   "errors"
   "time"
   "strings"
-  "strconv"
   "regexp"
   "net"
   "github.com/gomodule/redigo/redis"
@@ -284,26 +283,13 @@ INV:    for _, key := range []string{ "invEntModel", "invEntSerial" } {
 
 func mac_info(mac string, red redis.Conn) (M, error) {
   if len(mac) != 12 { return nil, errors.New("mac_info: Bad mac") }
-  oui := strings.ToLower(mac[:6])
 
   var err error
 
   ret := M{}
 
-  first_octet, err := strconv.ParseUint(mac[1:2], 16, 4)
-  if err != nil { return nil, err }
-
-  if (first_octet & 0x01) > 0 {
-    ret["corp"] = "MULTICAST"
-  } else if (first_octet & 0x02) > 0 {
-    ret["corp"] = "RANDOM"
-  } else {
-    if ret["corp"], err = redis.String(red.Do("HGET", "oui", oui)); err != nil && err != redis.ErrNil { return nil, err }
-    if err == redis.ErrNil {
-      ret["corp"] = "n/d"
-      err = nil
-    }
-  }
+  ret["corp"], err = mac_vendor(mac, red)
+  if err != nil && err != redis.ErrNil { return nil, err }
 
   globalMutex.RLock()
   defer globalMutex.RUnlock()
@@ -541,9 +527,8 @@ func ip_info(ip string, red redis.Conn, timeout time.Duration, skip_lookups bool
               "dev_id": id,
               "ifName": ifName,
             }
-            if len(mac_addr) > 6 {
-              oui := strings.ToLower(mac_addr[:6])
-              corp, err := redis.String(red.Do("HGET", "oui", oui))
+            if len(mac_addr) == 12 {
+              corp, err := mac_vendor(mac_addr, red)
               if err == nil {
                 res.VM("arp")["mac_vendor"] = corp
               }

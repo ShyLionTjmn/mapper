@@ -79,7 +79,7 @@ func init() {
   g_graph_if_name_reg = regexp.MustCompile(`^[a-zA-Z0-9\.\-_]+$`)
   g_graph_cpu_name_reg = regexp.MustCompile(`^[a-z0-9 \/.,;:\-]+$`)
 
-  g_mac_oui_reg = regexp.MustCompile(`^([a-fA-F0-9])([a-fA-F0-9])[\-:\.]?([a-fA-F0-9])([a-fA-F0-9])[\-:\.]?([a-fA-F0-9])([a-fA-F0-9])(?:[\-:\.]?(?:[a-fA-F0-9][a-fA-F0-9])){3}$`)
+  g_mac_oui_reg = regexp.MustCompile(`^([a-fA-F0-9])([a-fA-F0-9])[\-:\.]?([a-fA-F0-9])([a-fA-F0-9])[\-:\.]?([a-fA-F0-9])([a-fA-F0-9])[\-:\.]?([a-fA-F0-9])([a-fA-F0-9])[\-:\.]?([a-fA-F0-9])([a-fA-F0-9])[\-:\.]?([a-fA-F0-9])([a-fA-F0-9])$`)
 
   g_file_list_reg = regexp.MustCompile(`.*_(\d+|all|nodata|l3)_(\d+|all|nodata)\.([a-zA-Z0-9]*)\.(name|data)$`)
   g_default_file_list_reg = regexp.MustCompile(`default_(\d+|all|nodata|l3)_(\d+|all|nodata)\.data$`)
@@ -2192,9 +2192,9 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
     if mac_str, err = get_p_string(q, "mac", nil); err != nil { panic(err) }
     a := g_mac_oui_reg.FindStringSubmatch(mac_str)
     if a == nil { panic("Bad mac") }
-    oui := strings.ToLower(a[1]+a[2]+a[3]+a[4]+a[5]+a[6])
+    mac := strings.ToLower(a[1]+a[2]+a[3]+a[4]+a[5]+a[6]+a[7]+a[8]+a[9]+a[10]+a[11]+a[12])
 
-    corp, err := redis.String(red.Do("HGET", "oui", oui))
+    corp, err := mac_vendor(mac, red)
 
     if err == redis.ErrNil {
       out["not_found"] = 1
