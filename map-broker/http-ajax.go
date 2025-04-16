@@ -2181,7 +2181,7 @@ LPROJ:  for _, proj_id := range strings.Split(req_proj,",") {
 
     config_filename := config.Devs_configs_dir + "/" + out.Vs("dev", "short_name") + ".config"
 
-    if stat, err := os.Stat(config_filename); err == nil && !stat.IsDir() {
+    if stat, err := os.Stat(config_filename); err == nil && !stat.IsDir() && user_is_admin {
       if file_data, err := os.ReadFile(config_filename); err == nil {
         out.VM("dev")["config"] = strings.ReplaceAll(string(file_data), "\r", "")
       }
