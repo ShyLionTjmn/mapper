@@ -411,7 +411,7 @@ func RrdConnCheck(rrdc *rrd.Client) (*rrd.Client, error) {
     }
   }
 
-  ret, err = rrd.NewClient(config.Rrd_socket, rrd.Unix)
+  ret, err = rrd.NewClient(config.Rrd_socket, rrd.Unix, rrd.Timeout(30*time.Second))
   if err != nil {
     if opt_v > 1 {
       fmt.Println("Error connecting to rrd_cached:", err.Error())
@@ -533,7 +533,7 @@ S:for {
           if !created {
             _, rrd_err := rrdc.Exec("CREATE "+ config.Rrd_root +"/"+gf+" "+cr)
             if rrd_err != nil && !rrd.IsExist(rrd_err) {
-              if opt_v > 1 {
+              if opt_v > 0 {
                 fmt.Println("Error creating rrd, ip:", gi.Ip, rrd_err.Error())
               }
               globalMutex.Unlock()
@@ -578,9 +578,19 @@ S:for {
                       fmt.Println("Updating rrd, ip:", gi.Ip, rrd_file, time.Unix(cur_time, 0), cur_value)
                     }
                     rrd_err := rrdc.Update(rrd_file, rrd.NewUpdate(time.Unix(cur_time, 0), cur_value))
+
+                    bad_time := rrd_err != nil && strings.Contains(rrd_err.Error(), "illegal attempt to update using time")
+
+                    if bad_time {
+                      if opt_v > 0 {
+                          fmt.Println("Bad time:", gi.Ip, rrd_err.Error())
+                      }
+                      rrd_err = nil
+                    }
+
                     if rrd_err != nil {
                       if rrd.IsNotExist(rrd_err) {
-                        if opt_v > 1 {
+                        if opt_v > 0 {
                           fmt.Println("rrd file gone?:", gi.Ip, rrd_err.Error())
                         }
                         globalMutex.Lock()
@@ -589,7 +599,7 @@ S:for {
                         }
                         globalMutex.Unlock()
                       } else {
-                        if opt_v > 1 {
+                        if opt_v > 0 {
                           fmt.Println("Error updating rrd:", gi.Ip, rrd_err.Error())
                         }
                         rrdc.Close()
@@ -612,9 +622,19 @@ S:for {
             fmt.Println("Updating rrd, ip:", gi.Ip, rrd_file, "NOW", gi.Value)
           }
           rrd_err := rrdc.Update(rrd_file, rrd.NewUpdateNow(gi.Value))
+
+          bad_time := rrd_err != nil && strings.Contains(rrd_err.Error(), "illegal attempt to update using time")
+
+          if bad_time {
+            if opt_v > 0 {
+                fmt.Println("Bad time:", gi.Ip, rrd_err.Error())
+            }
+            rrd_err = nil
+          }
+
           if rrd_err != nil {
             if rrd.IsNotExist(rrd_err) {
-              if opt_v > 1 {
+              if opt_v > 0 {
                 fmt.Println("rrd file gone?:", gi.Ip, rrd_err.Error())
               }
               globalMutex.Lock()
@@ -623,7 +643,7 @@ S:for {
               }
               globalMutex.Unlock()
             } else {
-              if opt_v > 1 {
+              if opt_v > 0 {
                 fmt.Println("Error updating rrd:", gi.Ip, rrd_err.Error())
               }
               rrdc.Close()
