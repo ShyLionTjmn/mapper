@@ -429,6 +429,21 @@ func main() {
   devs_list := []string{}
   devs_status := M{}
 
+  has_includes := false
+  has_excludes := false
+
+  for _, arg := range flag.Args() {
+    if strings.HasPrefix(arg, "!") {
+      has_excludes = true
+    } else {
+      has_includes = true
+    }
+  }
+
+  if has_includes && has_excludes {
+    panic("Args has both includes and excludes")
+  }
+
   for id, _ := range devs {
     var presel bool
     in_args := false
@@ -445,13 +460,18 @@ func main() {
         not_ips[i] = "!" + devs.VA(id, "ips").([]string)[i]
       }
 
-      if IndexOf(flag.Args(), "!" + devs.Vs(id, "short_name")) >= 0 ||
+      exclude := IndexOf(flag.Args(), "!" + devs.Vs(id, "short_name")) >= 0 ||
         IndexOf(flag.Args(), "!" + id) >= 0 ||
         ArraysIntersect(flag.Args(), not_ips) ||
-      false {
-        presel = false
-      }
+        false
 
+      if has_excludes {
+        if exclude {
+          presel = false
+        } else {
+          presel = work_router(id, nil, nil, nil, script, true) && exclude_list[id] == nil
+        }
+      }
 
     } else {
       presel = work_router(id, nil, nil, nil, script, true) && exclude_list[id] == nil
