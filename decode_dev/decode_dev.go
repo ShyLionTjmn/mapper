@@ -1518,6 +1518,7 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
     dev_arp := d.Dev_arp
 
     for key, mac := range raw.VM("arpTable") {
+      if mac == "000000000000" { continue }
       var ifIndex string = ""
       var ip string = ""
       a := strings.Split(key, ".")
@@ -1580,6 +1581,7 @@ IF: for ifIndex_str, ifName_i := range dev.VM("ifName") {
     dev_arp := d.Dev_arp
 
     for key, mac := range raw.VM("arpTableOld") {
+      if mac == "000000000000" { continue }
       a := strings.Split(key, ".")
       if len(a) == 5 && dev.Evs("ifName", a[0]) {
         ip := strings.Join(a[1:], ".")

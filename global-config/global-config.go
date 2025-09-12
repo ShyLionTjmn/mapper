@@ -439,6 +439,20 @@ func main() {
         ArraysIntersect(flag.Args(), devs.VA(id, "ips").([]string)) ||
         false
       in_args = presel
+
+      not_ips := make([]string, len(devs.VA(id, "ips").([]string)))
+      for i, _ := range devs.VA(id, "ips").([]string) {
+        not_ips[i] = "!" + devs.VA(id, "ips").([]string)[i]
+      }
+
+      if IndexOf(flag.Args(), "!" + devs.Vs(id, "short_name")) >= 0 ||
+        IndexOf(flag.Args(), "!" + id) >= 0 ||
+        ArraysIntersect(flag.Args(), not_ips) ||
+      false {
+        presel = false
+      }
+
+
     } else {
       presel = work_router(id, nil, nil, nil, script, true) && exclude_list[id] == nil
     }

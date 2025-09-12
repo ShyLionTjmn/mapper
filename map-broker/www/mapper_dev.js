@@ -7242,8 +7242,8 @@ function interface_win(dev_id, int) {
       for(let i in if_vlans) {
         let vlan = if_vlans[i];
 
-        let vlan_macs = int_info["macs"][vlan];
-        vlan_macs.sort(num_compare);
+        let vlan_macs = int_info["macs"][vlan].sort();
+        //vlan_macs.sort(num_compare);
 
         for(let v in vlan_macs) {
           let mac = vlan_macs[v];
