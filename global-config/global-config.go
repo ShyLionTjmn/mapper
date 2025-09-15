@@ -162,7 +162,10 @@ func main() {
 
   flag.Parse()
 
+
   config := LoadConfig(opt_c, FlagPassed("c"))
+
+  fmt.Println(time.Now().Format("2006.01.02 15:04:05"), " global-config started, using ", script_filename)
 
   if opt_j {
 
