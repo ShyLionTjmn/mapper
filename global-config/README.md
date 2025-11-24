@@ -58,6 +58,9 @@ Tip: use (?ms) for multiline match/capture
       EOL strings after command, \n by default, some alien devices want \r instead
       \n, \r, \t, \a, \b, \f, \v are replaced with corresponding code, after variable substitution
 
+    z NUM
+      Slep NUM seconds
+
     p command
       Send command to device, no EOL chars needed, they will be added using eol option
 
