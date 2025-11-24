@@ -71,6 +71,7 @@ var opt_q bool // no summary, no periodic updates
 var opt_l bool // live log to stdout
 
 var opt_j bool // dump JSON data from broker
+var opt_J bool // dump full JSON data from broker
 
 var regs map[string]*regexp.Regexp
 
@@ -80,6 +81,7 @@ func init() {
     "start": regexp.MustCompile(`^\s*start\s*$`),
     "match": regexp.MustCompile(`^\s*((?:!)?match)\s+([\S]+)\s(.*)$`),
     "capres": regexp.MustCompile(`^\s*capres\s+(\S+)\s(.*)$`),
+    "z": regexp.MustCompile(`^\s*z\s+(\d+)\s*$`),
     "e": regexp.MustCompile(`^\s*e\s+(\d+)\s(.*)$`),
     "ef": regexp.MustCompile(`^\s*ef\s+(\d+)\s(.*)\sFAILON\s(.*)$`),
     "p": regexp.MustCompile(`^\s*p\s(.*)$`),
@@ -138,6 +140,7 @@ func main() {
   flag.BoolVar(&opt_w, "w", false, "Log sent commands to device")
   flag.BoolVar(&opt_v, "v", false, "Log execution")
   flag.BoolVar(&opt_j, "j", false, "Dump JSON data from broker and quit")
+  flag.BoolVar(&opt_J, "J", false, "Dump full JSON data from broker and quit")
   flag.BoolVar(&opt_P, "P", false, "No periodic status updates")
   flag.BoolVar(&opt_q, "q", false,
     "No dev start and stop messages, no summary results, no periodic updates (implies -P)",
@@ -165,16 +168,18 @@ func main() {
 
   config := LoadConfig(opt_c, FlagPassed("c"))
 
-  fmt.Println(time.Now().Format("2006.01.02 15:04:05"), " global-config started, using ", script_filename)
-
-  if opt_j {
+  if opt_j || opt_J {
 
     conn, err := net.DialTimeout("unix", config.Broker_unix_socket, time.Second)
     if err != nil {
       panic(err)
     }
 
-    _, err = conn.Write([]byte("global-config\n"))
+    if opt_j {
+      _, err = conn.Write([]byte("global-config\n"))
+    } else {
+      _, err = conn.Write([]byte("global-config-full\n"))
+    }
     if err != nil {
       conn.Close()
       panic(err)
@@ -201,6 +206,8 @@ func main() {
   if script_filename == "" {
     panic("No script filename given, use -f flag")
   }
+
+  fmt.Println(time.Now().Format("2006.01.02 15:04:05"), " global-config started, using ", script_filename)
 
   var err error
   var file_bytes []byte
@@ -254,6 +261,7 @@ func main() {
 
       _ = subst(m[1], M{}, int_i, map[string]string{}, ls, true)
 
+    } else if m := regs["z"].FindStringSubmatch(line); m != nil {
     } else if m := regs["e"].FindStringSubmatch(line); m != nil {
       rstr := subst(m[2], M{}, int_i, map[string]string{}, ls, true)
       _, err := regexp.Compile(rstr)
@@ -658,6 +666,23 @@ func subst(src string, dev M, int_i int, captures map[string]string, ls string, 
       return prefix + now.Format("05")
     } else if key == "t" {
       return prefix + strconv.FormatInt(now.Unix(), 10)
+    } else if key[0:1] == "i" {
+      if dry_run { return prefix + "DRY_RUN" }
+      if len(key) != 2 { panic("Bad octet spec, at line "+ls) }
+      ipa := strings.Split(dev.Vs("data_ip"), ".")
+      if len(ipa) != 4 { panic("Bad data_ip: "+dev.Vs("data_ip")+", at line "+ls) }
+      switch key[1:2] {
+      case "1":
+        return prefix + ipa[0]
+      case "2":
+        return prefix + ipa[1]
+      case "3":
+        return prefix + ipa[2]
+      case "4":
+        return prefix + ipa[3]
+      default:
+        panic("Bad octet spec, at line "+ls)
+      }
     } else if key[0:1] == "n" {
       hostname := dev.Vs("short_name")
       if len(key) > 1 {
@@ -983,6 +1008,22 @@ func work_router(id string, stop_ch StopCloseChan, wg *sync.WaitGroup, status_ch
       } else {
         delete(captures, varname)
       }
+
+    } else if m := regs["z"].FindStringSubmatch(line); m != nil {
+      if presel {
+        break
+      }
+
+      delay, _ := strconv.ParseUint(m[1], 10, 31)
+
+      if opt_v {
+        devlog = append(devlog, "Sleeping: " + m[1] + " seconds")
+        if opt_l && !presel {
+          fmt.Println(devlog[ len(devlog) - 1])
+        }
+      }
+
+      time.Sleep(time.Duration(delay) * time.Second)
 
     } else if m := regs["e"].FindStringSubmatch(line); m != nil {
       if presel {

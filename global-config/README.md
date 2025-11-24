@@ -128,6 +128,10 @@ Variables are matched with %{.+}, % can be escaped with \
 
     %{0} - first -a value, %{1} - second -a value and so on
       escape regexp manually if needed and used in regexp
+    %{i1} - first octet of %{dev.data_ip}
+    %{i2} - second octet of %{dev.data_ip}
+    %{i3} - third octet of %{dev.data_ip}
+    %{i4} - last octet of %{dev.data_ip}
     %{Y} - 4-digit year, local system time
     %{m} - 2-digit month, local system time
     %{d} - 2-digit day, local system time
