@@ -666,6 +666,14 @@ func subst(src string, dev M, int_i int, captures map[string]string, ls string, 
       return prefix + now.Format("05")
     } else if key == "t" {
       return prefix + strconv.FormatInt(now.Unix(), 10)
+    } else if strings.HasPrefix(key, "int.") {
+      if int_i == -1 {
+        panic("int.Attr var out of per_int, at line " + ls)
+      }
+      if dry_run { return prefix + "DRY_RUN" }
+      attr := strings.TrimPrefix(key, "int.")
+      val, _ := dev.Vse("interfaces", ifName, attr)
+      return prefix + val
     } else if key[0:1] == "i" {
       if dry_run { return prefix + "DRY_RUN" }
       if len(key) != 2 { panic("Bad octet spec, at line "+ls) }
@@ -709,14 +717,6 @@ func subst(src string, dev M, int_i int, captures map[string]string, ls string, 
       }
       if dry_run { return prefix + "DRY_RUN" }
       return prefix + regexp.QuoteMeta(hostname)
-    } else if strings.HasPrefix(key, "int.") {
-      if int_i == -1 {
-        panic("int.Attr var out of per_int, at line " + ls)
-      }
-      if dry_run { return prefix + "DRY_RUN" }
-      attr := strings.TrimPrefix(key, "int.")
-      val, _ := dev.Vse("interfaces", ifName, attr)
-      return prefix + val
     } else if strings.HasPrefix(key, "dev.") {
       if dry_run { return prefix + "DRY_RUN" }
       attr := strings.TrimPrefix(key, "dev.")
