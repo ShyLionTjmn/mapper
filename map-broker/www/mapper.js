@@ -9630,7 +9630,7 @@ function vLinksWindow(sel_changed = false) {
   dlg.trigger("recenter");
 };
 
-function VLANsWindow(with_links = false) {
+function VLANsWindow(with_links = false, with_trunks = true) {
   let dlg = createWindow("vlans_win", "VLAN");
   let content = dlg.find(".content");
 
@@ -9639,7 +9639,20 @@ function VLANsWindow(with_links = false) {
       .append( $(LABEL, {"for": "vlans_with_links"}).text("Показывать порты со связями: ") )
       .append( $(INPUT, {"id": "vlans_with_links", "type": "checkbox", "checked": with_links})
         .on("change", function() {
-          VLANsWindow($(this).is(":checked"));
+          VLANsWindow(
+            $("#vlans_with_links").is(":checked"),
+            $("#vlans_with_trunks").is(":checked")
+          );
+        })
+      )
+      .append( $(BR) )
+      .append( $(LABEL, {"for": "vlans_with_trunks"}).text("Показывать Транки: ") )
+      .append( $(INPUT, {"id": "vlans_with_trunks", "type": "checkbox", "checked": with_trunks})
+        .on("change", function() {
+          VLANsWindow(
+            $("#vlans_with_links").is(":checked"),
+            $("#vlans_with_trunks").is(":checked")
+          );
         })
       )
     )
@@ -9661,6 +9674,7 @@ function VLANsWindow(with_links = false) {
            data["devs"][dev_id]["interfaces"][ifName]["lag_parent"] == undefined &&
            data["devs"][dev_id]["interfaces"][ifName]["pagp_members"] == undefined &&
            data["devs"][dev_id]["interfaces"][ifName]["pagp_parent"] == undefined &&
+           (with_trunks || data["devs"][dev_id]["interfaces"][ifName]["portMode"] !== 2) &&
            true
         ) {
           let portMode = data["devs"][dev_id]["interfaces"][ifName]["portMode"];
