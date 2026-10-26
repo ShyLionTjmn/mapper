@@ -69,6 +69,7 @@ var opt_w bool // log sent commands
 var opt_v bool // log execution steps
 var opt_q bool // no summary, no periodic updates
 var opt_l bool // live log to stdout
+var opt_n bool // do not skip with bad overall_status
 
 var opt_j bool // dump JSON data from broker
 var opt_J bool // dump full JSON data from broker
@@ -139,9 +140,10 @@ func main() {
   flag.BoolVar(&opt_r, "r", false, "Log input from device")
   flag.BoolVar(&opt_w, "w", false, "Log sent commands to device")
   flag.BoolVar(&opt_v, "v", false, "Log execution")
-  flag.BoolVar(&opt_j, "j", false, "Dump JSON data from broker and quit")
+  flag.BoolVar(&opt_j, "j", false, "Dump JSON data from broker and quit (scripts use full data)")
   flag.BoolVar(&opt_J, "J", false, "Dump full JSON data from broker and quit")
   flag.BoolVar(&opt_P, "P", false, "No periodic status updates")
+  flag.BoolVar(&opt_n, "n", false, "Do not skip with bad overall_status")
   flag.BoolVar(&opt_q, "q", false,
     "No dev start and stop messages, no summary results, no periodic updates (implies -P)",
   )
@@ -207,7 +209,9 @@ func main() {
     panic("No script filename given, use -f flag")
   }
 
-  fmt.Println(time.Now().Format("2006.01.02 15:04:05"), " global-config started, using ", script_filename)
+  if !opt_q {
+    fmt.Println(time.Now().Format("2006.01.02 15:04:05"), " global-config started, using ", script_filename)
+  }
 
   var err error
   var file_bytes []byte
@@ -394,7 +398,7 @@ func main() {
     panic(err)
   }
 
-  _, err = conn.Write([]byte("global-config\n"))
+  _, err = conn.Write([]byte("global-config-full\n"))
   if err != nil {
     conn.Close()
     panic(err)
@@ -489,7 +493,7 @@ func main() {
     }
 
     if presel {
-      if devs.Vs(id, "overall_status") == "ok" || in_args {
+      if devs.Vs(id, "overall_status") == "ok" || in_args || opt_n {
         devs_list = append(devs_list, id)
       } else {
         devs_status[id] = "skip because of bad overall_status"
@@ -720,7 +724,13 @@ func subst(src string, dev M, int_i int, captures map[string]string, ls string, 
     } else if strings.HasPrefix(key, "dev.") {
       if dry_run { return prefix + "DRY_RUN" }
       attr := strings.TrimPrefix(key, "dev.")
-      val, _ := dev.Vse(attr)
+      dot_idx := strings.Index(attr, ".")
+      var val string
+      if dot_idx > 0 {
+        val, _ = dev.Vse(attr[0:dot_idx], attr[dot_idx + 1:])
+      } else {
+        val, _ = dev.Vse(attr)
+      }
       return prefix + val
     } else if strings.HasPrefix(key, "var.") {
       if dry_run { return prefix + "DRY_RUN" }
